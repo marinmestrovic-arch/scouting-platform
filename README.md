@@ -64,7 +64,10 @@ packages/
   contracts/
   config/
 docs/
-  adr/
+  ADR-001-architecture.md
+  ADR-002-data-ownership-and-precedence.md
+  README.md
+  setup/
 .github/
 ```
 
@@ -75,6 +78,7 @@ docs/
 - `/ARCHITECTURE.md`: target system design and technical rules
 - `/TASKS.md`: milestone plan and GitHub issue backlog
 - `/AGENTS.md`: contributor and AI-agent rules for working in this repo
+- `/docs/setup/local.md`: local environment bootstrap (Docker + tooling)
 
 ## Delivery Strategy
 
@@ -91,14 +95,9 @@ The team should build in this order:
 
 Do not add new product branches until the items in `/TASKS.md` for the active milestone are done.
 
-## Local Setup Plan
+## Local Setup
 
-This scaffold intentionally starts documentation-first. Before coding begins, the next steps are:
-1. initialize the GitHub repository
-2. protect `main`
-3. enable required CI checks
-4. install workspace dependencies with `pnpm`
-5. scaffold `apps/web`, `apps/worker`, and `packages/db` from the backlog
+Use the local runbook at [`/docs/setup/local.md`](./docs/setup/local.md).
 
 ## Hosting Recommendation
 

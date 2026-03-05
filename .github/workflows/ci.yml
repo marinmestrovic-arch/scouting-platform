@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: scouting_platform
+          POSTGRES_USER: scouting
+          POSTGRES_PASSWORD: scouting
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scouting -d scouting_platform"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform?schema=public
+      DATABASE_URL_TEST: postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform_test?schema=public
+      AUTH_SECRET: ci-auth-secret
+      APP_ENCRYPTION_KEY: 01234567890123456789012345678901
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      OPENAI_API_KEY: ""
+      HYPEAUDITOR_API_KEY: ""
+      HUBSPOT_API_KEY: ""
+      LOG_LEVEL: info
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+
+      - name: Create test database
+        run: |
+          if ! psql "postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform" -tAc "SELECT 1 FROM pg_database WHERE datname = 'scouting_platform_test'" | grep -q 1; then
+            psql "postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform" -v ON_ERROR_STOP=1 -c "CREATE DATABASE scouting_platform_test"
+          fi
+
+      - name: Prisma validate
+        run: pnpm db:validate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test

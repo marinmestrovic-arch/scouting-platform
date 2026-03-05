@@ -1,0 +1,1 @@
+CREATE DATABASE scouting_platform_test;

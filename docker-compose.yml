@@ -1,0 +1,24 @@
+name: scouting-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: scouting-platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scouting_platform
+      POSTGRES_USER: scouting
+      POSTGRES_PASSWORD: scouting
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scouting -d scouting_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres_data:
