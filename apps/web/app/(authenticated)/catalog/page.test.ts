@@ -8,6 +8,8 @@ describe("catalog page", () => {
 
     expect(html).toContain("Catalog");
     expect(html).toContain("Catalog list and filtering UX lands in Week 1.");
+    expect(html).toContain("Week 1 shell paths");
+    expect(html).toMatch(/<code[^>]*>\/catalog<\/code>/);
     expect(html).toContain("/catalog/[channelId]");
   });
 });

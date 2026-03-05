@@ -8,6 +8,8 @@ describe("runs page", () => {
 
     expect(html).toContain("Runs");
     expect(html).toContain("Run creation, status, and result UX lands in Week 3.");
+    expect(html).toContain("Week 3 shell paths");
+    expect(html).toMatch(/<code[^>]*>\/runs<\/code>/);
     expect(html).toContain("/runs/new");
     expect(html).toContain("/runs/[runId]");
   });

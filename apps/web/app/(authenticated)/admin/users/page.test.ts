@@ -30,6 +30,16 @@ describe("admin users page", () => {
     expect(result).toBeNull();
   });
 
+  it("redirects sessions without user to login", async () => {
+    authMock.mockResolvedValueOnce({});
+
+    const result = await AdminUsersPage();
+
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
+  });
+
   it("redirects authenticated non-admin users to forbidden", async () => {
     authMock.mockResolvedValueOnce({
       user: {
@@ -40,6 +50,20 @@ describe("admin users page", () => {
     const result = await AdminUsersPage();
 
     expect(redirectMock).toHaveBeenCalledWith("/forbidden");
+    expect(result).toBeNull();
+  });
+
+  it("redirects unknown roles to forbidden", async () => {
+    authMock.mockResolvedValueOnce({
+      user: {
+        role: "owner"
+      }
+    });
+
+    const result = await AdminUsersPage();
+
+    expect(redirectMock).toHaveBeenCalledWith("/forbidden");
+    expect(redirectMock).toHaveBeenCalledTimes(1);
     expect(result).toBeNull();
   });
 

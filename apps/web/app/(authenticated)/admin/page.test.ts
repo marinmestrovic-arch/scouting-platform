@@ -84,6 +84,9 @@ describe("admin page", () => {
     expect(html).toContain(
       "Admin user management shells start in Week 1. Dashboard and import workflows land in Week 5."
     );
+    expect(html).toContain("Week 1 shell paths");
+    expect(html).toMatch(/<code[^>]*>\/admin<\/code>/);
     expect(html).toContain("/admin/users");
+    expect(html).toContain("/admin/users/[userId]");
   });
 });
