@@ -1,8 +1,15 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { getWeek0DemoCredentialsFromEnv, isWeek0DemoCredentialsMatch } from "./lib/auth-flow";
+import {
+  getWeek0DemoCredentialsFromEnv,
+  getWeek0DemoRoleFromEnv,
+  isWeek0DemoCredentialsMatch,
+  WEEK0_DEMO_ROLE_FALLBACK
+} from "./lib/auth-flow";
+import { resolveAppRole } from "./lib/navigation";
 
 const week0DemoCredentials = getWeek0DemoCredentialsFromEnv();
+const week0DemoRole = getWeek0DemoRoleFromEnv();
 
 export const authConfig = {
   pages: {
@@ -30,11 +37,31 @@ export const authConfig = {
         return {
           id: "week0-demo-user",
           name: "Week 0 User",
-          email: week0DemoCredentials.email
+          email: week0DemoCredentials.email,
+          role: week0DemoRole
         };
       }
     })
   ],
+  callbacks: {
+    jwt({ token, user }) {
+      if (user) {
+        token.role = resolveAppRole(user.role, WEEK0_DEMO_ROLE_FALLBACK);
+      } else {
+        token.role = resolveAppRole(token.role, WEEK0_DEMO_ROLE_FALLBACK);
+      }
+
+      return token;
+    },
+    session({ session, token }) {
+      session.user = {
+        ...session.user,
+        role: resolveAppRole(token.role, WEEK0_DEMO_ROLE_FALLBACK)
+      };
+
+      return session;
+    }
+  },
   session: {
     strategy: "jwt"
   }

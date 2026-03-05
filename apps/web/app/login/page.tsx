@@ -19,6 +19,9 @@ export default function LoginPage() {
           You can override them with <code>AUTH_DEMO_EMAIL</code> and{" "}
           <code>AUTH_DEMO_PASSWORD</code>.
         </p>
+        <p className="login-card__note">
+          Set <code>AUTH_DEMO_ROLE</code> to <code>admin</code> if you need to test admin navigation.
+        </p>
         <p className="login-card__back">
           <Link href="/">Back to workspace overview</Link>
         </p>

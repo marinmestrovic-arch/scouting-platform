@@ -1,4 +1,5 @@
-export type AppRole = "admin" | "user";
+export const APP_ROLES = ["admin", "user"] as const;
+export type AppRole = (typeof APP_ROLES)[number];
 
 export type AppNavigationKey = "catalog" | "runs" | "admin";
 
@@ -29,6 +30,18 @@ export const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
     visibleTo: ["admin"]
   }
 ] as const;
+
+export function isAppRole(value: unknown): value is AppRole {
+  return APP_ROLES.some((role) => role === value);
+}
+
+export function resolveAppRole(value: unknown, fallback: AppRole = "user"): AppRole {
+  if (isAppRole(value)) {
+    return value;
+  }
+
+  return fallback;
+}
 
 export function isNavItemVisibleToRole(item: AppNavigationItem, role: AppRole): boolean {
   return item.visibleTo.includes(role);

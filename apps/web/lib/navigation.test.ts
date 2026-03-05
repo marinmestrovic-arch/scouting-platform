@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_ROLES,
   APP_NAVIGATION_ITEMS,
   getNavigationForRole,
-  isNavItemVisibleToRole
+  isAppRole,
+  isNavItemVisibleToRole,
+  resolveAppRole
 } from "./navigation";
 
 describe("navigation config", () => {
   it("defines catalog, runs, and admin entries", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual(["catalog", "runs", "admin"]);
+    expect(APP_ROLES).toEqual(["admin", "user"]);
   });
 
   it("keeps hrefs aligned with each navigation key", () => {
@@ -51,5 +55,13 @@ describe("navigation config", () => {
       globalOrder.filter((key) => key !== "admin")
     );
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual(globalOrder);
+  });
+
+  it("validates and resolves known roles", () => {
+    expect(isAppRole("admin")).toBe(true);
+    expect(isAppRole("user")).toBe(true);
+    expect(isAppRole("owner")).toBe(false);
+    expect(resolveAppRole("admin")).toBe("admin");
+    expect(resolveAppRole("invalid")).toBe("user");
   });
 });

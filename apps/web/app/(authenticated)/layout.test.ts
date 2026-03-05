@@ -1,21 +1,60 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { authMock, redirectMock } = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  redirectMock: vi.fn()
+}));
+
+vi.mock("../../auth", () => ({
+  auth: authMock
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: redirectMock
+}));
+
 import AuthenticatedLayout from "./layout";
 
 describe("authenticated app layout", () => {
-  it("wraps pages in shell chrome", () => {
-    const html = renderToStaticMarkup(AuthenticatedLayout({ children: "route body" }));
-
-    expect(html).toContain("Internal Workspace");
-    expect(html).toContain("Scouting Platform");
-    expect(html).toContain("route body");
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("uses default role shell navigation baseline", () => {
-    const html = renderToStaticMarkup(AuthenticatedLayout({ children: "catalog" }));
+  it("redirects unauthenticated users to login", async () => {
+    authMock.mockResolvedValueOnce(null);
 
+    const result = await AuthenticatedLayout({ children: "route body" });
+
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+    expect(result).toBeNull();
+  });
+
+  it("renders shared shell links for user role", async () => {
+    authMock.mockResolvedValueOnce({
+      user: {
+        role: "user"
+      }
+    });
+
+    const html = renderToStaticMarkup(await AuthenticatedLayout({ children: "catalog" }));
+
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(html).toContain("Internal Workspace");
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
     expect(html).not.toContain('href="/admin"');
+  });
+
+  it("renders admin navigation for admin role", async () => {
+    authMock.mockResolvedValueOnce({
+      user: {
+        role: "admin"
+      }
+    });
+
+    const html = renderToStaticMarkup(await AuthenticatedLayout({ children: "admin" }));
+
+    expect(html).toContain('href="/admin"');
   });
 });

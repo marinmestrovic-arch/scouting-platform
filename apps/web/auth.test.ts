@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getWeek0DemoCredentialsFromEnv } from "./lib/auth-flow";
+import { getWeek0DemoCredentialsFromEnv, getWeek0DemoRoleFromEnv } from "./lib/auth-flow";
 
 const {
   captured,
@@ -84,7 +84,28 @@ describe("auth configuration", () => {
     ).toEqual({
       id: "week0-demo-user",
       name: "Week 0 User",
-      email: demoCredentials.email
+      email: demoCredentials.email,
+      role: getWeek0DemoRoleFromEnv()
+    });
+  });
+
+  it("normalizes role into JWT and session callbacks", () => {
+    const callbacks = (captured.authConfig as { callbacks: Record<string, Function> }).callbacks;
+    const jwtCallback = callbacks.jwt!;
+    const sessionCallback = callbacks.session!;
+
+    expect(jwtCallback({ token: {}, user: { role: "admin" } })).toMatchObject({ role: "admin" });
+    expect(jwtCallback({ token: { role: "owner" }, user: undefined })).toMatchObject({ role: "user" });
+    expect(
+      sessionCallback({
+        session: { user: { email: "demo@scouting.local" } },
+        token: { role: "admin" }
+      })
+    ).toMatchObject({
+      user: {
+        email: "demo@scouting.local",
+        role: "admin"
+      }
     });
   });
 });

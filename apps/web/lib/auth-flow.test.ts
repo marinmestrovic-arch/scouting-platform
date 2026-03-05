@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAuthErrorMessage,
   getWeek0DemoCredentialsFromEnv,
+  getWeek0DemoRoleFromEnv,
   isWeek0DemoCredentialsMatch,
   LOGIN_CREDENTIALS_ERROR_MESSAGE,
   LOGIN_GENERIC_ERROR_MESSAGE,
@@ -10,7 +11,8 @@ import {
   LOGIN_SUBMITTING_MESSAGE,
   resolveLoginUiState,
   WEEK0_DEMO_EMAIL_FALLBACK,
-  WEEK0_DEMO_PASSWORD_FALLBACK
+  WEEK0_DEMO_PASSWORD_FALLBACK,
+  WEEK0_DEMO_ROLE_FALLBACK
 } from "./auth-flow";
 
 describe("auth flow scaffold helpers", () => {
@@ -31,6 +33,12 @@ describe("auth flow scaffold helpers", () => {
       email: "agent@example.com",
       password: "agent-pass"
     });
+  });
+
+  it("resolves role from env with user fallback", () => {
+    expect(getWeek0DemoRoleFromEnv({})).toBe(WEEK0_DEMO_ROLE_FALLBACK);
+    expect(getWeek0DemoRoleFromEnv({ AUTH_DEMO_ROLE: "admin" })).toBe("admin");
+    expect(getWeek0DemoRoleFromEnv({ AUTH_DEMO_ROLE: "unexpected" })).toBe(WEEK0_DEMO_ROLE_FALLBACK);
   });
 
   it("matches sign-in attempts against configured demo credentials", () => {

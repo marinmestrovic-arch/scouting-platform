@@ -1,5 +1,8 @@
+import { resolveAppRole, type AppRole } from "./navigation";
+
 export const WEEK0_DEMO_EMAIL_FALLBACK = "demo@scouting.local";
 export const WEEK0_DEMO_PASSWORD_FALLBACK = "demo-password";
+export const WEEK0_DEMO_ROLE_FALLBACK: AppRole = "user";
 
 export const LOGIN_IDLE_MESSAGE = "Use your assigned work email and password.";
 export const LOGIN_SUBMITTING_MESSAGE = "Submitting credentials...";
@@ -41,6 +44,10 @@ export function getWeek0DemoCredentialsFromEnv(
     email: envEmail || WEEK0_DEMO_EMAIL_FALLBACK,
     password: envPassword || WEEK0_DEMO_PASSWORD_FALLBACK
   };
+}
+
+export function getWeek0DemoRoleFromEnv(env: EnvVars = process.env): AppRole {
+  return resolveAppRole(normalizeCredential(env.AUTH_DEMO_ROLE).toLowerCase(), WEEK0_DEMO_ROLE_FALLBACK);
 }
 
 export function isWeek0DemoCredentialsMatch(
