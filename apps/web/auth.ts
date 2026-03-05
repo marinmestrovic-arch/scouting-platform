@@ -8,10 +8,31 @@ import {
 } from "./lib/auth-flow";
 import { resolveAppRole } from "./lib/navigation";
 
+const WEEK0_DEV_AUTH_SECRET = "week0-dev-auth-secret-not-for-production";
+
+type AuthEnv = Readonly<Record<string, string | undefined>>;
+
+export function resolveAuthSecret(env: AuthEnv = process.env): string | undefined {
+  const rawSecret = env.AUTH_SECRET ?? env.NEXTAUTH_SECRET;
+  const trimmedSecret = typeof rawSecret === "string" ? rawSecret.trim() : "";
+
+  if (trimmedSecret.length > 0) {
+    return trimmedSecret;
+  }
+
+  if (env.NODE_ENV !== "production") {
+    return WEEK0_DEV_AUTH_SECRET;
+  }
+
+  return undefined;
+}
+
 const week0DemoCredentials = getWeek0DemoCredentialsFromEnv();
 const week0DemoRole = getWeek0DemoRoleFromEnv();
+const authSecret = resolveAuthSecret();
 
 export const authConfig = {
+  ...(authSecret ? { secret: authSecret } : {}),
   pages: {
     signIn: "/login"
   },

@@ -1,12 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoginActionState } from "../../app/login/actions";
 import {
   LOGIN_CREDENTIALS_ERROR_MESSAGE,
   LOGIN_IDLE_MESSAGE,
   LOGIN_INITIAL_STATE,
-  LOGIN_SUBMITTING_MESSAGE
+  LOGIN_SUBMITTING_MESSAGE,
+  type LoginActionState
 } from "../../lib/auth-flow";
 import { LoginForm } from "./login-form";
 

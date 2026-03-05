@@ -6,9 +6,6 @@ import {
   type LoginActionState
 } from "../../lib/auth-flow";
 
-export { LOGIN_INITIAL_STATE };
-export type { LoginActionState };
-
 function getErrorType(error: unknown): string | null {
   if (
     typeof error === "object" &&

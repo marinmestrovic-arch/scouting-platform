@@ -47,7 +47,7 @@ vi.mock("next-auth/providers/credentials", () => ({
   default: credentialsProviderMock
 }));
 
-import { authConfig, auth, handlers, signIn, signOut } from "./auth";
+import { authConfig, auth, handlers, resolveAuthSecret, signIn, signOut } from "./auth";
 
 describe("auth configuration", () => {
   it("keeps the custom sign-in page redirect and JWT session strategy", () => {
@@ -107,5 +107,30 @@ describe("auth configuration", () => {
         role: "admin"
       }
     });
+  });
+
+  it("resolves auth secret from env with non-production fallback", () => {
+    expect(
+      resolveAuthSecret({
+        AUTH_SECRET: "  top-secret  ",
+        NODE_ENV: "development"
+      })
+    ).toBe("top-secret");
+    expect(
+      resolveAuthSecret({
+        NEXTAUTH_SECRET: "nextauth-secret",
+        NODE_ENV: "development"
+      })
+    ).toBe("nextauth-secret");
+    expect(
+      resolveAuthSecret({
+        NODE_ENV: "development"
+      })
+    ).toBe("week0-dev-auth-secret-not-for-production");
+    expect(
+      resolveAuthSecret({
+        NODE_ENV: "production"
+      })
+    ).toBeUndefined();
   });
 });
