@@ -27,6 +27,17 @@ describe("authenticated app layout", () => {
     const result = await AuthenticatedLayout({ children: "route body" });
 
     expect(redirectMock).toHaveBeenCalledWith("/login");
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
+  });
+
+  it("redirects sessions without a user object to login", async () => {
+    authMock.mockResolvedValueOnce({});
+
+    const result = await AuthenticatedLayout({ children: "route body" });
+
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+    expect(redirectMock).toHaveBeenCalledTimes(1);
     expect(result).toBeNull();
   });
 
@@ -56,5 +67,19 @@ describe("authenticated app layout", () => {
     const html = renderToStaticMarkup(await AuthenticatedLayout({ children: "admin" }));
 
     expect(html).toContain('href="/admin"');
+  });
+
+  it("falls back to user navigation when session role is unknown", async () => {
+    authMock.mockResolvedValueOnce({
+      user: {
+        role: "owner"
+      }
+    });
+
+    const html = renderToStaticMarkup(await AuthenticatedLayout({ children: "catalog" }));
+
+    expect(html).toContain('href="/catalog"');
+    expect(html).toContain('href="/runs"');
+    expect(html).not.toContain('href="/admin"');
   });
 });
