@@ -60,7 +60,7 @@ Assuming 30h/week each, this is a realistic 6 to 7 week build.
 - [done] set up design tokens/layout/navigation
 - set up Auth.js UI flow
 - create base route protection and role-aware layout
-- create empty screens for catalog, runs, admin
+- [done] create empty screens for catalog, runs, admin
 
 Done when:
 
