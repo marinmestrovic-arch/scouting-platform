@@ -24,6 +24,12 @@ function createFormData(values: Readonly<Record<string, string | Blob>>): FormDa
   return formData;
 }
 
+function createRedirectError(): Error & { digest: string } {
+  const error = new Error("NEXT_REDIRECT") as Error & { digest: string };
+  error.digest = "NEXT_REDIRECT;replace;/catalog;303;";
+  return error;
+}
+
 describe("login actions", () => {
   beforeEach(() => {
     signInMock.mockReset();
@@ -104,20 +110,18 @@ describe("login actions", () => {
     });
   });
 
-  it("falls back to credentials-safe copy when error shape is unknown", async () => {
-    signInMock.mockRejectedValue(new Error("unexpected"));
+  it("rethrows non-auth errors so Next.js redirect and runtime errors are preserved", async () => {
+    const redirectError = createRedirectError();
+    signInMock.mockRejectedValue(redirectError);
 
-    const result = await signInWithCredentials(
-      LOGIN_INITIAL_STATE,
-      createFormData({
-        email: "demo@scouting.local",
-        password: "demo-password"
-      })
-    );
-
-    expect(result).toEqual({
-      status: "error",
-      message: LOGIN_CREDENTIALS_ERROR_MESSAGE
-    });
+    await expect(
+      signInWithCredentials(
+        LOGIN_INITIAL_STATE,
+        createFormData({
+          email: "demo@scouting.local",
+          password: "demo-password"
+        })
+      )
+    ).rejects.toBe(redirectError);
   });
 });

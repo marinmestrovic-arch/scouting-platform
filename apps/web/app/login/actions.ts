@@ -2,7 +2,6 @@
 
 import {
   getAuthErrorMessage,
-  LOGIN_CREDENTIALS_ERROR_MESSAGE,
   LOGIN_INITIAL_STATE,
   type LoginActionState
 } from "../../lib/auth-flow";
@@ -49,9 +48,6 @@ export async function signInWithCredentials(
       };
     }
 
-    return {
-      status: "error",
-      message: LOGIN_CREDENTIALS_ERROR_MESSAGE
-    };
+    throw error;
   }
 }
