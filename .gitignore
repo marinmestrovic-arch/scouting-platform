@@ -14,3 +14,8 @@ apps/web/.next
 apps/web/out
 apps/worker/dist
 packages/*/dist
+*.tsbuildinfo
+playwright-report
+test-results
+apps/web/playwright-report
+apps/web/test-results

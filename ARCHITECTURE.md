@@ -23,7 +23,7 @@ Recommended hosting: Railway with separate staging and production environments.
 10. Every privileged action emits an audit event.
 
 Any change to these requires:
-- a short ADR in `/docs/adr`
+- a short ADR in `/docs`
 - approval from both Ivan and Marin
 
 ## 3. Monorepo Layout
@@ -60,7 +60,10 @@ packages/
   config/
     src/
 docs/
-  adr/
+  ADR-001-architecture.md
+  ADR-002-data-ownership-and-precedence.md
+  README.md
+  setup/
 ```
 
 ## 4. Responsibility Split by Package

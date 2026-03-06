@@ -64,7 +64,10 @@ packages/
   contracts/
   config/
 docs/
-  adr/
+  ADR-001-architecture.md
+  ADR-002-data-ownership-and-precedence.md
+  README.md
+  setup/
 .github/
 ```
 
@@ -75,6 +78,8 @@ docs/
 - `/ARCHITECTURE.md`: target system design and technical rules
 - `/TASKS.md`: milestone plan and GitHub issue backlog
 - `/AGENTS.md`: contributor and AI-agent rules for working in this repo
+- `/docs/setup/local.md`: local environment bootstrap (Docker + tooling)
+- `/docs/setup/staging-railway.md`: staging deployment runbook (Railway)
 
 ## Delivery Strategy
 
@@ -91,14 +96,60 @@ The team should build in this order:
 
 Do not add new product branches until the items in `/TASKS.md` for the active milestone are done.
 
-## Local Setup Plan
+## Local Setup
 
-This scaffold intentionally starts documentation-first. Before coding begins, the next steps are:
-1. initialize the GitHub repository
-2. protect `main`
-3. enable required CI checks
-4. install workspace dependencies with `pnpm`
-5. scaffold `apps/web`, `apps/worker`, and `packages/db` from the backlog
+Use the local runbook at [`/docs/setup/local.md`](./docs/setup/local.md).
+
+## Local Development Setup
+
+Prerequisites:
+- git
+- Docker
+- nvm
+- pnpm
+
+Setup flow:
+
+```bash
+nvm install
+nvm use
+
+corepack enable
+corepack prepare pnpm@10.6.1 --activate
+
+pnpm install
+
+cp .env.example .env
+
+pnpm infra:up
+pnpm db:wait
+```
+
+Weekly Postgres image maintenance (advisory):
+
+```bash
+pnpm infra:refresh-postgres
+pnpm security:scan:postgres
+```
+
+Troubleshooting:
+- If you hit macOS permission errors from system Node installs under `/usr/local`, use `nvm install` and `nvm use` to keep Node and global tooling in your user-owned environment.
+
+## Staging Setup
+
+Use the staging runbook at [`/docs/setup/staging-railway.md`](./docs/setup/staging-railway.md).
+
+## Week 1 API Quick Reference
+
+Backend endpoints available for Marin UI integration:
+
+- `POST /api/auth/[...nextauth]` credentials callback via Auth.js
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PUT /api/admin/users/:id/password`
+- `PUT /api/admin/users/:id/youtube-key`
+- `GET /api/channels`
+- `GET /api/channels/:id`
 
 ## Hosting Recommendation
 

@@ -47,10 +47,10 @@ Assuming 30h/week each, this is a realistic 6 to 7 week build.
 #### You:
 
 - [done] create monorepo
-- set up Prisma + Postgres
-- set up pg-boss
+- [done] set up Prisma + Postgres
+- [done] set up pg-boss
 - [done] set up base env/config package
-- set up GitHub Actions
+- [done] set up GitHub Actions
 - [done] write ADR-001 architecture
 - [done] write ADR-002 data ownership and precedence
 
@@ -66,7 +66,7 @@ Done when:
 
 - repo builds
 - CI runs
-- staging deploy exists
+- staging deploy exists (repo is deploy-ready; follow `/docs/setup/staging-railway.md` for manual provisioning checklist)
 - auth shell exists
 - [done] no feature code yet
 
@@ -74,12 +74,12 @@ Done when:
 
 #### You:
 
-- implement user/admin schema
-- credentials auth
-- session handling
-- encrypted YouTube key storage
-- admin user management backend
-- channel schema and repositories
+- [done] implement user/admin schema
+- [done] credentials auth
+- [done] session handling
+- [done] encrypted YouTube key storage
+- [done] admin user management backend
+- [done] channel schema and repositories
 
 #### Marin:
 

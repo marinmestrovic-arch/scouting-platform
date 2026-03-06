@@ -2,7 +2,11 @@
   "name": "scouting-platform",
   "private": true,
   "packageManager": "pnpm@10.6.1",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
+    "prepare": "husky",
     "dev": "turbo run dev --parallel",
     "dev:web": "pnpm --filter @scouting-platform/web dev",
     "dev:worker": "pnpm --filter @scouting-platform/worker dev",
@@ -10,12 +14,32 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "db:generate": "pnpm --filter @scouting-platform/db db:generate",
-    "db:migrate": "pnpm --filter @scouting-platform/db db:migrate",
-    "db:studio": "pnpm --filter @scouting-platform/db db:studio"
+    "infra:up": "docker compose up -d postgres",
+    "infra:pull": "docker compose pull postgres",
+    "infra:down": "docker compose down",
+    "infra:ps": "docker compose ps",
+    "infra:logs": "docker compose logs postgres --tail=200",
+    "infra:refresh-postgres": "pnpm infra:pull && docker compose up -d --force-recreate postgres && pnpm db:wait",
+    "infra:reset-db": "docker compose down -v && docker compose up -d postgres",
+    "security:scan:postgres": "node scripts/scan-postgres-image.mjs",
+    "db:wait": "node scripts/wait-for-postgres.mjs",
+    "db:validate": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db exec prisma validate'",
+    "db:generate": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db db:generate'",
+    "db:migrate": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db db:migrate'",
+    "db:migrate:deploy": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db db:migrate:deploy'",
+    "db:studio": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db db:studio'",
+    "db:seed:admin": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; tsx scripts/seed-admin.ts'"
   },
   "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.23.0",
+    "eslint-config-next": "^15.2.2",
+    "husky": "^9.1.7",
+    "tsx": "^4.21.0",
     "turbo": "^2.5.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.27.0",
+    "vitest": "^3.0.9"
   }
 }

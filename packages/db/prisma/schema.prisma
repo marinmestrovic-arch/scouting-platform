@@ -7,5 +7,125 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Initial schema starts empty on purpose.
-/// Create the first real migration from issue SP-005.
+enum Role {
+  ADMIN @map("admin")
+  USER  @map("user")
+
+  @@map("role")
+}
+
+enum CredentialProvider {
+  YOUTUBE_DATA_API @map("youtube_data_api")
+
+  @@map("credential_provider")
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  passwordHash  String    @map("password_hash")
+  role          Role      @default(USER)
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  accounts      Account[]
+  sessions      Session[]
+  credentials   UserProviderCredential[]
+  auditEvents   AuditEvent[]            @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @map("refresh_token") @db.Text
+  accessToken       String? @map("access_token") @db.Text
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
+  scope             String?
+  idToken           String? @map("id_token") @db.Text
+  sessionState      String? @map("session_state")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId], map: "accounts_provider_provider_account_id_key")
+  @@index([userId], map: "accounts_user_id_idx")
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "sessions_user_id_idx")
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token], map: "verification_tokens_identifier_token_key")
+  @@unique([token], map: "verification_tokens_token_key")
+  @@map("verification_tokens")
+}
+
+model UserProviderCredential {
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  provider          CredentialProvider
+  encryptedSecret   String             @map("encrypted_secret") @db.Text
+  encryptionIv      String             @map("encryption_iv")
+  encryptionAuthTag String             @map("encryption_auth_tag")
+  keyVersion        Int                @default(1) @map("key_version")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider], map: "user_provider_credentials_user_id_provider_key")
+  @@index([provider], map: "user_provider_credentials_provider_idx")
+  @@map("user_provider_credentials")
+}
+
+model Channel {
+  id               String   @id @default(uuid()) @db.Uuid
+  youtubeChannelId String   @unique @map("youtube_channel_id")
+  title            String
+  handle           String?
+  description      String?  @db.Text
+  thumbnailUrl     String?  @map("thumbnail_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
+  @@map("channels")
+}
+
+model AuditEvent {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action     String
+  entityType String    @map("entity_type")
+  entityId   String    @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  actorUser  User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId], map: "audit_events_actor_user_id_idx")
+  @@index([entityType, entityId], map: "audit_events_entity_idx")
+  @@map("audit_events")
+}

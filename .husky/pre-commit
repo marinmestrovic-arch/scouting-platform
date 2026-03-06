@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+
+set -e
+
+ensure_pnpm_on_path() {
+  if command -v pnpm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -x "./node_modules/.bin/pnpm" ]; then
+    PATH="./node_modules/.bin:$PATH"
+    export PATH
+    return 0
+  fi
+
+  if command -v corepack >/dev/null 2>&1; then
+    : "${COREPACK_HOME:=${TMPDIR:-/tmp}/corepack}"
+    export COREPACK_HOME
+
+    pnpm_shim_dir="${TMPDIR:-/tmp}/pnpm-shims"
+    mkdir -p "$pnpm_shim_dir"
+    corepack enable --install-directory "$pnpm_shim_dir" >/dev/null 2>&1 || return 1
+    PATH="$pnpm_shim_dir:$PATH"
+    export PATH
+
+    command -v pnpm >/dev/null 2>&1
+    return
+  fi
+
+  return 1
+}
+
+if ! ensure_pnpm_on_path; then
+  echo "pnpm was not found in PATH for Husky pre-commit."
+  echo "Run 'corepack enable' (or install pnpm globally) and retry."
+  exit 127
+fi
+
+pnpm lint
+pnpm typecheck

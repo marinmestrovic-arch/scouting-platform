@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  checks:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: scouting_platform
+          POSTGRES_USER: scouting
+          POSTGRES_PASSWORD: scouting
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scouting -d scouting_platform"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform?schema=public
+      DATABASE_URL_TEST: postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform_test?schema=public
+      AUTH_SECRET: ci-auth-secret
+      APP_ENCRYPTION_KEY: 01234567890123456789012345678901
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      OPENAI_API_KEY: ""
+      HYPEAUDITOR_API_KEY: ""
+      HUBSPOT_API_KEY: ""
+      LOG_LEVEL: info
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+
+      - name: Create test database
+        run: |
+          if ! psql "postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform" -tAc "SELECT 1 FROM pg_database WHERE datname = 'scouting_platform_test'" | grep -q 1; then
+            psql "postgresql://scouting:scouting@127.0.0.1:5432/scouting_platform" -v ON_ERROR_STOP=1 -c "CREATE DATABASE scouting_platform_test"
+          fi
+
+      - name: Prisma validate
+        run: pnpm db:validate
+
+      - name: Prisma generate
+        run: pnpm db:generate
+
+      - name: Migrate primary database
+        run: pnpm db:migrate:deploy
+
+      - name: Migrate test database
+        run: pnpm --filter @scouting-platform/db db:migrate:deploy
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL_TEST }}
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build web
+        run: pnpm --filter @scouting-platform/web build
+
+      - name: Build worker
+        run: pnpm --filter @scouting-platform/worker build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Install Playwright browser
+        run: pnpm --filter @scouting-platform/web exec playwright install --with-deps chromium
+
+      - name: Playwright smoke
+        run: pnpm --filter @scouting-platform/web test:smoke
+
+  postgres-image-scan:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.58.2
+    steps:
+      - name: Pull postgres image
+        run: docker pull postgres:17-alpine
+
+      - name: Trivy advisory report (console)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            $TRIVY_IMAGE image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            postgres:17-alpine | tee trivy-postgres.txt
+
+      - name: Trivy advisory report (SARIF)
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" \
+            $TRIVY_IMAGE image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output /work/trivy-postgres.sarif \
+            --exit-code 0 \
+            postgres:17-alpine
+
+      - name: Upload advisory scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-image-trivy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            trivy-postgres.txt
+            trivy-postgres.sarif
+          if-no-files-found: error
