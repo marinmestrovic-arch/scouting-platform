@@ -52,6 +52,8 @@ Set these in both `web` and `worker` services unless marked otherwise:
 7. Verify health:
    - `web` serves `/`
    - `worker` starts and logs queue initialization
+8. Keep local reliability checks green before promoting staging changes:
+   - run local Week 3 DB integration prep and verification from [`/docs/setup/local.md`](./local.md)
 
 ## Rollback checklist
 

@@ -1,5 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "DATABASE_URL",
+    "DATABASE_URL_TEST",
+    "AUTH_SECRET",
+    "APP_ENCRYPTION_KEY",
+    "NEXT_PUBLIC_APP_URL",
+    "PG_BOSS_SCHEMA",
+    "LOG_LEVEL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

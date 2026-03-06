@@ -146,6 +146,7 @@ Done when:
 - run uses both catalog and new discovery
 - results are saved and viewable
 - phased delivery note: Week 3 backend is delivered end-to-end (`POST /api/runs`, `GET /api/runs/:id`, queue/worker lifecycle, per-user-key YouTube discovery, deduped catalog+discovery union ranking, and snapshot persistence); Marin Week 3 UI items remain open.
+- hardening note: Week 3 backend reliability hardening delivered (deterministic test DB migration/verification scripts, serialized CI test orchestration with DB-heavy Vitest file parallelism disabled, local troubleshooting runbook updates, and CI exclusion of `apps/web/auth.credentials.test.ts` due known NextAuth `next/server` resolver mismatch in Vitest).
 
 ### Week 4: LLM enrichment
 

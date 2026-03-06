@@ -78,9 +78,7 @@ jobs:
         run: pnpm db:migrate:deploy
 
       - name: Migrate test database
-        run: pnpm --filter @scouting-platform/db db:migrate:deploy
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL_TEST }}
+        run: pnpm db:migrate:test
 
       - name: Lint
         run: pnpm lint
@@ -95,7 +93,7 @@ jobs:
         run: pnpm --filter @scouting-platform/worker build
 
       - name: Test
-        run: pnpm test
+        run: pnpm test:ci
 
       - name: Install Playwright browser
         run: pnpm --filter @scouting-platform/web exec playwright install --with-deps chromium

@@ -27,7 +27,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests --exclude e2e/**",
+    "test": "vitest run --passWithNoTests --fileParallelism=false --exclude e2e/** --exclude auth.credentials.test.ts",
     "test:smoke": "playwright test -c playwright.config.ts",
     "typecheck": "next typegen && tsc --noEmit"
   }

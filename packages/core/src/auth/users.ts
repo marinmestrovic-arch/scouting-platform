@@ -1,5 +1,4 @@
 import { CredentialProvider, type Role as PrismaRole } from "@prisma/client";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 import type { AdminUserResponse, CreateAdminUserRequest } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
@@ -18,6 +17,15 @@ type UserWithYoutubeCredential = {
   updatedAt: Date;
   credentials: Array<{ id: string }>;
 };
+
+function hasPrismaErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -117,7 +125,7 @@ export async function createUser(
     const user = await getUserWithYoutubeCredential(userId);
     return toAdminUserResponse(user);
   } catch (error: unknown) {
-    if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
+    if (hasPrismaErrorCode(error, "P2002")) {
       throw new ServiceError("DUPLICATE_EMAIL", 409, "A user with this email already exists");
     }
 
