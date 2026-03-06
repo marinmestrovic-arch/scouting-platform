@@ -100,6 +100,41 @@ Do not add new product branches until the items in `/TASKS.md` for the active mi
 
 Use the local runbook at [`/docs/setup/local.md`](./docs/setup/local.md).
 
+## Local Development Setup
+
+Prerequisites:
+- git
+- Docker
+- nvm
+- pnpm
+
+Setup flow:
+
+```bash
+nvm install
+nvm use
+
+corepack enable
+corepack prepare pnpm@10.6.1 --activate
+
+pnpm install
+
+cp .env.example .env
+
+pnpm infra:up
+pnpm db:wait
+```
+
+Weekly Postgres image maintenance (advisory):
+
+```bash
+pnpm infra:refresh-postgres
+pnpm security:scan:postgres
+```
+
+Troubleshooting:
+- If you hit macOS permission errors from system Node installs under `/usr/local`, use `nvm install` and `nvm use` to keep Node and global tooling in your user-owned environment.
+
 ## Staging Setup
 
 Use the staging runbook at [`/docs/setup/staging-railway.md`](./docs/setup/staging-railway.md).
