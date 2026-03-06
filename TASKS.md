@@ -47,39 +47,39 @@ Assuming 30h/week each, this is a realistic 6 to 7 week build.
 #### You:
 
 - [done] create monorepo
-- set up Prisma + Postgres
-- set up pg-boss
+- [done] set up Prisma + Postgres
+- [done] set up pg-boss
 - [done] set up base env/config package
-- set up GitHub Actions
+- [done] set up GitHub Actions
 - [done] write ADR-001 architecture
 - [done] write ADR-002 data ownership and precedence
 
 #### Marin:
 
-- bootstrap Next app
-- set up design tokens/layout/navigation
-- set up Auth.js UI flow
-- create base route protection and role-aware layout
-- create empty screens for catalog, runs, admin
+- [done] bootstrap Next app
+- [done] set up design tokens/layout/navigation
+- [done] set up Auth.js UI flow
+- [done] create base route protection and role-aware layout
+- [done] create empty screens for catalog, runs, admin (`/catalog`, `/catalog/[channelId]`, `/runs`, `/admin`, `/admin/users`, `/admin/users/[userId]`)
 
-Done when:
+Done when (Week 0 completion checkpoint):
 
-- repo builds
-- CI runs
-- staging deploy exists
-- auth shell exists
-- [done] no feature code yet
+- [done] repo built at Week 0 completion
+- [done] CI was running at Week 0 completion
+- [done] staging deploy path existed at Week 0 completion (repo is deploy-ready; follow `/docs/setup/staging-railway.md` for manual provisioning checklist)
+- [done] auth shell existed at Week 0 completion
+- [done] no feature code yet at Week 0 checkpoint
 
 ### Week 1: Auth, users, and catalog skeleton
 
 #### You:
 
-- implement user/admin schema
-- credentials auth
-- session handling
-- encrypted YouTube key storage
-- admin user management backend
-- channel schema and repositories
+- [done] implement user/admin schema
+- [done] credentials auth
+- [done] session handling
+- [done] encrypted YouTube key storage
+- [done] admin user management backend
+- [done] channel schema and repositories
 
 #### Marin:
 
@@ -100,10 +100,10 @@ Done when:
 
 #### You:
 
-- channel list/detail queries
-- segment persistence
-- manual override model and merge logic
-- audit events for edits
+- [done] channel list/detail queries
+- [done] segment persistence (phase 1: personal saved filter segments CRUD)
+- [done] manual override model and merge logic (phase 2: per-field channel overrides with precedence-safe fallback restore)
+- [done] audit events for edits (phase 2: admin channel override patches)
 
 #### Marin:
 
@@ -118,17 +118,19 @@ Done when:
 - catalog list/detail works
 - segments save/load
 - admin manual edits persist and override automated values
+- evidence note: backend catalog queries are live via `GET /api/channels` and `GET /api/channels/:id` with integration coverage in `apps/web/app/api/week1.integration.test.ts`
+- phased delivery note: segment persistence backend is delivered as personal saved filter segments CRUD; remaining Week 2 items stay open
 
 ### Week 3: Runs and discovery
 
 #### You:
 
-- run request model
-- run execution service
+- [done] run request model (phase 1: run request lifecycle persistence in `run_requests`)
+- [done] run execution service (phase 1: queued -> running -> completed/failed transitions with persisted `last_error`)
 - YouTube discovery adapter using per-user key
 - dedupe/union with catalog
-- run result snapshot model
-- background job for discovery
+- [done] run result snapshot model (phase 1: `run_results` snapshot rows with rank/source)
+- [done] background job for discovery (phase 1: `runs.discover` queue + worker execution wiring)
 
 #### Marin:
 
@@ -143,6 +145,7 @@ Done when:
 - manager can create a run
 - run uses both catalog and new discovery
 - results are saved and viewable
+- phased delivery note: Week 3 phase 1 backend is delivered (`POST /api/runs`, `GET /api/runs/:id`, queue/worker lifecycle, and snapshot persistence); YouTube adapter and catalog+discovery union ranking remain open.
 
 ### Week 4: LLM enrichment
 

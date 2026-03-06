@@ -7,5 +7,227 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Initial schema starts empty on purpose.
-/// Create the first real migration from issue SP-005.
+enum Role {
+  ADMIN @map("admin")
+  USER  @map("user")
+
+  @@map("role")
+}
+
+enum CredentialProvider {
+  YOUTUBE_DATA_API @map("youtube_data_api")
+
+  @@map("credential_provider")
+}
+
+enum RunRequestStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("run_request_status")
+}
+
+enum RunResultSource {
+  CATALOG   @map("catalog")
+  DISCOVERY @map("discovery")
+
+  @@map("run_result_source")
+}
+
+enum ChannelManualOverrideField {
+  TITLE         @map("title")
+  HANDLE        @map("handle")
+  DESCRIPTION   @map("description")
+  THUMBNAIL_URL @map("thumbnail_url")
+
+  @@map("channel_manual_override_field")
+}
+
+model User {
+  id                            String                  @id @default(uuid()) @db.Uuid
+  name                          String?
+  email                         String                  @unique
+  emailVerified                 DateTime?               @map("email_verified")
+  image                         String?
+  passwordHash                  String                  @map("password_hash")
+  role                          Role                    @default(USER)
+  isActive                      Boolean                 @default(true) @map("is_active")
+  createdAt                     DateTime                @default(now()) @map("created_at")
+  updatedAt                     DateTime                @updatedAt @map("updated_at")
+  accounts                      Account[]
+  sessions                      Session[]
+  credentials                   UserProviderCredential[]
+  auditEvents                   AuditEvent[]            @relation("AuditActor")
+  savedSegments                 SavedSegment[]
+  runRequests                   RunRequest[]            @relation("RunRequestedBy")
+  createdChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideCreatedBy")
+  updatedChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideUpdatedBy")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @map("refresh_token") @db.Text
+  accessToken       String? @map("access_token") @db.Text
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
+  scope             String?
+  idToken           String? @map("id_token") @db.Text
+  sessionState      String? @map("session_state")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId], map: "accounts_provider_provider_account_id_key")
+  @@index([userId], map: "accounts_user_id_idx")
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "sessions_user_id_idx")
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token], map: "verification_tokens_identifier_token_key")
+  @@unique([token], map: "verification_tokens_token_key")
+  @@map("verification_tokens")
+}
+
+model UserProviderCredential {
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  provider          CredentialProvider
+  encryptedSecret   String             @map("encrypted_secret") @db.Text
+  encryptionIv      String             @map("encryption_iv")
+  encryptionAuthTag String             @map("encryption_auth_tag")
+  keyVersion        Int                @default(1) @map("key_version")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider], map: "user_provider_credentials_user_id_provider_key")
+  @@index([provider], map: "user_provider_credentials_provider_idx")
+  @@map("user_provider_credentials")
+}
+
+model Channel {
+  id              String                  @id @default(uuid()) @db.Uuid
+  youtubeChannelId String                 @unique @map("youtube_channel_id")
+  title           String
+  handle          String?
+  description     String?                 @db.Text
+  thumbnailUrl    String?                 @map("thumbnail_url")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  runResults      RunResult[]
+  manualOverrides ChannelManualOverride[]
+
+  @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
+  @@map("channels")
+}
+
+model ChannelManualOverride {
+  id              String                     @id @default(uuid()) @db.Uuid
+  channelId       String                     @map("channel_id") @db.Uuid
+  field           ChannelManualOverrideField
+  value           String?                    @db.Text
+  fallbackValue   String?                    @map("fallback_value") @db.Text
+  createdByUserId String                     @map("created_by_user_id") @db.Uuid
+  updatedByUserId String                     @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
+  channel         Channel                    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdByUser   User                       @relation("ChannelManualOverrideCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUser   User                       @relation("ChannelManualOverrideUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([channelId, field], map: "channel_manual_overrides_channel_id_field_key")
+  @@index([channelId], map: "channel_manual_overrides_channel_id_idx")
+  @@index([updatedAt], map: "channel_manual_overrides_updated_at_idx")
+  @@index([createdByUserId], map: "channel_manual_overrides_created_by_user_id_idx")
+  @@index([updatedByUserId], map: "channel_manual_overrides_updated_by_user_id_idx")
+  @@map("channel_manual_overrides")
+}
+
+model AuditEvent {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action     String
+  entityType String    @map("entity_type")
+  entityId   String    @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  actorUser  User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId], map: "audit_events_actor_user_id_idx")
+  @@index([entityType, entityId], map: "audit_events_entity_idx")
+  @@map("audit_events")
+}
+
+model SavedSegment {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  filters   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "saved_segments_user_id_idx")
+  @@index([userId, updatedAt], map: "saved_segments_user_id_updated_at_idx")
+  @@map("saved_segments")
+}
+
+model RunRequest {
+  id                String           @id @default(uuid()) @db.Uuid
+  requestedByUserId String           @map("requested_by_user_id") @db.Uuid
+  name              String
+  query             String
+  status            RunRequestStatus @default(QUEUED)
+  lastError         String?          @map("last_error") @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  startedAt         DateTime?        @map("started_at")
+  completedAt       DateTime?        @map("completed_at")
+  requestedByUser   User             @relation("RunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  results           RunResult[]
+
+  @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
+  @@index([status], map: "run_requests_status_idx")
+  @@index([createdAt], map: "run_requests_created_at_idx")
+  @@map("run_requests")
+}
+
+model RunResult {
+  id         String          @id @default(uuid()) @db.Uuid
+  runRequestId String        @map("run_request_id") @db.Uuid
+  channelId  String          @map("channel_id") @db.Uuid
+  rank       Int
+  source     RunResultSource
+  createdAt  DateTime        @default(now()) @map("created_at")
+  runRequest RunRequest      @relation(fields: [runRequestId], references: [id], onDelete: Cascade)
+  channel    Channel         @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@unique([runRequestId, channelId], map: "run_results_run_request_id_channel_id_key")
+  @@index([runRequestId], map: "run_results_run_request_id_idx")
+  @@map("run_results")
+}
