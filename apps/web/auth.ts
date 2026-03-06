@@ -1,72 +1,91 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
-import type { Adapter } from "next-auth/adapters";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import {
+  getWeek0DemoCredentialsFromEnv,
+  getWeek0DemoRoleFromEnv,
+  isWeek0DemoCredentialsMatch,
+  WEEK0_DEMO_ROLE_FALLBACK
+} from "./lib/auth-flow";
+import { resolveAppRole } from "./lib/navigation";
 
-import { credentialsSignInSchema } from "@scouting-platform/contracts";
-import { findUserForCredentials, verifyPassword } from "@scouting-platform/core";
-import { prisma } from "@scouting-platform/db";
+const WEEK0_DEV_AUTH_SECRET = "week0-dev-auth-secret-not-for-production";
 
-const authSecret = process.env.AUTH_SECRET;
+type AuthEnv = Readonly<Record<string, string | undefined>>;
 
-if (process.env.NODE_ENV === "production" && !authSecret) {
-  throw new Error("AUTH_SECRET must be set when NODE_ENV=production");
+export function resolveAuthSecret(env: AuthEnv = process.env): string | undefined {
+  const rawSecret = env.AUTH_SECRET ?? env.NEXTAUTH_SECRET;
+  const trimmedSecret = typeof rawSecret === "string" ? rawSecret.trim() : "";
+
+  if (trimmedSecret.length > 0) {
+    return trimmedSecret;
+  }
+
+  if (env.NODE_ENV !== "production") {
+    return WEEK0_DEV_AUTH_SECRET;
+  }
+
+  return undefined;
 }
 
-export const authConfig: NextAuthConfig = {
-  adapter: PrismaAdapter(prisma) as Adapter,
-  session: {
-    strategy: "database",
+const week0DemoCredentials = getWeek0DemoCredentialsFromEnv();
+const week0DemoRole = getWeek0DemoRoleFromEnv();
+const authSecret = resolveAuthSecret();
+
+export const authConfig = {
+  ...(authSecret ? { secret: authSecret } : {}),
+  pages: {
+    signIn: "/login"
   },
   providers: [
     Credentials({
-      name: "Email and Password",
+      name: "Email and password",
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        email: {
+          label: "Email",
+          type: "email",
+          placeholder: "name@company.com"
+        },
+        password: {
+          label: "Password",
+          type: "password"
+        }
       },
-      async authorize(credentials) {
-        const parsed = credentialsSignInSchema.safeParse(credentials);
-
-        if (!parsed.success) {
-          return null;
-        }
-
-        const user = await findUserForCredentials(parsed.data.email);
-
-        if (!user || !user.isActive) {
-          return null;
-        }
-
-        const validPassword = await verifyPassword(
-          parsed.data.password,
-          user.passwordHash,
-        );
-
-        if (!validPassword) {
+      authorize(credentials) {
+        if (!isWeek0DemoCredentialsMatch(credentials?.email, credentials?.password)) {
           return null;
         }
 
         return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
+          id: "week0-demo-user",
+          name: "Week 0 User",
+          email: week0DemoCredentials.email,
+          role: week0DemoRole
         };
-      },
-    }),
+      }
+    })
   ],
   callbacks: {
-    session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role === "admin" ? "admin" : "user";
+    jwt({ token, user }) {
+      if (user) {
+        token.role = resolveAppRole(user.role, WEEK0_DEMO_ROLE_FALLBACK);
+      } else {
+        token.role = resolveAppRole(token.role, WEEK0_DEMO_ROLE_FALLBACK);
       }
 
-      return session;
+      return token;
     },
+    session({ session, token }) {
+      session.user = {
+        ...session.user,
+        role: resolveAppRole(token.role, WEEK0_DEMO_ROLE_FALLBACK)
+      };
+
+      return session;
+    }
   },
-  ...(authSecret ? { secret: authSecret } : {}),
-};
+  session: {
+    strategy: "jwt"
+  }
+} satisfies NextAuthConfig;
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);

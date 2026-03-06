@@ -5,6 +5,10 @@ on:
   push:
     branches:
       - main
+      - dev
+      - dev-*
+      - dev-marin
+      - feat/**
   schedule:
     - cron: "0 6 * * 1"
 

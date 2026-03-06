@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   transpilePackages: [
     "@scouting-platform/contracts",
     "@scouting-platform/core",
-    "@scouting-platform/db",
-  ],
+    "@scouting-platform/db"
+  ]
 };
 
 export default nextConfig;
