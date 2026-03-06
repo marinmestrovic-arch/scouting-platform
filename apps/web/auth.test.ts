@@ -51,7 +51,7 @@ import { authConfig, auth, handlers, resolveAuthSecret, signIn, signOut } from "
 
 type JwtCallbackParams = {
   token: { role?: unknown };
-  user?: { role?: unknown };
+  user?: { role?: unknown } | undefined;
 };
 
 type SessionCallbackParams = {
@@ -110,7 +110,7 @@ describe("auth configuration", () => {
     const sessionCallback = callbacks.session!;
 
     expect(jwtCallback({ token: {}, user: { role: "admin" } })).toMatchObject({ role: "admin" });
-    expect(jwtCallback({ token: { role: "owner" }, user: undefined })).toMatchObject({ role: "user" });
+    expect(jwtCallback({ token: { role: "owner" } })).toMatchObject({ role: "user" });
     expect(
       sessionCallback({
         session: { user: { email: "demo@scouting.local" } },

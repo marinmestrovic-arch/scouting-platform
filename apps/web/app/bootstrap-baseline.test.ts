@@ -23,7 +23,13 @@ describe("week 0 bootstrap baseline", () => {
     expect(html).toContain("bootstrap");
   });
 
-  it("exports an empty next config baseline", () => {
-    expect(nextConfig).toEqual({});
+  it("exports web transpile package config", () => {
+    expect(nextConfig).toMatchObject({
+      transpilePackages: [
+        "@scouting-platform/contracts",
+        "@scouting-platform/core",
+        "@scouting-platform/db"
+      ]
+    });
   });
 });
