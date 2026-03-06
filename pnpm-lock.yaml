@@ -96,6 +96,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@scouting-platform/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@scouting-platform/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       pg-boss:
         specifier: ^12.14.0
         version: 12.14.0
@@ -130,6 +136,9 @@ importers:
       argon2:
         specifier: ^0.43.0
         version: 0.43.1
+      pg-boss:
+        specifier: ^12.14.0
+        version: 12.14.0
 
   packages/db:
     dependencies:

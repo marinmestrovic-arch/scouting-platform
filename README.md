@@ -139,7 +139,7 @@ Troubleshooting:
 
 Use the staging runbook at [`/docs/setup/staging-railway.md`](./docs/setup/staging-railway.md).
 
-## Week 1 API Quick Reference
+## API Quick Reference
 
 Backend endpoints available for Marin UI integration:
 
@@ -150,6 +150,8 @@ Backend endpoints available for Marin UI integration:
 - `PUT /api/admin/users/:id/youtube-key`
 - `GET /api/channels`
 - `GET /api/channels/:id`
+- `POST /api/runs`
+- `GET /api/runs/:id`
 
 ## Hosting Recommendation
 

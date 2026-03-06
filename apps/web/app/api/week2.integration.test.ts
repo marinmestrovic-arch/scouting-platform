@@ -44,6 +44,8 @@ integration("week 2 API integration", () => {
       TRUNCATE TABLE
         channel_manual_overrides,
         saved_segments,
+        run_results,
+        run_requests,
         audit_events,
         user_provider_credentials,
         sessions,

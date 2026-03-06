@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@scouting-platform/contracts": "workspace:*",
+    "@scouting-platform/core": "workspace:*",
     "pg-boss": "^12.14.0"
   }
 }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createRunRequestSchema,
   createAdminUserRequestSchema,
   listChannelsQuerySchema,
   patchChannelManualOverridesRequestSchema,
+  runStatusResponseSchema,
   segmentFiltersSchema,
 } from "./index";
 
@@ -77,5 +79,32 @@ describe("week 1 and week 2 contracts", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+
+  it("parses valid run creation payload", () => {
+    const payload = createRunRequestSchema.parse({
+      name: "Campaign run",
+      query: "gaming creators",
+    });
+
+    expect(payload.name).toBe("Campaign run");
+  });
+
+  it("parses run status response shape", () => {
+    const payload = runStatusResponseSchema.parse({
+      id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+      requestedByUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+      name: "Campaign run",
+      query: "gaming creators",
+      status: "queued",
+      lastError: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      startedAt: null,
+      completedAt: null,
+      results: [],
+    });
+
+    expect(payload.status).toBe("queued");
   });
 });

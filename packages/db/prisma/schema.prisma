@@ -29,6 +29,22 @@ enum ChannelManualOverrideField {
   @@map("channel_manual_override_field")
 }
 
+enum RunRequestStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("run_request_status")
+}
+
+enum RunResultSource {
+  CATALOG   @map("catalog")
+  DISCOVERY @map("discovery")
+
+  @@map("run_result_source")
+}
+
 model User {
   id            String    @id @default(uuid()) @db.Uuid
   name          String?
@@ -47,6 +63,7 @@ model User {
   savedSegments SavedSegment[]
   createdChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideCreatedBy")
   updatedChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideUpdatedBy")
+  runRequests   RunRequest[]            @relation("RunRequestedBy")
 
   @@map("users")
 }
@@ -123,6 +140,7 @@ model Channel {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
   manualOverrides  ChannelManualOverride[]
+  runResults       RunResult[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@map("channels")
@@ -177,4 +195,39 @@ model ChannelManualOverride {
   @@index([createdByUserId], map: "channel_manual_overrides_created_by_user_id_idx")
   @@index([updatedByUserId], map: "channel_manual_overrides_updated_by_user_id_idx")
   @@map("channel_manual_overrides")
+}
+
+model RunRequest {
+  id                String           @id @default(uuid()) @db.Uuid
+  requestedByUserId String           @map("requested_by_user_id") @db.Uuid
+  name              String
+  query             String
+  status            RunRequestStatus @default(QUEUED)
+  lastError         String?          @map("last_error") @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  startedAt         DateTime?        @map("started_at")
+  completedAt       DateTime?        @map("completed_at")
+  requestedByUser   User             @relation("RunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  results           RunResult[]
+
+  @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
+  @@index([status], map: "run_requests_status_idx")
+  @@index([createdAt], map: "run_requests_created_at_idx")
+  @@map("run_requests")
+}
+
+model RunResult {
+  id         String          @id @default(uuid()) @db.Uuid
+  runRequestId String        @map("run_request_id") @db.Uuid
+  channelId  String          @map("channel_id") @db.Uuid
+  rank       Int
+  source     RunResultSource
+  createdAt  DateTime        @default(now()) @map("created_at")
+  runRequest RunRequest      @relation(fields: [runRequestId], references: [id], onDelete: Cascade)
+  channel    Channel         @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@unique([runRequestId, channelId], map: "run_results_run_request_id_channel_id_key")
+  @@index([runRequestId], map: "run_results_run_request_id_idx")
+  @@map("run_results")
 }

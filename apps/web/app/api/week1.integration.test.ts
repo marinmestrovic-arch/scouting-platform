@@ -48,6 +48,8 @@ integration("week 1 API integration", () => {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
         channel_manual_overrides,
+        run_results,
+        run_requests,
         audit_events,
         user_provider_credentials,
         sessions,
