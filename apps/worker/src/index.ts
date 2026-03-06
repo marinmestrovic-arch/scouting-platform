@@ -1,9 +1,8 @@
 import process from "node:process";
 import { PgBoss } from "pg-boss";
-import { parseJobPayload } from "@scouting-platform/contracts";
-import { executeRunDiscover } from "@scouting-platform/core";
 
 import { JOB_NAMES } from "./jobs";
+import { registerRunsDiscoverWorker } from "./runs-discover-worker";
 
 type WorkerRuntimeConfig = {
   databaseUrl: string;
@@ -42,22 +41,7 @@ async function ensureQueues(boss: PgBoss): Promise<void> {
 }
 
 async function registerWorkers(boss: PgBoss): Promise<void> {
-  await boss.work("runs.discover", async (job) => {
-    const jobs = Array.isArray(job) ? job : [job];
-
-    for (const current of jobs) {
-      const payload = parseJobPayload("runs.discover", current.data);
-
-      try {
-        await executeRunDiscover(payload);
-      } catch (error) {
-        process.stderr.write(
-          `[worker] runs.discover failed for ${payload.runRequestId}: ${formatErrorMessage(error)}\n`,
-        );
-        throw error;
-      }
-    }
-  });
+  await registerRunsDiscoverWorker(boss);
 }
 
 async function startWorker(): Promise<void> {

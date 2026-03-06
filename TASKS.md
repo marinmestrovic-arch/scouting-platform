@@ -62,13 +62,13 @@ Assuming 30h/week each, this is a realistic 6 to 7 week build.
 - [done] create base route protection and role-aware layout
 - [done] create empty screens for catalog, runs, admin (`/catalog`, `/catalog/[channelId]`, `/runs`, `/admin`, `/admin/users`, `/admin/users/[userId]`)
 
-Done when:
+Done when (Week 0 completion checkpoint):
 
-- repo builds
-- CI runs
-- staging deploy exists (repo is deploy-ready; follow `/docs/setup/staging-railway.md` for manual provisioning checklist)
-- auth shell exists
-- [done] no feature code yet
+- [done] repo built at Week 0 completion
+- [done] CI was running at Week 0 completion
+- [done] staging deploy path existed at Week 0 completion (repo is deploy-ready; follow `/docs/setup/staging-railway.md` for manual provisioning checklist)
+- [done] auth shell existed at Week 0 completion
+- [done] no feature code yet at Week 0 checkpoint
 
 ### Week 1: Auth, users, and catalog skeleton
 
@@ -125,12 +125,12 @@ Done when:
 
 #### You:
 
-- run request model
-- run execution service
+- [done] run request model (phase 1: run request lifecycle persistence in `run_requests`)
+- [done] run execution service (phase 1: queued -> running -> completed/failed transitions with persisted `last_error`)
 - YouTube discovery adapter using per-user key
 - dedupe/union with catalog
-- run result snapshot model
-- background job for discovery
+- [done] run result snapshot model (phase 1: `run_results` snapshot rows with rank/source)
+- [done] background job for discovery (phase 1: `runs.discover` queue + worker execution wiring)
 
 #### Marin:
 
@@ -145,6 +145,7 @@ Done when:
 - manager can create a run
 - run uses both catalog and new discovery
 - results are saved and viewable
+- phased delivery note: Week 3 phase 1 backend is delivered (`POST /api/runs`, `GET /api/runs/:id`, queue/worker lifecycle, and snapshot persistence); YouTube adapter and catalog+discovery union ranking remain open.
 
 ### Week 4: LLM enrichment
 

@@ -13,10 +13,10 @@ export function toRouteErrorResponse(error: unknown): NextResponse {
   }
 
   if (error instanceof Error) {
-    return jsonError(error.message, 500);
+    return jsonError("Internal server error", 500);
   }
 
-  return jsonError("Unexpected error", 500);
+  return jsonError("Internal server error", 500);
 }
 
 export async function requireAdminSession(): Promise<
