@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 const image = process.env.POSTGRES_IMAGE ?? "postgres:17-alpine";
 const severity = process.env.TRIVY_SEVERITY ?? "HIGH,CRITICAL";
 const cacheDir = process.env.TRIVY_CACHE_DIR ?? join(tmpdir(), "trivy-cache");
+const trivyImage = process.env.TRIVY_IMAGE ?? "aquasec/trivy:0.58.2";
 
 mkdirSync(cacheDir, { recursive: true });
 
@@ -29,7 +30,7 @@ runOrExit("docker", [
   "/var/run/docker.sock:/var/run/docker.sock",
   "-v",
   `${cacheDir}:/root/.cache/`,
-  "aquasec/trivy:latest",
+  trivyImage,
   "image",
   "--scanners",
   "vuln",

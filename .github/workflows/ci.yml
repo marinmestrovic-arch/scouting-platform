@@ -103,6 +103,8 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule'
     continue-on-error: true
     runs-on: ubuntu-latest
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.58.2
     steps:
       - name: Pull postgres image
         run: docker pull postgres:17-alpine
@@ -113,7 +115,7 @@ jobs:
           set -o pipefail
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:latest image \
+            $TRIVY_IMAGE image \
             --scanners vuln \
             --severity HIGH,CRITICAL \
             --exit-code 0 \
@@ -125,7 +127,7 @@ jobs:
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/work" \
-            aquasec/trivy:latest image \
+            $TRIVY_IMAGE image \
             --scanners vuln \
             --severity HIGH,CRITICAL \
             --format sarif \

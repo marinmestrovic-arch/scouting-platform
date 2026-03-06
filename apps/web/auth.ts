@@ -7,6 +7,12 @@ import { credentialsSignInSchema } from "@scouting-platform/contracts";
 import { findUserForCredentials, verifyPassword } from "@scouting-platform/core";
 import { prisma } from "@scouting-platform/db";
 
+const authSecret = process.env.AUTH_SECRET;
+
+if (process.env.NODE_ENV === "production" && !authSecret) {
+  throw new Error("AUTH_SECRET must be set when NODE_ENV=production");
+}
+
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma) as Adapter,
   session: {
@@ -60,7 +66,7 @@ export const authConfig: NextAuthConfig = {
       return session;
     },
   },
-  ...(process.env.AUTH_SECRET ? { secret: process.env.AUTH_SECRET } : {}),
+  ...(authSecret ? { secret: authSecret } : {}),
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
