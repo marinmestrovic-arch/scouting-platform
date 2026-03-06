@@ -9,12 +9,13 @@ For staging deployment, use [`/docs/setup/staging-railway.md`](./staging-railway
 Install:
 - Git
 - Docker Engine + Docker Compose
-- Node.js 22 (matches `.nvmrc`)
+- nvm (recommended, installs Node.js 22 from `.nvmrc`)
 - Corepack (bundled with modern Node)
 
 Verify:
 
 ```bash
+nvm --version
 node -v
 corepack --version
 docker --version
@@ -26,6 +27,8 @@ docker compose version
 From repo root:
 
 ```bash
+nvm install
+nvm use
 corepack enable
 corepack prepare pnpm@10.6.1 --activate
 cp .env.example .env
@@ -48,10 +51,13 @@ pnpm test
 
 ```bash
 pnpm infra:up         # start local Postgres
+pnpm infra:pull       # pull latest postgres:17-alpine image
+pnpm infra:refresh-postgres # pull + recreate postgres service + wait for readiness
 pnpm infra:ps         # inspect container status
 pnpm infra:logs       # tail Postgres logs
 pnpm infra:down       # stop containers
 pnpm infra:reset-db   # destroy and recreate DB volume
+pnpm security:scan:postgres # advisory High/Critical CVE scan for postgres image
 ```
 
 ## PostgreSQL version verification
@@ -61,6 +67,37 @@ docker compose exec -T postgres psql -U scouting -d scouting_platform -tAc "show
 ```
 
 Expected output starts with `17.`.
+
+## Weekly PostgreSQL image refresh cadence
+
+Run this once per week (recommended):
+
+```bash
+pnpm infra:refresh-postgres
+pnpm security:scan:postgres
+docker compose exec -T postgres psql -U scouting -d scouting_platform -tAc "show server_version;"
+```
+
+Expected version output still starts with `17.`.
+
+## PostgreSQL image vulnerability note (as of March 6, 2026)
+
+- We intentionally use the official `postgres:17-alpine` image for local dev and CI service containers.
+- Current Docker Scout findings are primarily tied to `gosu` built with `golang/stdlib 1.24.6` in upstream images.
+- The same High/Critical cluster appears on both `postgres:17-alpine` and `postgres:17` variants right now.
+- This is treated as a temporary accepted risk for foundation-phase local + CI environments only (not production hardening).
+
+Baseline reference:
+
+- image: `postgres:17-alpine`
+- digest: `sha256:6f30057d31f5861b66f3545d4821f987aacf1dd920765f0acadea0c58ff975b1`
+
+## When upstream fixes land
+
+1. Run `pnpm infra:refresh-postgres` to pull and recreate the local Postgres service.
+2. Run `pnpm security:scan:postgres` and compare CVE counts/severity against the previous baseline.
+3. Capture new image digest with `docker image ls --digests postgres`.
+4. Update this runbook with the new baseline date, digest, and CVE delta.
 
 ## Troubleshooting
 
@@ -92,7 +129,15 @@ Symptoms:
 - install/build failures from unsupported engine features
 
 Fix:
-- switch to Node 22 and rerun `pnpm install`
+- run `nvm install` and `nvm use`, then rerun `pnpm install`
+
+### macOS `/usr/local` permission issues
+
+Symptoms:
+- permission denied errors from globally installed Node tooling under `/usr/local`
+
+Fix:
+- avoid system Node installs; use `nvm install` and `nvm use` so Node and global tooling stay in your user-owned environment
 
 ### Prisma cannot connect
 

@@ -2,6 +2,9 @@
   "name": "scouting-platform",
   "private": true,
   "packageManager": "pnpm@10.6.1",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "prepare": "husky",
     "dev": "turbo run dev --parallel",
@@ -12,10 +15,13 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "infra:up": "docker compose up -d postgres",
+    "infra:pull": "docker compose pull postgres",
     "infra:down": "docker compose down",
     "infra:ps": "docker compose ps",
     "infra:logs": "docker compose logs postgres --tail=200",
+    "infra:refresh-postgres": "pnpm infra:pull && docker compose up -d --force-recreate postgres && pnpm db:wait",
     "infra:reset-db": "docker compose down -v && docker compose up -d postgres",
+    "security:scan:postgres": "node scripts/scan-postgres-image.mjs",
     "db:wait": "node scripts/wait-for-postgres.mjs",
     "db:validate": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db exec prisma validate'",
     "db:generate": "sh -ac 'set -a; [ -f .env ] && . ./.env; set +a; pnpm --filter @scouting-platform/db db:generate'",
