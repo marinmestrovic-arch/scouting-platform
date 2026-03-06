@@ -49,6 +49,21 @@ vi.mock("next-auth/providers/credentials", () => ({
 
 import { authConfig, auth, handlers, resolveAuthSecret, signIn, signOut } from "./auth";
 
+type JwtCallbackParams = {
+  token: { role?: unknown };
+  user?: { role?: unknown };
+};
+
+type SessionCallbackParams = {
+  session: { user?: Record<string, unknown> };
+  token: { role?: unknown };
+};
+
+type AuthCallbacks = {
+  jwt: (params: JwtCallbackParams) => { role?: unknown };
+  session: (params: SessionCallbackParams) => { user?: Record<string, unknown> };
+};
+
 describe("auth configuration", () => {
   it("keeps the custom sign-in page redirect and JWT session strategy", () => {
     expect(authConfig.pages?.signIn).toBe("/login");
@@ -90,7 +105,7 @@ describe("auth configuration", () => {
   });
 
   it("normalizes role into JWT and session callbacks", () => {
-    const callbacks = (captured.authConfig as { callbacks: Record<string, Function> }).callbacks;
+    const callbacks = (captured.authConfig as { callbacks: AuthCallbacks }).callbacks;
     const jwtCallback = callbacks.jwt!;
     const sessionCallback = callbacks.session!;
 

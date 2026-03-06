@@ -19,3 +19,4 @@ playwright-report
 test-results
 apps/web/playwright-report
 apps/web/test-results
+docs/dev-marin-workflow.md
