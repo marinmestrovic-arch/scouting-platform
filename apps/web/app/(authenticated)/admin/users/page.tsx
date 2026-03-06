@@ -1,4 +1,5 @@
 import { auth } from "../../../../auth";
+import { AdminUsersManager } from "../../../../components/admin/admin-users-manager";
 import { PageSection } from "../../../../components/layout/page-section";
 import {
   canAccessNavigationKey,
@@ -24,7 +25,9 @@ export default async function AdminUsersPage() {
   return (
     <PageSection
       title="User Management"
-      description="Admin user list and create/edit flows land in Week 1."
-    />
+      description="Create users and reset passwords for campaign managers."
+    >
+      <AdminUsersManager />
+    </PageSection>
   );
 }

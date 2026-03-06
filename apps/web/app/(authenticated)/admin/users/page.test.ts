@@ -78,6 +78,8 @@ describe("admin users page", () => {
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("User Management");
-    expect(html).toContain("Admin user list and create/edit flows land in Week 1.");
+    expect(html).toContain("Create users and reset passwords for campaign managers.");
+    expect(html).toContain("Create user");
+    expect(html).toContain("Loading users...");
   });
 });
