@@ -400,6 +400,9 @@ a {
 }
 
 .admin-users__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   justify-self: start;
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-md);
@@ -408,6 +411,7 @@ a {
   font: inherit;
   font-weight: var(--font-weight-semibold);
   padding: var(--space-2) var(--space-4);
+  text-decoration: none;
 }
 
 .admin-users__button:hover:not(:disabled) {
@@ -487,6 +491,12 @@ a {
   font-size: var(--font-size-200);
 }
 
+.admin-users__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
 .admin-users__password-form {
   display: grid;
   gap: var(--space-3);
@@ -512,6 +522,87 @@ a {
 .admin-users__inline-status--error {
   background: #fce7e5;
   color: #9f1d1d;
+}
+
+.user-account-detail {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.user-account-detail__back-link {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.user-account-detail__back-link:hover {
+  text-decoration: underline;
+}
+
+.user-account-detail__grid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-account-detail__panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.user-account-detail__identity-list {
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.user-account-detail__identity-list div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.user-account-detail__identity-list dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.user-account-detail__identity-list dd {
+  margin: 0;
+}
+
+.user-account-detail__credential-state {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.user-account-detail__status-badge {
+  justify-self: start;
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-semibold);
+}
+
+.user-account-detail__status-badge--assigned {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.user-account-detail__status-badge--missing {
+  background: #fdf0cf;
+  color: #92400e;
+}
+
+.user-account-detail__credential-copy,
+.user-account-detail__helper {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.user-account-detail__form {
+  display: grid;
+  gap: var(--space-3);
 }
 
 @media (max-width: 900px) {
@@ -555,5 +646,9 @@ a {
 
   .admin-users__button {
     width: 100%;
+  }
+
+  .user-account-detail__grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -60,6 +60,22 @@ pnpm infra:reset-db   # destroy and recreate DB volume
 pnpm security:scan:postgres # advisory High/Critical CVE scan for postgres image
 ```
 
+## DB integration test prep (Week 3 backend)
+
+Run this sequence before DB-backed integration suites:
+
+```bash
+pnpm infra:up
+pnpm infra:ps
+docker compose exec -T postgres sh -lc "psql -U scouting -d scouting_platform -v ON_ERROR_STOP=1 -tAc \"SELECT 1 FROM pg_database WHERE datname = 'scouting_platform_test'\" | grep -q 1 || psql -U scouting -d scouting_platform -v ON_ERROR_STOP=1 -c \"CREATE DATABASE scouting_platform_test\""
+pnpm db:migrate:test
+pnpm verify:week3:backend
+```
+
+Notes:
+- `pnpm db:migrate:test` migrates using `DATABASE_URL_TEST`.
+- `pnpm verify:week3:backend` runs Week 3 core + API integration suites sequentially.
+
 ## PostgreSQL version verification
 
 ```bash
@@ -122,6 +138,7 @@ POSTGRES_PORT=5433 pnpm infra:up
 ```
 
 - update `DATABASE_URL` and `DATABASE_URL_TEST` in `.env` to match the new port
+- rerun `pnpm db:migrate:test` before DB-backed tests
 
 ### Wrong Node version
 
@@ -148,3 +165,19 @@ Fix:
 - run `pnpm infra:ps` to confirm healthy state
 - run `pnpm infra:logs` for errors
 - run `pnpm db:wait` and retry `pnpm db:validate`
+
+### Prisma user denied access (`P1010`)
+
+Symptoms:
+- `P1010 User was denied access on the database`
+
+Common cause:
+- app/tests are connecting to a different Postgres instance than the Docker compose service (often another local service on `localhost:5432`)
+
+Fix:
+- run `pnpm infra:ps` and confirm compose Postgres is up and mapped to the expected host port
+- if needed, remap compose Postgres and align `.env` URLs:
+  - `POSTGRES_PORT=5433 pnpm infra:up`
+  - update both `DATABASE_URL` and `DATABASE_URL_TEST` to `localhost:5433`
+- run `pnpm db:migrate:test`
+- rerun `pnpm verify:week3:backend`

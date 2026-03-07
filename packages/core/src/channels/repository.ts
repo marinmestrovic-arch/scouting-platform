@@ -1,8 +1,10 @@
 import {
+  ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
   ChannelManualOverrideField as PrismaChannelManualOverrideField,
   type Prisma,
 } from "@prisma/client";
 import type {
+  ChannelEnrichmentStatus as ContractChannelEnrichmentStatus,
   ChannelManualOverrideField,
   ChannelManualOverrideOperation,
   PatchChannelManualOverridesResponse,
@@ -10,6 +12,7 @@ import type {
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { ServiceError } from "../errors";
+import { resolveChannelEnrichmentStatus } from "../enrichment/status";
 
 export type ListChannelsInput = {
   page: number;
@@ -23,12 +26,28 @@ export type ChannelSummary = {
   title: string;
   handle: string | null;
   thumbnailUrl: string | null;
+  enrichment: ChannelEnrichmentSummary;
 };
 
 export type ChannelDetail = ChannelSummary & {
   description: string | null;
   createdAt: string;
   updatedAt: string;
+  enrichment: ChannelEnrichmentDetail;
+};
+
+export type ChannelEnrichmentSummary = {
+  status: ContractChannelEnrichmentStatus;
+  updatedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+};
+
+export type ChannelEnrichmentDetail = ChannelEnrichmentSummary & {
+  summary: string | null;
+  topics: string[] | null;
+  brandFitNotes: string | null;
+  confidence: number | null;
 };
 
 type MutableChannelField = "title" | "handle" | "description" | "thumbnailUrl";
@@ -47,6 +66,33 @@ type ManualOverrideFieldConfig = {
   nullable: boolean;
 };
 
+const channelEnrichmentListSelect = {
+  status: true,
+  updatedAt: true,
+  completedAt: true,
+  lastError: true,
+} as const;
+
+const channelEnrichmentDetailSelect = {
+  ...channelEnrichmentListSelect,
+  summary: true,
+  topics: true,
+  brandFitNotes: true,
+  confidence: true,
+} as const;
+
+const channelListSelect = {
+  id: true,
+  youtubeChannelId: true,
+  title: true,
+  handle: true,
+  thumbnailUrl: true,
+  updatedAt: true,
+  enrichment: {
+    select: channelEnrichmentListSelect,
+  },
+} as const;
+
 const channelDetailSelect = {
   id: true,
   youtubeChannelId: true,
@@ -56,6 +102,9 @@ const channelDetailSelect = {
   thumbnailUrl: true,
   createdAt: true,
   updatedAt: true,
+  enrichment: {
+    select: channelEnrichmentDetailSelect,
+  },
 } as const;
 
 const manualOverrideFieldConfigs: Record<ChannelManualOverrideField, ManualOverrideFieldConfig> = {
@@ -176,6 +225,13 @@ function toChannelSummary(channel: {
   title: string;
   handle: string | null;
   thumbnailUrl: string | null;
+  updatedAt: Date;
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+  } | null;
 }): ChannelSummary {
   return {
     id: channel.id,
@@ -183,6 +239,7 @@ function toChannelSummary(channel: {
     title: channel.title,
     handle: channel.handle,
     thumbnailUrl: channel.thumbnailUrl,
+    enrichment: toChannelEnrichmentSummary(channel.updatedAt, channel.enrichment),
   };
 }
 
@@ -195,12 +252,89 @@ function toChannelDetail(channel: {
   description: string | null;
   createdAt: Date;
   updatedAt: Date;
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+    summary: string | null;
+    topics: Prisma.JsonValue | null;
+    brandFitNotes: string | null;
+    confidence: number | null;
+  } | null;
 }): ChannelDetail {
   return {
     ...toChannelSummary(channel),
     description: channel.description,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
+    enrichment: toChannelEnrichmentDetail(channel.updatedAt, channel.enrichment),
+  };
+}
+
+function toTopics(topics: Prisma.JsonValue | null): string[] | null {
+  if (!Array.isArray(topics)) {
+    return null;
+  }
+
+  const normalized: string[] = [];
+
+  for (const topic of topics) {
+    if (typeof topic !== "string") {
+      return null;
+    }
+
+    const trimmed = topic.trim();
+
+    if (trimmed) {
+      normalized.push(trimmed);
+    }
+  }
+
+  return normalized;
+}
+
+function toChannelEnrichmentSummary(
+  channelUpdatedAt: Date,
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+  } | null,
+): ChannelEnrichmentSummary {
+  return {
+    status: resolveChannelEnrichmentStatus({
+      channelUpdatedAt,
+      enrichment,
+    }),
+    updatedAt: enrichment?.updatedAt.toISOString() ?? null,
+    completedAt: enrichment?.completedAt?.toISOString() ?? null,
+    lastError: enrichment?.lastError ?? null,
+  };
+}
+
+function toChannelEnrichmentDetail(
+  channelUpdatedAt: Date,
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+    summary: string | null;
+    topics: Prisma.JsonValue | null;
+    brandFitNotes: string | null;
+    confidence: number | null;
+  } | null,
+): ChannelEnrichmentDetail {
+  const base = toChannelEnrichmentSummary(channelUpdatedAt, enrichment);
+
+  return {
+    ...base,
+    summary: enrichment?.summary ?? null,
+    topics: enrichment ? toTopics(enrichment.topics) : null,
+    brandFitNotes: enrichment?.brandFitNotes ?? null,
+    confidence: enrichment?.confidence ?? null,
   };
 }
 
@@ -236,25 +370,18 @@ export async function listChannels(input: ListChannelsInput): Promise<{
         ],
       }
     : undefined;
-  const countArgs: Prisma.ChannelCountArgs = where ? { where } : {};
-  const findManyArgs: Prisma.ChannelFindManyArgs = {
+  const findManyArgs = {
     skip,
     take: input.pageSize,
     orderBy: {
       createdAt: "desc",
     },
-    select: {
-      id: true,
-      youtubeChannelId: true,
-      title: true,
-      handle: true,
-      thumbnailUrl: true,
-    },
+    select: channelListSelect,
     ...(where ? { where } : {}),
-  };
+  } satisfies Prisma.ChannelFindManyArgs;
 
   const [total, channels] = await prisma.$transaction([
-    prisma.channel.count(countArgs),
+    prisma.channel.count(where ? { where } : undefined),
     prisma.channel.findMany(findManyArgs),
   ]);
 

@@ -26,6 +26,10 @@ const week3RunsFoundationMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260306190000_week3_runs_foundation/migration.sql",
 );
+const week4LlmEnrichmentFoundationMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260307100000_week4_llm_enrichment_foundation/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -90,5 +94,17 @@ describe("week 3 runs foundation migration", () => {
     expect(migrationSql).toContain(
       "CREATE UNIQUE INDEX IF NOT EXISTS run_results_run_request_id_channel_id_key",
     );
+  });
+});
+
+describe("week 4 llm enrichment foundation migration", () => {
+  it("creates enrichment status enum, youtube context cache, and channel enrichment tables", () => {
+    const migrationSql = readFileSync(week4LlmEnrichmentFoundationMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain("CREATE TYPE channel_enrichment_status AS ENUM");
+    expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS channel_youtube_contexts");
+    expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS channel_enrichments");
+    expect(migrationSql).toContain("CREATE INDEX IF NOT EXISTS channel_enrichments_status_idx");
+    expect(migrationSql).toContain("CREATE INDEX IF NOT EXISTS channel_youtube_contexts_fetched_at_idx");
   });
 });

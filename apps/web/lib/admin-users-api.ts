@@ -3,9 +3,13 @@ import {
   createAdminUserRequestSchema,
   listAdminUsersResponseSchema,
   updateAdminUserPasswordRequestSchema,
+  updateAdminUserYoutubeKeyRequestSchema,
+  updateAdminUserYoutubeKeyResponseSchema,
   type AdminUserResponse,
   type CreateAdminUserRequest,
   type UpdateAdminUserPasswordRequest,
+  type UpdateAdminUserYoutubeKeyRequest,
+  type UpdateAdminUserYoutubeKeyResponse,
 } from "@scouting-platform/contracts";
 
 const GENERIC_REQUEST_ERROR_MESSAGE = "Unable to complete the request. Please try again.";
@@ -121,6 +125,38 @@ export async function updateAdminUserPassword(
     }
 
     const parsed = adminUserResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function updateAdminUserYoutubeKey(
+  userId: string,
+  input: UpdateAdminUserYoutubeKeyRequest,
+): Promise<UpdateAdminUserYoutubeKeyResponse> {
+  const requestPayload = updateAdminUserYoutubeKeyRequestSchema.parse(input);
+
+  try {
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/youtube-key`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(response, payload));
+    }
+
+    const parsed = updateAdminUserYoutubeKeyResponseSchema.safeParse(payload);
 
     if (!parsed.success) {
       throw new Error(INVALID_RESPONSE_ERROR_MESSAGE);

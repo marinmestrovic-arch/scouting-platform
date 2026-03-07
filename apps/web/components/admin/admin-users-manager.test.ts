@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -69,6 +69,22 @@ vi.mock("../../lib/admin-users-api", () => ({
   updateAdminUserPassword: updateAdminUserPasswordMock,
 }));
 
+vi.mock("next/link", async () => {
+  const react = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    default: ({
+      href,
+      className,
+      children,
+    }: {
+      href: string;
+      className?: string;
+      children: ReactNode;
+    }) => react.createElement("a", { href, className }, children),
+  };
+});
+
 import { AdminUsersManager } from "./admin-users-manager";
 
 const DEFAULT_STATE: ComponentState = {
@@ -113,8 +129,23 @@ function mockComponentState(overrides: Partial<ComponentState>) {
   useEffectMock.mockImplementation(() => undefined);
 }
 
+function findForms(node: ReactNode): ReactElement[] {
+  if (Array.isArray(node)) {
+    return node.flatMap((child) => findForms(child));
+  }
+
+  if (!isValidElement(node)) {
+    return [];
+  }
+
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  const children = findForms(element.props.children);
+
+  return element.type === "form" ? [element, ...children] : children;
+}
+
 describe("admin users manager", () => {
-  const user = {
+  const assignedUser = {
     id: "6eff691f-d178-46f4-ae25-8cfd8d5c2f45",
     email: "campaign@example.com",
     name: "Campaign User",
@@ -124,6 +155,13 @@ describe("admin users manager", () => {
     createdAt: "2026-03-06T10:00:00.000Z",
     updatedAt: "2026-03-06T10:00:00.000Z",
   };
+  const missingKeyUser = {
+    ...assignedUser,
+    id: "0a6fbfd9-7155-4222-850b-70aa73d3a629",
+    email: "missing@example.com",
+    name: "Missing Key User",
+    youtubeKeyAssigned: false,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -132,14 +170,20 @@ describe("admin users manager", () => {
   it("renders list rows when users load successfully", () => {
     mockComponentState({
       isLoadingUsers: false,
-      users: [user],
+      users: [assignedUser, missingKeyUser],
     });
 
     const html = renderToStaticMarkup(createElement(AdminUsersManager));
 
     expect(html).toContain("campaign@example.com");
     expect(html).toContain("Campaign User");
+    expect(html).toContain("missing@example.com");
+    expect(html).toContain("Missing Key User");
     expect(html).toContain("YouTube key: Assigned");
+    expect(html).toContain("YouTube key: Missing");
+    expect(html).toContain("Manage account");
+    expect(html).toContain(`/admin/users/${assignedUser.id}`);
+    expect(html).toContain(`/admin/users/${missingKeyUser.id}`);
     expect(html).toContain("Update password");
   });
 
@@ -188,9 +232,9 @@ describe("admin users manager", () => {
   it("renders password update success status", () => {
     mockComponentState({
       isLoadingUsers: false,
-      users: [user],
+      users: [assignedUser],
       passwordStatusByUserId: {
-        [user.id]: {
+        [assignedUser.id]: {
           type: "success",
           message: "Password updated.",
         },
@@ -206,9 +250,9 @@ describe("admin users manager", () => {
   it("renders password update error status", () => {
     mockComponentState({
       isLoadingUsers: false,
-      users: [user],
+      users: [assignedUser],
       passwordStatusByUserId: {
-        [user.id]: {
+        [assignedUser.id]: {
           type: "error",
           message: "Unable to complete the request. Please try again.",
         },
@@ -220,5 +264,61 @@ describe("admin users manager", () => {
     expect(html).toContain("Unable to complete the request. Please try again.");
     expect(html).toContain("admin-users__inline-status--error");
     expect(html).toContain('role="alert"');
+  });
+
+  it("keeps create-user and password-reset submit flows wired with the account detail link present", async () => {
+    const createUserForm = {
+      email: "  campaign@example.com  ",
+      name: "  Campaign User  ",
+      role: "user" as const,
+      password: "StrongPassword123",
+    };
+    const passwordDraftByUserId = {
+      [assignedUser.id]: "ResetPassword123",
+    };
+
+    mockComponentState({
+      isLoadingUsers: false,
+      users: [assignedUser],
+      createUserForm,
+      passwordDraftByUserId,
+    });
+    createAdminUserMock.mockResolvedValueOnce({
+      ...assignedUser,
+      youtubeKeyAssigned: false,
+    });
+    updateAdminUserPasswordMock.mockResolvedValueOnce(assignedUser);
+
+    const tree = AdminUsersManager();
+    const forms = findForms(tree);
+    const createForm = forms[0] as ReactElement<{
+      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
+    }> | undefined;
+    const passwordForm = forms[1] as ReactElement<{
+      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
+    }> | undefined;
+
+    expect(renderToStaticMarkup(tree)).toContain(`/admin/users/${assignedUser.id}`);
+    expect(createForm).toBeDefined();
+    expect(passwordForm).toBeDefined();
+
+    await createForm?.props.onSubmit({
+      preventDefault: vi.fn(),
+    });
+
+    expect(createAdminUserMock).toHaveBeenCalledWith({
+      email: "campaign@example.com",
+      name: "Campaign User",
+      role: "user",
+      password: "StrongPassword123",
+    });
+
+    await passwordForm?.props.onSubmit({
+      preventDefault: vi.fn(),
+    });
+
+    expect(updateAdminUserPasswordMock).toHaveBeenCalledWith(assignedUser.id, {
+      password: "ResetPassword123",
+    });
   });
 });

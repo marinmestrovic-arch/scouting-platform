@@ -38,7 +38,7 @@ if (!databaseUrl) {
 
     it("sees pgboss tables after migrations are applied", async () => {
       const rows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-        SELECT to_regclass('pgboss.version') AS relation_name
+        SELECT to_regclass('pgboss.version')::text AS relation_name
       `;
 
       expect(rows[0]?.relation_name).toBe("pgboss.version");
@@ -46,7 +46,7 @@ if (!databaseUrl) {
 
     it("sees week 1 tables after migrations are applied", async () => {
       const rows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-        SELECT to_regclass('users') AS relation_name
+        SELECT to_regclass('users')::text AS relation_name
       `;
 
       expect(rows[0]?.relation_name).toBe("users");
@@ -54,7 +54,7 @@ if (!databaseUrl) {
 
     it("sees week 2 saved_segments table after migrations are applied", async () => {
       const rows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-        SELECT to_regclass('saved_segments') AS relation_name
+        SELECT to_regclass('saved_segments')::text AS relation_name
       `;
 
       expect(rows[0]?.relation_name).toBe("saved_segments");
@@ -62,10 +62,10 @@ if (!databaseUrl) {
 
     it("sees week 3 run tables after migrations are applied", async () => {
       const requestRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-        SELECT to_regclass('run_requests') AS relation_name
+        SELECT to_regclass('run_requests')::text AS relation_name
       `;
       const resultRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-        SELECT to_regclass('run_results') AS relation_name
+        SELECT to_regclass('run_results')::text AS relation_name
       `;
 
       expect(requestRows[0]?.relation_name).toBe("run_requests");

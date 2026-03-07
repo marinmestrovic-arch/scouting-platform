@@ -1,14 +1,21 @@
+import { listUsers } from "@scouting-platform/core";
+import { notFound, redirect } from "next/navigation";
+
 import { auth } from "../../../../../auth";
+import { UserAccountDetail } from "../../../../../components/admin/user-account-detail";
 import { PageSection } from "../../../../../components/layout/page-section";
 import {
   canAccessNavigationKey,
   FORBIDDEN_ROUTE,
   getRoleFromSession,
-  LOGIN_ROUTE
+  LOGIN_ROUTE,
 } from "../../../../../lib/access-control";
-import { redirect } from "next/navigation";
 
-export default async function AdminUserDetailPage() {
+type AdminUserDetailPageProps = Readonly<{
+  params: Promise<{ userId: string }>;
+}>;
+
+export default async function AdminUserDetailPage({ params }: AdminUserDetailPageProps) {
   const session = await auth();
 
   if (!session?.user) {
@@ -21,10 +28,21 @@ export default async function AdminUserDetailPage() {
     return null;
   }
 
+  const { userId } = await params;
+  const users = await listUsers();
+  const user = users.find((candidate) => candidate.id === userId);
+
+  if (!user) {
+    notFound();
+    return null;
+  }
+
   return (
     <PageSection
-      title="User Account Detail"
-      description="Per-user account and YouTube key state shell lands in Week 1."
-    />
+      title={user.name?.trim() || user.email}
+      description={`Manage account identity and YouTube credential assignment for ${user.email}.`}
+    >
+      <UserAccountDetail user={user} />
+    </PageSection>
   );
 }

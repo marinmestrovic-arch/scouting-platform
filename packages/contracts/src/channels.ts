@@ -2,6 +2,29 @@ import { z } from "zod";
 
 const isoDatetimeSchema = z.string().datetime();
 
+export const channelEnrichmentStatusSchema = z.enum([
+  "missing",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "stale",
+]);
+
+export const channelEnrichmentSummarySchema = z.object({
+  status: channelEnrichmentStatusSchema,
+  updatedAt: isoDatetimeSchema.nullable(),
+  completedAt: isoDatetimeSchema.nullable(),
+  lastError: z.string().nullable(),
+});
+
+export const channelEnrichmentDetailSchema = channelEnrichmentSummarySchema.extend({
+  summary: z.string().nullable(),
+  topics: z.array(z.string()).nullable(),
+  brandFitNotes: z.string().nullable(),
+  confidence: z.number().min(0).max(1).nullable(),
+});
+
 export const listChannelsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -14,12 +37,14 @@ export const channelSummarySchema = z.object({
   title: z.string(),
   handle: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
+  enrichment: channelEnrichmentSummarySchema,
 });
 
 export const channelDetailSchema = channelSummarySchema.extend({
   description: z.string().nullable(),
   createdAt: isoDatetimeSchema,
   updatedAt: isoDatetimeSchema,
+  enrichment: channelEnrichmentDetailSchema,
 });
 
 export const channelManualOverrideFieldSchema = z.enum([
@@ -84,10 +109,18 @@ export const listChannelsResponseSchema = z.object({
   pageSize: z.number().int().min(1),
 });
 
+export const requestChannelEnrichmentResponseSchema = z.object({
+  channelId: z.uuid(),
+  enrichment: channelEnrichmentDetailSchema,
+});
+
 export type ListChannelsQuery = z.infer<typeof listChannelsQuerySchema>;
 export type ChannelSummary = z.infer<typeof channelSummarySchema>;
 export type ChannelDetail = z.infer<typeof channelDetailSchema>;
 export type ListChannelsResponse = z.infer<typeof listChannelsResponseSchema>;
+export type ChannelEnrichmentStatus = z.infer<typeof channelEnrichmentStatusSchema>;
+export type ChannelEnrichmentSummary = z.infer<typeof channelEnrichmentSummarySchema>;
+export type ChannelEnrichmentDetail = z.infer<typeof channelEnrichmentDetailSchema>;
 export type ChannelManualOverrideField = z.infer<typeof channelManualOverrideFieldSchema>;
 export type ChannelManualOverrideOperation = z.infer<typeof channelManualOverrideOperationSchema>;
 export type PatchChannelManualOverridesRequest = z.infer<
@@ -95,4 +128,7 @@ export type PatchChannelManualOverridesRequest = z.infer<
 >;
 export type PatchChannelManualOverridesResponse = z.infer<
   typeof patchChannelManualOverridesResponseSchema
+>;
+export type RequestChannelEnrichmentResponse = z.infer<
+  typeof requestChannelEnrichmentResponseSchema
 >;

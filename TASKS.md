@@ -83,9 +83,9 @@ Done when (Week 0 completion checkpoint):
 
 #### Marin:
 
-- login screen
-- admin user management UI
-- account detail UI for user YouTube credential state
+- [done] login screen
+- [done] admin user management UI
+- [done] account detail UI for user YouTube credential state
 - catalog table shell
 - channel detail shell
 
@@ -146,17 +146,18 @@ Done when:
 - run uses both catalog and new discovery
 - results are saved and viewable
 - phased delivery note: Week 3 backend is delivered end-to-end (`POST /api/runs`, `GET /api/runs/:id`, queue/worker lifecycle, per-user-key YouTube discovery, deduped catalog+discovery union ranking, and snapshot persistence); Marin Week 3 UI items remain open.
+- hardening note: Week 3 backend reliability hardening delivered (deterministic test DB migration/verification scripts, serialized CI test orchestration with DB-heavy Vitest file parallelism disabled, local troubleshooting runbook updates, and CI exclusion of `apps/web/auth.credentials.test.ts` due known NextAuth `next/server` resolver mismatch in Vitest).
 
 ### Week 4: LLM enrichment
 
 #### You:
 
-- cached YouTube context model
-- LLM enrichment service
-- enrichment jobs
-- stale/missing enrichment policy
-- error persistence and retry policy
-- quota-conscious YouTube fetch logic
+- [done] cached YouTube context model
+- [done] LLM enrichment service
+- [done] enrichment jobs
+- [done] stale/missing enrichment policy
+- [done] error persistence and retry policy
+- [done] quota-conscious YouTube fetch logic
 
 #### Marin:
 
@@ -170,6 +171,8 @@ Done when:
 - manager can enrich from UI
 - errors are visible
 - repeated enrich does not re-fetch wastefully
+- phased delivery note: Week 4 backend foundation is delivered end-to-end via `POST /api/channels/:id/enrich`, additive enrichment state on `GET /api/channels` and `GET /api/channels/:id`, cached YouTube context reuse/refresh, OpenAI-backed worker execution, persisted `queued/running/completed/failed/stale` lifecycle, and visible `last_error`; Marin Week 4 UI items remain open.
+- evidence note: backend coverage lives in `packages/core/src/week4.integration.test.ts`, `apps/web/app/api/week4.integration.test.ts`, and `apps/worker/src/channels-enrich-llm-worker.test.ts`.
 
 ### Week 5: HypeAuditor and admin workflows
 

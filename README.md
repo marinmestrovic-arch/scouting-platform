@@ -150,6 +150,7 @@ Backend endpoints available for Marin UI integration:
 - `PUT /api/admin/users/:id/youtube-key`
 - `GET /api/channels`
 - `GET /api/channels/:id`
+- `POST /api/channels/:id/enrich`
 - `POST /api/runs`
 - `GET /api/runs/:id`
 

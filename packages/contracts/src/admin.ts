@@ -19,6 +19,10 @@ export const updateAdminUserYoutubeKeyRequestSchema = z.object({
   youtubeApiKey: z.string().trim().min(1).max(2048),
 });
 
+export const updateAdminUserYoutubeKeyResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
 export const adminUserResponseSchema = z.object({
   id: z.uuid(),
   email: z.string().email(),
@@ -37,4 +41,5 @@ export const listAdminUsersResponseSchema = z.object({
 export type CreateAdminUserRequest = z.infer<typeof createAdminUserRequestSchema>;
 export type UpdateAdminUserPasswordRequest = z.infer<typeof updateAdminUserPasswordRequestSchema>;
 export type UpdateAdminUserYoutubeKeyRequest = z.infer<typeof updateAdminUserYoutubeKeyRequestSchema>;
+export type UpdateAdminUserYoutubeKeyResponse = z.infer<typeof updateAdminUserYoutubeKeyResponseSchema>;
 export type AdminUserResponse = z.infer<typeof adminUserResponseSchema>;

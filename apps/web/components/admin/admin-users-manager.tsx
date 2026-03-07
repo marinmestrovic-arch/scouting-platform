@@ -1,6 +1,7 @@
 "use client";
 
 import type { AdminUserResponse, Role } from "@scouting-platform/contracts";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { createAdminUser, fetchAdminUsers, updateAdminUserPassword } from "../../lib/admin-users-api";
@@ -226,6 +227,14 @@ export function AdminUsersManager() {
                 <h3>{user.name?.trim() || "Unnamed user"}</h3>
                 <p>{user.email}</p>
                 <p className="admin-users__meta">{formatUserMeta(user)}</p>
+              </div>
+              <div className="admin-users__actions">
+                <Link
+                  className="admin-users__button admin-users__button--secondary"
+                  href={`/admin/users/${user.id}`}
+                >
+                  Manage account
+                </Link>
               </div>
               <form
                 className="admin-users__password-form"

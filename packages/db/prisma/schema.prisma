@@ -45,6 +45,17 @@ enum ChannelManualOverrideField {
   @@map("channel_manual_override_field")
 }
 
+enum ChannelEnrichmentStatus {
+  MISSING   @map("missing")
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+  STALE     @map("stale")
+
+  @@map("channel_enrichment_status")
+}
+
 model User {
   id                            String                  @id @default(uuid()) @db.Uuid
   name                          String?
@@ -64,6 +75,7 @@ model User {
   runRequests                   RunRequest[]            @relation("RunRequestedBy")
   createdChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideCreatedBy")
   updatedChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideUpdatedBy")
+  requestedChannelEnrichments   ChannelEnrichment[]     @relation("ChannelEnrichmentRequestedBy")
 
   @@map("users")
 }
@@ -141,6 +153,8 @@ model Channel {
   updatedAt       DateTime                @updatedAt @map("updated_at")
   runResults      RunResult[]
   manualOverrides ChannelManualOverride[]
+  youtubeContext  ChannelYoutubeContext?
+  enrichment      ChannelEnrichment?
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@map("channels")
@@ -166,6 +180,43 @@ model ChannelManualOverride {
   @@index([createdByUserId], map: "channel_manual_overrides_created_by_user_id_idx")
   @@index([updatedByUserId], map: "channel_manual_overrides_updated_by_user_id_idx")
   @@map("channel_manual_overrides")
+}
+
+model ChannelYoutubeContext {
+  channelId  String    @id @map("channel_id") @db.Uuid
+  context    Json?
+  fetchedAt  DateTime? @map("fetched_at")
+  lastError  String?   @map("last_error") @db.Text
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  channel    Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([fetchedAt], map: "channel_youtube_contexts_fetched_at_idx")
+  @@map("channel_youtube_contexts")
+}
+
+model ChannelEnrichment {
+  channelId         String                  @id @map("channel_id") @db.Uuid
+  status            ChannelEnrichmentStatus @default(MISSING)
+  requestedByUserId String                  @map("requested_by_user_id") @db.Uuid
+  requestedAt       DateTime                @map("requested_at")
+  startedAt         DateTime?               @map("started_at")
+  completedAt       DateTime?               @map("completed_at")
+  lastError         String?                 @map("last_error") @db.Text
+  rawOpenaiPayload  Json?                   @map("raw_openai_payload")
+  summary           String?                 @db.Text
+  topics            Json?
+  brandFitNotes     String?                 @map("brand_fit_notes") @db.Text
+  confidence        Float?
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  channel           Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  requestedByUser   User                    @relation("ChannelEnrichmentRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([status], map: "channel_enrichments_status_idx")
+  @@index([completedAt], map: "channel_enrichments_completed_at_idx")
+  @@index([requestedByUserId], map: "channel_enrichments_requested_by_user_id_idx")
+  @@map("channel_enrichments")
 }
 
 model AuditEvent {
