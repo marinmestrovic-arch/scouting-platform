@@ -87,7 +87,22 @@ Done when (Week 0 completion checkpoint):
 - [done] admin user management UI
 - [done] account detail UI for user YouTube credential state
 - [done] catalog table shell
-- channel detail shell
+- [done] channel detail shell
+
+##### Plan: channel detail shell
+
+- Scope: replace the `/catalog/[channelId]` Week 0 placeholder with a real Week 1 shell that is safe for authenticated users to open before Week 2 live detail data lands.
+- In scope: authenticated route guard parity with other catalog/admin pages, route param handling for `channelId`, visible detail-page scaffold, navigation back to catalog, stable placeholder sections for identity/metadata/enrichment, and copy that clearly defers live data/editing to later milestones.
+- Out of scope: fetching `GET /api/channels/:id`, rendering live channel fields, enrichment actions, manual edit UX, admin-only controls, polling, or any Week 2 detail behavior.
+- File change map: update `apps/web/app/(authenticated)/catalog/[channelId]/page.tsx`; add a dedicated presentational shell component under `apps/web/components/catalog/`; add or update page/component tests beside those files; touch `apps/web/app/globals.css` only if existing shell primitives cannot cover the layout.
+- Implementation sequence: 1. mirror the route protection used by authenticated pages; 2. add a reusable `ChannelDetailShell` component with placeholder cards/rows; 3. wire the page to pass the `channelId` into breadcrumb/back-link copy or shell metadata without implying live fetch; 4. keep markup accessible and responsive using existing page-section/layout conventions; 5. replace the placeholder test with assertions for the new shell structure.
+- Test matrix: happy path server render for authenticated route shell; regression coverage that the old Week 0 placeholder copy is gone; shell shows a back link to `/catalog`; shell exposes channel-specific context from route params without fetching data; optional component test for visible placeholder sections and CTA labels.
+- Risks: accidentally coupling Week 1 shell to the already-available detail API and pulling Week 2 scope forward; introducing a one-off layout instead of reusing current shell patterns; ambiguous placeholder copy that confuses users about what is functional today.
+- Rollback: revert the page/component to the previous placeholder and keep tests aligned; no schema or backend changes are involved.
+- Done criteria: authenticated users can open `/catalog/[channelId]` and see a clear, structured shell; route remains safe without backend data; tests cover the route and shell copy/structure; no API or schema changes are introduced.
+- Feature-agent handoff: implement only the UI shell on branch `feat/week1-channel-detail-shell` in worktree `.worktrees/feature-agent-feat-week1-channel-detail-shell`; reuse existing page-section/auth patterns; do not call the channel detail API yet.
+- Test-agent handoff: strengthen page/component coverage around auth-safe render, back navigation, placeholder sections, and route-param-derived context; avoid backend/integration scope unless the implementation introduces it.
+- Review-agent handoff: verify Week 1/Week 2 boundary discipline, route guard consistency, accessible semantics, and that tests meaningfully prevent accidental live-data coupling.
 
 Done when:
 

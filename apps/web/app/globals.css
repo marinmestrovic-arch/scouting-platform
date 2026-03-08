@@ -807,6 +807,120 @@ a {
   gap: var(--space-3);
 }
 
+.channel-detail-shell {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.channel-detail-shell__back-link {
+  width: fit-content;
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.channel-detail-shell__back-link:hover {
+  text-decoration: underline;
+}
+
+.channel-detail-shell__intro {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-muted) 100%);
+  padding: var(--space-5);
+}
+
+.channel-detail-shell__intro-copy h2 {
+  margin: 0;
+  font-size: var(--font-size-300);
+  line-height: var(--line-height-tight);
+}
+
+.channel-detail-shell__intro-copy p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+}
+
+.channel-detail-shell__route-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.channel-detail-shell__route-meta div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.channel-detail-shell__route-meta dt,
+.channel-detail-shell__details dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.channel-detail-shell__route-meta dd,
+.channel-detail-shell__details dd {
+  margin: 0;
+}
+
+.channel-detail-shell__route-meta code {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  padding: var(--space-1) var(--space-3);
+  word-break: break-all;
+}
+
+.channel-detail-shell__grid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.channel-detail-shell__panel {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-5);
+}
+
+.channel-detail-shell__panel header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.channel-detail-shell__panel h2 {
+  margin: 0;
+  font-size: var(--font-size-300);
+  line-height: var(--line-height-tight);
+}
+
+.channel-detail-shell__panel p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.channel-detail-shell__details {
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.channel-detail-shell__details div {
+  display: grid;
+  gap: var(--space-1);
+}
+
 @media (max-width: 900px) {
   .auth-shell {
     grid-template-columns: 1fr;
