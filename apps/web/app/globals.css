@@ -192,6 +192,208 @@ a {
   padding-top: var(--space-6);
 }
 
+.catalog-table {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.catalog-table__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.catalog-table__summary {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.catalog-table__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.catalog-table__page-indicator {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.catalog-table__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.catalog-table__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 42rem;
+}
+
+.catalog-table__table th,
+.catalog-table__table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.catalog-table__table thead th {
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.catalog-table__table tbody tr + tr td {
+  border-top: 1px solid var(--color-surface-muted);
+}
+
+.catalog-table__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.catalog-table__thumbnail {
+  width: 3rem;
+  height: 3rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--color-surface-muted);
+}
+
+.catalog-table__thumbnail--fallback {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.catalog-table__identity-copy {
+  min-width: 0;
+}
+
+.catalog-table__title,
+.catalog-table__meta {
+  margin: 0;
+}
+
+.catalog-table__title {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.catalog-table__meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+}
+
+.catalog-table__code {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-200);
+  padding: var(--space-1) var(--space-2);
+}
+
+.catalog-table__status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.catalog-table__status--completed {
+  background: #d9efe9;
+  color: #145749;
+}
+
+.catalog-table__status--failed {
+  background: #f7dede;
+  color: #8b2727;
+}
+
+.catalog-table__status--missing,
+.catalog-table__status--queued,
+.catalog-table__status--running,
+.catalog-table__status--stale {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.catalog-table__button {
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-2) var(--space-4);
+}
+
+.catalog-table__button:hover:not(:disabled) {
+  cursor: pointer;
+}
+
+.catalog-table__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.catalog-table__button--secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.catalog-table__link {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.catalog-table__link:hover {
+  text-decoration: underline;
+}
+
+.catalog-table__feedback {
+  margin: 0;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  padding: var(--space-4);
+}
+
+.catalog-table__feedback--error {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .catalog-table__toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .catalog-table__table {
+    min-width: 36rem;
+  }
+}
+
 .route-scaffold {
   display: grid;
   gap: var(--space-3);

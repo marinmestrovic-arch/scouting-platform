@@ -86,7 +86,7 @@ Done when (Week 0 completion checkpoint):
 - [done] login screen
 - [done] admin user management UI
 - [done] account detail UI for user YouTube credential state
-- catalog table shell
+- [done] catalog table shell
 - channel detail shell
 
 Done when:
