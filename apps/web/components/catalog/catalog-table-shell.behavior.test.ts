@@ -51,6 +51,16 @@ function createReadyState(overrides: Partial<ListChannelsResponse>): {
   };
 }
 
+function createAdvancedReportSummary() {
+  return {
+    requestId: null,
+    status: "missing" as const,
+    updatedAt: null,
+    completedAt: null,
+    lastError: null,
+  };
+}
+
 function renderShell(options?: {
   page?: number;
   pageSize?: number;
@@ -170,6 +180,7 @@ describe("catalog table shell behavior", () => {
               completedAt: null,
               lastError: null,
             },
+            advancedReport: createAdvancedReportSummary(),
           },
         ],
       }),
@@ -198,6 +209,7 @@ describe("catalog table shell behavior", () => {
               completedAt: "2026-03-08T10:00:00.000Z",
               lastError: null,
             },
+            advancedReport: createAdvancedReportSummary(),
           },
         ],
       }),

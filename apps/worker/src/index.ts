@@ -1,6 +1,7 @@
 import process from "node:process";
 import { PgBoss } from "pg-boss";
 
+import { registerChannelsEnrichHypeAuditorWorker } from "./channels-enrich-hypeauditor-worker";
 import { registerChannelsEnrichLlmWorker } from "./channels-enrich-llm-worker";
 import { JOB_NAMES } from "./jobs";
 import { registerRunsDiscoverWorker } from "./runs-discover-worker";
@@ -44,6 +45,7 @@ async function ensureQueues(boss: PgBoss): Promise<void> {
 async function registerWorkers(boss: PgBoss): Promise<void> {
   await registerRunsDiscoverWorker(boss);
   await registerChannelsEnrichLlmWorker(boss);
+  await registerChannelsEnrichHypeAuditorWorker(boss);
 }
 
 async function startWorker(): Promise<void> {

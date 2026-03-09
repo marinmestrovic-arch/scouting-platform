@@ -34,4 +34,16 @@ describe("parseJobPayload", () => {
       initiatedBy: "system",
     });
   });
+
+  it("parses a valid channels.enrich.hypeauditor payload", () => {
+    const payload = parseJobPayload("channels.enrich.hypeauditor", {
+      advancedReportRequestId: TEST_UUID,
+      requestedByUserId: TEST_UUID,
+    });
+
+    expect(payload).toEqual({
+      advancedReportRequestId: TEST_UUID,
+      requestedByUserId: TEST_UUID,
+    });
+  });
 });
