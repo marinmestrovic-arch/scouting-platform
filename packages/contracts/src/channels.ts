@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  channelAdvancedReportDetailSchema,
+  channelAdvancedReportSummarySchema,
+  channelInsightsSchema,
+} from "./advanced-reports";
+
 const isoDatetimeSchema = z.string().datetime();
 
 export const channelEnrichmentStatusSchema = z.enum([
@@ -38,6 +44,7 @@ export const channelSummarySchema = z.object({
   handle: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
   enrichment: channelEnrichmentSummarySchema,
+  advancedReport: channelAdvancedReportSummarySchema,
 });
 
 export const channelDetailSchema = channelSummarySchema.extend({
@@ -45,6 +52,8 @@ export const channelDetailSchema = channelSummarySchema.extend({
   createdAt: isoDatetimeSchema,
   updatedAt: isoDatetimeSchema,
   enrichment: channelEnrichmentDetailSchema,
+  advancedReport: channelAdvancedReportDetailSchema,
+  insights: channelInsightsSchema,
 });
 
 export const channelManualOverrideFieldSchema = z.enum([

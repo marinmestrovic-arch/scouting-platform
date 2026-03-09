@@ -36,7 +36,7 @@ Set these in both `web` and `worker` services unless marked otherwise:
 - `APP_ENCRYPTION_KEY` (32-byte key)
 - `NEXT_PUBLIC_APP_URL` (required for web)
 - `OPENAI_API_KEY` (can be empty in Week 0)
-- `HYPEAUDITOR_API_KEY` (can be empty in Week 0)
+- `HYPEAUDITOR_API_KEY` (can be empty in Week 0; use `<auth_id>:<auth_token>` once enabled)
 - `HUBSPOT_API_KEY` (can be empty in Week 0)
 - `LOG_LEVEL=info`
 

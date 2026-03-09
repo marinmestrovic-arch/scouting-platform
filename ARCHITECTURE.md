@@ -144,12 +144,13 @@ docs/
 
 ### 5.4 HypeAuditor Approval Flow
 1. User requests advanced report.
-2. Request row is created in `pending_approval`.
+2. Request row is created in `pending_approval` unless an active request already exists.
 3. Admin approves or rejects.
-4. Approved request becomes a queued job.
-5. Worker calls HypeAuditor.
-6. Result is stored and merged into resolved channel data.
-7. Audit events are recorded for request and approval.
+4. Admin can see the age of the last completed report and whether it is still inside the 120-day review window.
+5. Approved request becomes a queued job.
+6. Worker calls HypeAuditor.
+7. Result is stored and merged into resolved channel data.
+8. Audit events are recorded for request and approval.
 
 ### 5.5 CSV Import
 1. Admin uploads strict-template CSV.

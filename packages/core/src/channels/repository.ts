@@ -1,16 +1,29 @@
 import {
+  AdvancedReportRequestStatus as PrismaAdvancedReportRequestStatus,
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
   ChannelManualOverrideField as PrismaChannelManualOverrideField,
   type Prisma,
 } from "@prisma/client";
-import type {
-  ChannelEnrichmentStatus as ContractChannelEnrichmentStatus,
-  ChannelManualOverrideField,
-  ChannelManualOverrideOperation,
-  PatchChannelManualOverridesResponse,
+import {
+  channelAudienceCountrySchema,
+  channelAudienceGenderAgeSchema,
+  channelAudienceInterestSchema,
+  channelBrandMentionSchema,
+  type ChannelAdvancedReportDetail as ContractChannelAdvancedReportDetail,
+  type ChannelAdvancedReportSummary as ContractChannelAdvancedReportSummary,
+  type ChannelEnrichmentStatus as ContractChannelEnrichmentStatus,
+  type ChannelInsights as ContractChannelInsights,
+  type ChannelManualOverrideField,
+  type ChannelManualOverrideOperation,
+  type LatestCompletedAdvancedReport,
+  type PatchChannelManualOverridesResponse,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
+import {
+  toLatestCompletedAdvancedReport,
+  resolveChannelAdvancedReportStatus,
+} from "../approvals/status";
 import { ServiceError } from "../errors";
 import { resolveChannelEnrichmentStatus } from "../enrichment/status";
 
@@ -18,22 +31,6 @@ export type ListChannelsInput = {
   page: number;
   pageSize: number;
   query?: string;
-};
-
-export type ChannelSummary = {
-  id: string;
-  youtubeChannelId: string;
-  title: string;
-  handle: string | null;
-  thumbnailUrl: string | null;
-  enrichment: ChannelEnrichmentSummary;
-};
-
-export type ChannelDetail = ChannelSummary & {
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  enrichment: ChannelEnrichmentDetail;
 };
 
 export type ChannelEnrichmentSummary = {
@@ -48,6 +45,29 @@ export type ChannelEnrichmentDetail = ChannelEnrichmentSummary & {
   topics: string[] | null;
   brandFitNotes: string | null;
   confidence: number | null;
+};
+
+export type ChannelAdvancedReportSummary = ContractChannelAdvancedReportSummary;
+export type ChannelAdvancedReportDetail = ContractChannelAdvancedReportDetail;
+export type ChannelInsights = ContractChannelInsights;
+
+export type ChannelSummary = {
+  id: string;
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  thumbnailUrl: string | null;
+  enrichment: ChannelEnrichmentSummary;
+  advancedReport: ChannelAdvancedReportSummary;
+};
+
+export type ChannelDetail = ChannelSummary & {
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  enrichment: ChannelEnrichmentDetail;
+  advancedReport: ChannelAdvancedReportDetail;
+  insights: ChannelInsights;
 };
 
 type MutableChannelField = "title" | "handle" | "description" | "thumbnailUrl";
@@ -66,6 +86,27 @@ type ManualOverrideFieldConfig = {
   nullable: boolean;
 };
 
+type LatestAdvancedReportRow = {
+  id: string;
+  status: PrismaAdvancedReportRequestStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  reviewedAt: Date | null;
+  completedAt: Date | null;
+  lastError: string | null;
+  decisionNote: string | null;
+};
+
+type ChannelInsightsRow = {
+  audienceCountries: Prisma.JsonValue | null;
+  audienceGenderAge: Prisma.JsonValue | null;
+  audienceInterests: Prisma.JsonValue | null;
+  estimatedPriceCurrencyCode: string | null;
+  estimatedPriceMin: number | null;
+  estimatedPriceMax: number | null;
+  brandMentions: Prisma.JsonValue | null;
+};
+
 const channelEnrichmentListSelect = {
   status: true,
   updatedAt: true,
@@ -81,6 +122,32 @@ const channelEnrichmentDetailSelect = {
   confidence: true,
 } as const;
 
+const latestAdvancedReportSelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  reviewedAt: true,
+  completedAt: true,
+  lastError: true,
+  decisionNote: true,
+} as const;
+
+const latestCompletedAdvancedReportSelect = {
+  id: true,
+  completedAt: true,
+} as const;
+
+const channelInsightsSelect = {
+  audienceCountries: true,
+  audienceGenderAge: true,
+  audienceInterests: true,
+  estimatedPriceCurrencyCode: true,
+  estimatedPriceMin: true,
+  estimatedPriceMax: true,
+  brandMentions: true,
+} as const;
+
 const channelListSelect = {
   id: true,
   youtubeChannelId: true,
@@ -90,6 +157,13 @@ const channelListSelect = {
   updatedAt: true,
   enrichment: {
     select: channelEnrichmentListSelect,
+  },
+  advancedReportRequests: {
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 1,
+    select: latestAdvancedReportSelect,
   },
 } as const;
 
@@ -104,6 +178,16 @@ const channelDetailSelect = {
   updatedAt: true,
   enrichment: {
     select: channelEnrichmentDetailSelect,
+  },
+  insights: {
+    select: channelInsightsSelect,
+  },
+  advancedReportRequests: {
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 1,
+    select: latestAdvancedReportSelect,
   },
 } as const;
 
@@ -134,9 +218,10 @@ const manualOverrideFieldConfigs: Record<ChannelManualOverrideField, ManualOverr
   },
 };
 
-const manualOverrideConfigByPrismaField = new Map<PrismaChannelManualOverrideField, ManualOverrideFieldConfig>(
-  Object.values(manualOverrideFieldConfigs).map((config) => [config.prismaField, config]),
-);
+const manualOverrideConfigByPrismaField = new Map<
+  PrismaChannelManualOverrideField,
+  ManualOverrideFieldConfig
+>(Object.values(manualOverrideFieldConfigs).map((config) => [config.prismaField, config]));
 
 function getManualOverrideConfigByContractField(
   field: ChannelManualOverrideField,
@@ -172,6 +257,7 @@ function setMutableChannelFieldValue(
     if (value === null) {
       throw new ServiceError("INVALID_OVERRIDE_VALUE", 400, "Title cannot be null");
     }
+
     target.title = value;
     return;
   }
@@ -203,6 +289,7 @@ function normalizeManualSetValue(
         `${operation.field} override cannot be null`,
       );
     }
+
     return null;
   }
 
@@ -217,59 +304,6 @@ function normalizeManualSetValue(
   }
 
   return value;
-}
-
-function toChannelSummary(channel: {
-  id: string;
-  youtubeChannelId: string;
-  title: string;
-  handle: string | null;
-  thumbnailUrl: string | null;
-  updatedAt: Date;
-  enrichment: {
-    status: PrismaChannelEnrichmentStatus;
-    updatedAt: Date;
-    completedAt: Date | null;
-    lastError: string | null;
-  } | null;
-}): ChannelSummary {
-  return {
-    id: channel.id,
-    youtubeChannelId: channel.youtubeChannelId,
-    title: channel.title,
-    handle: channel.handle,
-    thumbnailUrl: channel.thumbnailUrl,
-    enrichment: toChannelEnrichmentSummary(channel.updatedAt, channel.enrichment),
-  };
-}
-
-function toChannelDetail(channel: {
-  id: string;
-  youtubeChannelId: string;
-  title: string;
-  handle: string | null;
-  thumbnailUrl: string | null;
-  description: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  enrichment: {
-    status: PrismaChannelEnrichmentStatus;
-    updatedAt: Date;
-    completedAt: Date | null;
-    lastError: string | null;
-    summary: string | null;
-    topics: Prisma.JsonValue | null;
-    brandFitNotes: string | null;
-    confidence: number | null;
-  } | null;
-}): ChannelDetail {
-  return {
-    ...toChannelSummary(channel),
-    description: channel.description,
-    createdAt: channel.createdAt.toISOString(),
-    updatedAt: channel.updatedAt.toISOString(),
-    enrichment: toChannelEnrichmentDetail(channel.updatedAt, channel.enrichment),
-  };
 }
 
 function toTopics(topics: Prisma.JsonValue | null): string[] | null {
@@ -338,6 +372,167 @@ function toChannelEnrichmentDetail(
   };
 }
 
+function toAudienceCountries(value: Prisma.JsonValue | null) {
+  const parsed = channelAudienceCountrySchema.array().safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+function toAudienceGenderAge(value: Prisma.JsonValue | null) {
+  const parsed = channelAudienceGenderAgeSchema.array().safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+function toAudienceInterests(value: Prisma.JsonValue | null) {
+  const parsed = channelAudienceInterestSchema.array().safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+function toBrandMentions(value: Prisma.JsonValue | null) {
+  const parsed = channelBrandMentionSchema.array().safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+function toChannelInsights(row: ChannelInsightsRow | null): ChannelInsights {
+  return {
+    audienceCountries: row ? toAudienceCountries(row.audienceCountries) : [],
+    audienceGenderAge: row ? toAudienceGenderAge(row.audienceGenderAge) : [],
+    audienceInterests: row ? toAudienceInterests(row.audienceInterests) : [],
+    estimatedPrice:
+      row &&
+      (row.estimatedPriceCurrencyCode ||
+        row.estimatedPriceMin !== null ||
+        row.estimatedPriceMax !== null)
+        ? {
+            currencyCode: row.estimatedPriceCurrencyCode,
+            min: row.estimatedPriceMin,
+            max: row.estimatedPriceMax,
+          }
+        : null,
+    brandMentions: row ? toBrandMentions(row.brandMentions) : [],
+  };
+}
+
+function toChannelAdvancedReportSummary(
+  advancedReportRequest: LatestAdvancedReportRow | null,
+): ChannelAdvancedReportSummary {
+  return {
+    requestId: advancedReportRequest?.id ?? null,
+    status: resolveChannelAdvancedReportStatus({
+      request: advancedReportRequest,
+    }),
+    updatedAt: advancedReportRequest?.updatedAt.toISOString() ?? null,
+    completedAt: advancedReportRequest?.completedAt?.toISOString() ?? null,
+    lastError: advancedReportRequest?.lastError ?? null,
+  };
+}
+
+function toChannelAdvancedReportDetail(
+  advancedReportRequest: LatestAdvancedReportRow | null,
+  lastCompletedReport: LatestCompletedAdvancedReport | null,
+): ChannelAdvancedReportDetail {
+  const base = toChannelAdvancedReportSummary(advancedReportRequest);
+
+  return {
+    ...base,
+    requestedAt: advancedReportRequest?.createdAt.toISOString() ?? null,
+    reviewedAt: advancedReportRequest?.reviewedAt?.toISOString() ?? null,
+    decisionNote: advancedReportRequest?.decisionNote ?? null,
+    lastCompletedReport,
+  };
+}
+
+function toChannelSummary(channel: {
+  id: string;
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  thumbnailUrl: string | null;
+  updatedAt: Date;
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+  } | null;
+  advancedReportRequests: LatestAdvancedReportRow[];
+}): ChannelSummary {
+  return {
+    id: channel.id,
+    youtubeChannelId: channel.youtubeChannelId,
+    title: channel.title,
+    handle: channel.handle,
+    thumbnailUrl: channel.thumbnailUrl,
+    enrichment: toChannelEnrichmentSummary(channel.updatedAt, channel.enrichment),
+    advancedReport: toChannelAdvancedReportSummary(channel.advancedReportRequests[0] ?? null),
+  };
+}
+
+function toChannelDetail(channel: {
+  id: string;
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  thumbnailUrl: string | null;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    updatedAt: Date;
+    completedAt: Date | null;
+    lastError: string | null;
+    summary: string | null;
+    topics: Prisma.JsonValue | null;
+    brandFitNotes: string | null;
+    confidence: number | null;
+  } | null;
+  insights: ChannelInsightsRow | null;
+  advancedReportRequests: LatestAdvancedReportRow[];
+}, lastCompletedReport: LatestCompletedAdvancedReport | null): ChannelDetail {
+  return {
+    ...toChannelSummary(channel),
+    description: channel.description,
+    createdAt: channel.createdAt.toISOString(),
+    updatedAt: channel.updatedAt.toISOString(),
+    enrichment: toChannelEnrichmentDetail(channel.updatedAt, channel.enrichment),
+    advancedReport: toChannelAdvancedReportDetail(
+      channel.advancedReportRequests[0] ?? null,
+      lastCompletedReport,
+    ),
+    insights: toChannelInsights(channel.insights),
+  };
+}
+
+type ChannelDbClient = Prisma.TransactionClient | typeof prisma;
+
+async function getLatestCompletedAdvancedReport(
+  dbClient: ChannelDbClient,
+  channelId: string,
+): Promise<LatestCompletedAdvancedReport | null> {
+  const request = await dbClient.advancedReportRequest.findFirst({
+    where: {
+      channelId,
+      status: PrismaAdvancedReportRequestStatus.COMPLETED,
+      completedAt: {
+        not: null,
+      },
+    },
+    orderBy: [
+      {
+        completedAt: "desc",
+      },
+      {
+        createdAt: "desc",
+      },
+    ],
+    select: latestCompletedAdvancedReportSelect,
+  });
+
+  return toLatestCompletedAdvancedReport({
+    request,
+  });
+}
+
 export async function listChannels(input: ListChannelsInput): Promise<{
   items: ChannelSummary[];
   total: number;
@@ -370,6 +565,7 @@ export async function listChannels(input: ListChannelsInput): Promise<{
         ],
       }
     : undefined;
+
   const findManyArgs = {
     skip,
     take: input.pageSize,
@@ -394,16 +590,19 @@ export async function listChannels(input: ListChannelsInput): Promise<{
 }
 
 export async function getChannelById(id: string): Promise<ChannelDetail | null> {
-  const channel = await prisma.channel.findUnique({
-    where: { id },
-    select: channelDetailSelect,
-  });
+  const [channel, lastCompletedReport] = await Promise.all([
+    prisma.channel.findUnique({
+      where: { id },
+      select: channelDetailSelect,
+    }),
+    getLatestCompletedAdvancedReport(prisma, id),
+  ]);
 
   if (!channel) {
     return null;
   }
 
-  return toChannelDetail(channel);
+  return toChannelDetail(channel, lastCompletedReport);
 }
 
 export async function getChannelByYoutubeId(youtubeChannelId: string): Promise<ChannelDetail | null> {
@@ -416,7 +615,9 @@ export async function getChannelByYoutubeId(youtubeChannelId: string): Promise<C
     return null;
   }
 
-  return toChannelDetail(channel);
+  const lastCompletedReport = await getLatestCompletedAdvancedReport(prisma, channel.id);
+
+  return toChannelDetail(channel, lastCompletedReport);
 }
 
 export async function upsertChannelSkeleton(input: {
@@ -467,7 +668,9 @@ export async function upsertChannelSkeleton(input: {
         select: channelDetailSelect,
       });
 
-      return toChannelDetail(created);
+      const lastCompletedReport = await getLatestCompletedAdvancedReport(tx, created.id);
+
+      return toChannelDetail(created, lastCompletedReport);
     }
 
     const updateData: Prisma.ChannelUpdateInput = {
@@ -507,7 +710,9 @@ export async function upsertChannelSkeleton(input: {
       select: channelDetailSelect,
     });
 
-    return toChannelDetail(updated);
+    const lastCompletedReport = await getLatestCompletedAdvancedReport(tx, updated.id);
+
+    return toChannelDetail(updated, lastCompletedReport);
   });
 }
 
@@ -544,6 +749,7 @@ export async function patchChannelManualOverrides(input: {
           "Each field can be patched at most once per request",
         );
       }
+
       operationsByField.add(operation.field);
     }
 
@@ -659,7 +865,10 @@ export async function patchChannelManualOverrides(input: {
     });
 
     return {
-      channel: toChannelDetail(updatedChannel),
+      channel: toChannelDetail(
+        updatedChannel,
+        await getLatestCompletedAdvancedReport(tx, updatedChannel.id),
+      ),
       applied,
     };
   });
