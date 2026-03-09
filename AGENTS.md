@@ -66,13 +66,14 @@ Resolved field precedence is fixed:
 5. heuristics
 6. YouTube raw
 
-Do not change this order casually.
-
-### Migration DDL Style
+## 6.1 Migration Style Policy
 
 - Prefer deterministic Prisma-generated migration DDL.
-- Avoid `IF NOT EXISTS`, `DO $$` conditional enum creation, and similar defensive SQL guards in committed migrations unless there is a documented bootstrap or cross-environment reason.
-- If a migration intentionally uses hand-written or defensive DDL, add a short comment at the top of the migration file explaining why.
+- Avoid `IF NOT EXISTS`, conditional enum creation, and other defensive SQL guards in committed migrations unless there is a documented environment/bootstrap reason.
+- If a migration intentionally uses non-deterministic or defensive DDL, explain why in the PR description and add a short comment at the top of the migration file.
+
+
+Do not change this order casually.
 
 ## 7. Background Job Rules
 
