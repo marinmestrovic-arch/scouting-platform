@@ -1,24 +1,40 @@
 import {
+  channelDetailSchema,
   listChannelsQuerySchema,
   listChannelsResponseSchema,
   type CatalogChannelFilters,
+  type ChannelDetail,
   type ListChannelsQuery,
   type ListChannelsResponse,
 } from "@scouting-platform/contracts";
 
-const GENERIC_REQUEST_ERROR_MESSAGE = "Unable to load channels. Please try again.";
-const INVALID_RESPONSE_ERROR_MESSAGE = "Received an invalid response from the server.";
+const GENERIC_CHANNELS_REQUEST_ERROR_MESSAGE = "Unable to load channels. Please try again.";
+const GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE =
+  "Unable to load channel details. Please try again.";
+const INVALID_CHANNELS_RESPONSE_ERROR_MESSAGE = "Received an invalid response from the server.";
+const INVALID_CHANNEL_DETAIL_RESPONSE_ERROR_MESSAGE =
+  "Received an invalid channel detail response from the server.";
 
 type ApiErrorBody = {
   error?: string;
 };
 
-function normalizeErrorMessage(error: unknown): string {
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+function normalizeErrorMessage(error: unknown, fallbackMessage: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
 
-  return GENERIC_REQUEST_ERROR_MESSAGE;
+  return fallbackMessage;
 }
 
 async function readJsonPayload(response: Response): Promise<unknown> {
@@ -29,7 +45,15 @@ async function readJsonPayload(response: Response): Promise<unknown> {
   }
 }
 
-function getApiErrorMessage(response: Response, payload: unknown): string {
+function getApiErrorMessage(
+  response: Response,
+  payload: unknown,
+  options?: {
+    authorizationErrorMessage?: string;
+    notFoundErrorMessage?: string;
+    fallbackMessage?: string;
+  },
+): string {
   if (payload && typeof payload === "object") {
     const maybeErrorPayload = payload as ApiErrorBody;
 
@@ -39,10 +63,26 @@ function getApiErrorMessage(response: Response, payload: unknown): string {
   }
 
   if (response.status === 401 || response.status === 403) {
-    return "You are not authorized to view the catalog.";
+    return options?.authorizationErrorMessage ?? "You are not authorized to view the catalog.";
   }
 
-  return GENERIC_REQUEST_ERROR_MESSAGE;
+  if (response.status === 404 && options?.notFoundErrorMessage) {
+    return options.notFoundErrorMessage;
+  }
+
+  return options?.fallbackMessage ?? GENERIC_CHANNELS_REQUEST_ERROR_MESSAGE;
+}
+
+function normalizeRequestError(error: unknown, fallbackMessage: string): Error {
+  if (error instanceof ApiRequestError) {
+    return error;
+  }
+
+  if (error instanceof Error && error.name === "AbortError") {
+    return error;
+  }
+
+  return new Error(normalizeErrorMessage(error, fallbackMessage));
 }
 
 export async function fetchChannels(
@@ -73,18 +113,53 @@ export async function fetchChannels(
     const payload = await readJsonPayload(response);
 
     if (!response.ok) {
-      throw new Error(getApiErrorMessage(response, payload));
+      throw new ApiRequestError(getApiErrorMessage(response, payload), response.status);
     }
 
     const parsed = listChannelsResponseSchema.safeParse(payload);
 
     if (!parsed.success) {
-      throw new Error(INVALID_RESPONSE_ERROR_MESSAGE);
+      throw new Error(INVALID_CHANNELS_RESPONSE_ERROR_MESSAGE);
     }
 
     return parsed.data;
   } catch (error) {
-    throw new Error(normalizeErrorMessage(error));
+    throw normalizeRequestError(error, GENERIC_CHANNELS_REQUEST_ERROR_MESSAGE);
+  }
+}
+
+export async function fetchChannelDetail(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<ChannelDetail> {
+  try {
+    const response = await fetch(`/api/channels/${channelId}`, {
+      method: "GET",
+      cache: "no-store",
+      signal: signal ?? null,
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getApiErrorMessage(response, payload, {
+          authorizationErrorMessage: "You are not authorized to view this channel.",
+          notFoundErrorMessage: "Channel not found.",
+          fallbackMessage: GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE,
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = channelDetailSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_CHANNEL_DETAIL_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error, GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE);
   }
 }
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchChannels } from "./channels-api";
+import { ApiRequestError, fetchChannelDetail, fetchChannels } from "./channels-api";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -9,6 +9,77 @@ function jsonResponse(payload: unknown, status = 200): Response {
       "content-type": "application/json",
     },
   });
+}
+
+function buildChannelDetailPayload() {
+  return {
+    id: "53adac17-f39d-4731-a61f-194150fbc431",
+    youtubeChannelId: "UC123",
+    title: "Channel One",
+    handle: "@channelone",
+    description: "Space and creator economy coverage.",
+    thumbnailUrl: "https://example.com/thumb.jpg",
+    createdAt: "2026-03-01T10:00:00.000Z",
+    updatedAt: "2026-03-08T10:00:00.000Z",
+    enrichment: {
+      status: "completed",
+      updatedAt: "2026-03-08T10:00:00.000Z",
+      completedAt: "2026-03-08T10:00:00.000Z",
+      lastError: null,
+      summary: "Creator focused on launches and industry analysis.",
+      topics: ["space", "launches"],
+      brandFitNotes: "Strong fit for launch providers.",
+      confidence: 0.82,
+    },
+    advancedReport: {
+      requestId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+      status: "completed",
+      updatedAt: "2026-03-08T10:00:00.000Z",
+      completedAt: "2026-03-08T10:00:00.000Z",
+      lastError: null,
+      requestedAt: "2026-03-07T08:00:00.000Z",
+      reviewedAt: "2026-03-07T09:00:00.000Z",
+      decisionNote: "Approved.",
+      lastCompletedReport: {
+        requestId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+        completedAt: "2026-03-08T10:00:00.000Z",
+        ageDays: 2,
+        withinFreshWindow: true,
+      },
+    },
+    insights: {
+      audienceCountries: [
+        {
+          countryCode: "US",
+          countryName: "United States",
+          percentage: 32.5,
+        },
+      ],
+      audienceGenderAge: [
+        {
+          gender: "female",
+          ageRange: "18-24",
+          percentage: 21.4,
+        },
+      ],
+      audienceInterests: [
+        {
+          label: "Space tech",
+          score: 0.88,
+        },
+      ],
+      estimatedPrice: {
+        currencyCode: "USD",
+        min: 500,
+        max: 900,
+      },
+      brandMentions: [
+        {
+          brandName: "SpaceX",
+        },
+      ],
+    },
+  };
 }
 
 describe("channels api helpers", () => {
@@ -181,5 +252,53 @@ describe("channels api helpers", () => {
         pageSize: 20,
       }),
     ).rejects.toThrow("Received an invalid response from the server.");
+  });
+
+  it("loads a channel detail payload from GET /api/channels/:id", async () => {
+    const channelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(buildChannelDetailPayload()),
+    );
+
+    const response = await fetchChannelDetail(channelId);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `/api/channels/${channelId}`,
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+      }),
+    );
+    expect(response).toEqual(
+      expect.objectContaining({
+        id: channelId,
+        youtubeChannelId: "UC123",
+      }),
+    );
+    expect(response.enrichment.topics).toEqual(["space", "launches"]);
+  });
+
+  it("surfaces not found responses for the detail page", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({}, 404));
+
+    await expect(
+      fetchChannelDetail("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toMatchObject({
+      message: "Channel not found.",
+      status: 404,
+    } satisfies Partial<ApiRequestError>);
+  });
+
+  it("throws when the detail response shape is invalid", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        id: "53adac17-f39d-4731-a61f-194150fbc431",
+        title: "Incomplete",
+      }),
+    );
+
+    await expect(
+      fetchChannelDetail("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toThrow("Received an invalid channel detail response from the server.");
   });
 });

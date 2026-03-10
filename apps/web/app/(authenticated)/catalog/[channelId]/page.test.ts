@@ -28,7 +28,7 @@ describe("catalog channel detail page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the week 1 shell from route params without fetching detail data", async () => {
+  it("renders the channel detail shell from route params without fetching detail data in the page", async () => {
     const fetchMock = vi.fn();
 
     vi.stubGlobal("fetch", fetchMock);
@@ -44,19 +44,19 @@ describe("catalog channel detail page", () => {
     expect(channelDetailShellMock.mock.calls[0]?.[0]).toEqual({ channelId: "channel-123" });
     expect(html).toContain("<h1>Channel Detail</h1>");
     expect(html).toContain(
-      "Week 1 shell only. Live channel data lands in Week 2. Enrichment and editing workflows stay deferred to later milestones.",
+      "Review the resolved catalog profile, enrichment state, and advanced report context for a single channel.",
     );
     expect(html).toContain("channel-detail-shell:channel-123");
   });
 
-  it("removes the old placeholder copy and avoids promising Week 2 workflows", async () => {
+  it("removes the old Week 1 placeholder copy from the page description", async () => {
     const html = renderToStaticMarkup(
       await CatalogChannelDetailPage({
         params: Promise.resolve({ channelId: "channel-123" }),
       }),
     );
 
-    expect(html).not.toContain("Channel detail shell lands in Week 1.");
-    expect(html).not.toContain("Live channel data, enrichment actions, and manual editing arrive in Week 2.");
+    expect(html).not.toContain("Week 1 shell only.");
+    expect(html).not.toContain("Live channel data lands in Week 2.");
   });
 });

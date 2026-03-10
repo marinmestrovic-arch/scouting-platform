@@ -11,7 +11,7 @@ export default async function CatalogChannelDetailPage({ params }: CatalogChanne
   return (
     <PageSection
       title="Channel Detail"
-      description="Week 1 shell only. Live channel data lands in Week 2. Enrichment and editing workflows stay deferred to later milestones."
+      description="Review the resolved catalog profile, enrichment state, and advanced report context for a single channel."
     >
       <ChannelDetailShell channelId={channelId} />
     </PageSection>

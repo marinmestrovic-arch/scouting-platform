@@ -108,7 +108,7 @@ Done when:
 #### Marin:
 
 - [done] catalog filters
-- channel detail page
+- [done] channel detail page
 - saved segments UX
 - admin manual edit UI
 - row selection UX
