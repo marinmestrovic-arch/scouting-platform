@@ -366,6 +366,11 @@ integration("week 2 core integration", () => {
         completedAt: new Date("2026-03-09T10:00:00.000Z"),
       },
     });
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET updated_at = ${new Date("2026-03-08T10:00:00.000Z")}
+      WHERE id = ${readyChannel.id}::uuid
+    `;
     await prisma.channelEnrichment.create({
       data: {
         channelId: failedChannel.id,
@@ -448,22 +453,40 @@ integration("week 2 core integration", () => {
         completedAt: new Date("2025-09-01T12:00:00.000Z"),
       },
     });
-    await prisma.advancedReportRequest.create({
+    const combinedCompletedRequest = await prisma.advancedReportRequest.create({
       data: {
         channelId: combinedChannel.id,
         requestedByUserId: requester.id,
         status: AdvancedReportRequestStatus.COMPLETED,
         completedAt: new Date("2026-03-08T12:00:00.000Z"),
       },
+      select: {
+        id: true,
+      },
     });
-    await prisma.advancedReportRequest.create({
+    const combinedFailedRequest = await prisma.advancedReportRequest.create({
       data: {
         channelId: combinedChannel.id,
         requestedByUserId: requester.id,
         status: AdvancedReportRequestStatus.FAILED,
         lastError: "provider timeout",
       },
+      select: {
+        id: true,
+      },
     });
+    await prisma.$executeRaw`
+      UPDATE advanced_report_requests
+      SET created_at = ${new Date("2026-03-08T12:00:00.000Z")},
+          updated_at = ${new Date("2026-03-08T12:00:00.000Z")}
+      WHERE id = ${combinedCompletedRequest.id}::uuid
+    `;
+    await prisma.$executeRaw`
+      UPDATE advanced_report_requests
+      SET created_at = ${new Date("2026-03-09T12:00:00.000Z")},
+          updated_at = ${new Date("2026-03-09T12:00:00.000Z")}
+      WHERE id = ${combinedFailedRequest.id}::uuid
+    `;
     await prisma.channelEnrichment.create({
       data: {
         channelId: combinedChannel.id,
