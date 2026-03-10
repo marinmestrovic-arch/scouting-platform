@@ -1,9 +1,12 @@
-import type { ListChannelsResponse } from "@scouting-platform/contracts";
+import type { ListChannelsResponse, SegmentResponse } from "@scouting-platform/contracts";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  createSavedSegmentMock,
+  deleteSavedSegmentMock,
   fetchChannelsMock,
+  fetchSavedSegmentsMock,
   replaceMock,
   useEffectMock,
   usePathnameMock,
@@ -11,7 +14,10 @@ const {
   useSearchParamsMock,
   useStateMock,
 } = vi.hoisted(() => ({
+  createSavedSegmentMock: vi.fn(),
+  deleteSavedSegmentMock: vi.fn(),
   fetchChannelsMock: vi.fn(),
+  fetchSavedSegmentsMock: vi.fn(),
   replaceMock: vi.fn(),
   useEffectMock: vi.fn(),
   usePathnameMock: vi.fn(),
@@ -40,14 +46,24 @@ vi.mock("../../lib/channels-api", () => ({
   fetchChannels: fetchChannelsMock,
 }));
 
+vi.mock("../../lib/segments-api", () => ({
+  createSavedSegment: createSavedSegmentMock,
+  deleteSavedSegment: deleteSavedSegmentMock,
+  fetchSavedSegments: fetchSavedSegmentsMock,
+}));
+
 import { CatalogTableShell } from "./catalog-table-shell";
 
 type CatalogShellElement = ReactElement<{
   onApplyFilters: () => void;
-  onResetFilters: () => void;
+  onCreateSegment: () => Promise<void> | void;
+  onDeleteSegment: (segment: SegmentResponse) => Promise<void> | void;
+  onLoadSegment: (segment: SegmentResponse) => void;
   onNextPage: () => void;
   onPreviousPage: () => void;
+  onResetFilters: () => void;
   onRetry: () => void;
+  onRetrySavedSegments: () => void;
   onDraftQueryChange: (value: string) => void;
   onToggleEnrichmentStatus: (value: "completed" | "failed") => void;
   draftFilters: {
@@ -58,8 +74,28 @@ type CatalogShellElement = ReactElement<{
   requestState: {
     status: "loading" | "error" | "ready";
   };
+  savedSegmentName: string;
   hasPendingFilterChanges: boolean;
 }>;
+
+type SavedSegmentsRequestState =
+  | {
+      status: "loading";
+      error: null;
+    }
+  | {
+      status: "error";
+      error: string;
+    }
+  | {
+      status: "ready";
+      error: null;
+    };
+
+type SavedSegmentOperationStatus = {
+  type: "idle" | "success" | "error";
+  message: string;
+};
 
 function createReadyState(overrides: Partial<ListChannelsResponse>): {
   status: "ready";
@@ -100,6 +136,21 @@ function createSearchParams(
   return searchParams;
 }
 
+function createSavedSegment(overrides?: Partial<SegmentResponse>): SegmentResponse {
+  return {
+    id: "33402e7e-e5c8-41e8-b94a-a4086ef0f6af",
+    name: "Space creators",
+    filters: {
+      query: "space",
+      enrichmentStatus: ["completed"],
+      advancedReportStatus: ["pending_approval"],
+    },
+    createdAt: "2026-03-08T10:00:00.000Z",
+    updatedAt: "2026-03-08T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function renderShell(options?: {
   requestState?: ReturnType<typeof createReadyState> | {
     status: "loading";
@@ -117,11 +168,23 @@ function renderShell(options?: {
     advancedReportStatus: string[];
   };
   reloadToken?: number;
+  savedSegments?: SegmentResponse[];
+  savedSegmentsRequestState?: SavedSegmentsRequestState;
+  savedSegmentsReloadToken?: number;
+  savedSegmentName?: string;
+  savedSegmentOperationStatus?: SavedSegmentOperationStatus;
+  pendingSegmentAction?: string | null;
 }) {
   const setDraftFilters = vi.fn();
   const setRequestState = vi.fn();
   const setReloadToken = vi.fn();
-  let cleanup: (() => void) | undefined;
+  const setSavedSegments = vi.fn();
+  const setSavedSegmentsRequestState = vi.fn();
+  const setSavedSegmentsReloadToken = vi.fn();
+  const setSavedSegmentName = vi.fn();
+  const setSavedSegmentOperationStatus = vi.fn();
+  const setPendingSegmentAction = vi.fn();
+  const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
   useEffectMock.mockReset();
@@ -131,7 +194,8 @@ function renderShell(options?: {
     replace: replaceMock,
   });
   useSearchParamsMock.mockReturnValue(
-    options?.searchParams ?? createSearchParams({ page: "2", query: "space", enrichmentStatus: ["failed"] }),
+    options?.searchParams ??
+      createSearchParams({ page: "2", query: "space", enrichmentStatus: ["failed"] }),
   );
 
   useStateMock
@@ -152,21 +216,48 @@ function renderShell(options?: {
         }),
       setRequestState,
     ])
-    .mockReturnValueOnce([options?.reloadToken ?? 0, setReloadToken]);
+    .mockReturnValueOnce([options?.reloadToken ?? 0, setReloadToken])
+    .mockReturnValueOnce([options?.savedSegments ?? [], setSavedSegments])
+    .mockReturnValueOnce([
+      options?.savedSegmentsRequestState ?? {
+        status: "loading",
+        error: null,
+      },
+      setSavedSegmentsRequestState,
+    ])
+    .mockReturnValueOnce([options?.savedSegmentsReloadToken ?? 0, setSavedSegmentsReloadToken])
+    .mockReturnValueOnce([options?.savedSegmentName ?? "", setSavedSegmentName])
+    .mockReturnValueOnce([
+      options?.savedSegmentOperationStatus ?? {
+        type: "idle",
+        message: "",
+      },
+      setSavedSegmentOperationStatus,
+    ])
+    .mockReturnValueOnce([options?.pendingSegmentAction ?? null, setPendingSegmentAction]);
 
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
     const maybeCleanup = effect();
-    cleanup = typeof maybeCleanup === "function" ? maybeCleanup : undefined;
+
+    if (typeof maybeCleanup === "function") {
+      cleanups.push(maybeCleanup);
+    }
   });
 
   const element = CatalogTableShell({}) as CatalogShellElement;
 
   return {
-    cleanup,
+    cleanups,
     element,
     setDraftFilters,
-    setRequestState,
+    setPendingSegmentAction,
     setReloadToken,
+    setRequestState,
+    setSavedSegmentName,
+    setSavedSegmentOperationStatus,
+    setSavedSegments,
+    setSavedSegmentsReloadToken,
+    setSavedSegmentsRequestState,
   };
 }
 
@@ -179,19 +270,28 @@ describe("catalog table shell behavior", () => {
       page: 1,
       pageSize: 20,
     } satisfies ListChannelsResponse);
+    fetchSavedSegmentsMock.mockResolvedValue([createSavedSegment()]);
   });
 
-  it("loads the current URL-backed page and filters from the channels API", async () => {
-    const response: ListChannelsResponse = {
+  it("loads the current URL-backed page and saved segments on mount", async () => {
+    const channelResponse: ListChannelsResponse = {
       items: [],
       total: 1,
       page: 2,
       pageSize: 20,
     };
+    const savedSegment = createSavedSegment();
 
-    fetchChannelsMock.mockResolvedValueOnce(response);
+    fetchChannelsMock.mockResolvedValueOnce(channelResponse);
+    fetchSavedSegmentsMock.mockResolvedValueOnce([savedSegment]);
 
-    const { cleanup, setDraftFilters, setRequestState } = renderShell();
+    const {
+      cleanups,
+      setDraftFilters,
+      setRequestState,
+      setSavedSegments,
+      setSavedSegmentsRequestState,
+    } = renderShell();
 
     expect(setDraftFilters).toHaveBeenCalledWith({
       query: "space",
@@ -207,26 +307,43 @@ describe("catalog table shell behavior", () => {
       },
       expect.any(AbortSignal),
     );
+    expect(fetchSavedSegmentsMock).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(setRequestState).toHaveBeenNthCalledWith(1, {
       status: "loading",
       data: null,
       error: null,
     });
+    expect(setSavedSegmentsRequestState).toHaveBeenNthCalledWith(1, {
+      status: "loading",
+      error: null,
+    });
 
+    await Promise.resolve();
     await Promise.resolve();
 
     expect(setRequestState).toHaveBeenNthCalledWith(2, {
       status: "ready",
-      data: response,
+      data: channelResponse,
+      error: null,
+    });
+    expect(setSavedSegments).toHaveBeenCalledWith([savedSegment]);
+    expect(setSavedSegmentsRequestState).toHaveBeenNthCalledWith(2, {
+      status: "ready",
       error: null,
     });
 
-    const signal = fetchChannelsMock.mock.calls[0]?.[1] as AbortSignal | undefined;
-    expect(signal?.aborted).toBe(false);
+    const channelSignal = fetchChannelsMock.mock.calls[0]?.[1] as AbortSignal | undefined;
+    const segmentSignal = fetchSavedSegmentsMock.mock.calls[0]?.[0] as AbortSignal | undefined;
 
-    cleanup?.();
+    expect(channelSignal?.aborted).toBe(false);
+    expect(segmentSignal?.aborted).toBe(false);
 
-    expect(signal?.aborted).toBe(true);
+    cleanups.forEach((cleanup) => {
+      cleanup();
+    });
+
+    expect(channelSignal?.aborted).toBe(true);
+    expect(segmentSignal?.aborted).toBe(true);
   });
 
   it("applies draft filters by replacing the URL and resetting to page 1", () => {
@@ -245,17 +362,128 @@ describe("catalog table shell behavior", () => {
     );
   });
 
-  it("resets filters by clearing draft state and replacing the URL", () => {
-    const { element, setDraftFilters } = renderShell();
+  it("loads a saved segment back into draft filters and URL state", () => {
+    const { element, setDraftFilters, setSavedSegmentName, setSavedSegmentOperationStatus } =
+      renderShell();
+    const segment = createSavedSegment({
+      name: "Launch channels",
+      filters: {
+        query: "launch",
+        enrichmentStatus: ["completed"],
+      },
+    });
 
-    element.props.onResetFilters();
+    setDraftFilters.mockClear();
+    setSavedSegmentName.mockClear();
+    setSavedSegmentOperationStatus.mockClear();
+
+    element.props.onLoadSegment(segment);
 
     expect(setDraftFilters).toHaveBeenCalledWith({
-      query: "",
-      enrichmentStatus: [],
+      query: "launch",
+      enrichmentStatus: ["completed"],
       advancedReportStatus: [],
     });
-    expect(replaceMock).toHaveBeenCalledWith("/catalog?page=1");
+    expect(setSavedSegmentName).toHaveBeenCalledWith("Launch channels");
+    expect(setSavedSegmentOperationStatus).toHaveBeenCalledWith({
+      type: "success",
+      message: 'Loaded segment "Launch channels".',
+    });
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/catalog?page=1&query=launch&enrichmentStatus=completed",
+    );
+  });
+
+  it("creates a saved segment from the current draft filters", async () => {
+    const createdSegment = createSavedSegment();
+    createSavedSegmentMock.mockResolvedValueOnce(createdSegment);
+
+    const {
+      element,
+      setPendingSegmentAction,
+      setSavedSegmentName,
+      setSavedSegmentOperationStatus,
+      setSavedSegments,
+    } = renderShell({
+      draftFilters: {
+        query: "space",
+        enrichmentStatus: ["completed"],
+        advancedReportStatus: [],
+      },
+      savedSegmentName: "  Space creators  ",
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    setPendingSegmentAction.mockClear();
+    setSavedSegmentName.mockClear();
+    setSavedSegmentOperationStatus.mockClear();
+    setSavedSegments.mockClear();
+
+    await element.props.onCreateSegment();
+
+    expect(createSavedSegmentMock).toHaveBeenCalledWith({
+      name: "Space creators",
+      filters: {
+        query: "space",
+        enrichmentStatus: ["completed"],
+      },
+    });
+    expect(setPendingSegmentAction).toHaveBeenNthCalledWith(1, "create");
+    expect(setPendingSegmentAction).toHaveBeenLastCalledWith(null);
+    expect(setSavedSegmentName).toHaveBeenCalledWith("");
+    expect(setSavedSegmentOperationStatus).toHaveBeenLastCalledWith({
+      type: "success",
+      message: 'Saved segment "Space creators".',
+    });
+
+    const updateSavedSegments = setSavedSegments.mock.calls.at(-1)?.[0] as
+      | ((current: SegmentResponse[]) => SegmentResponse[])
+      | undefined;
+
+    expect(updateSavedSegments?.([])).toEqual([createdSegment]);
+  });
+
+  it("deletes a saved segment and removes it from local state", async () => {
+    const segment = createSavedSegment();
+    deleteSavedSegmentMock.mockResolvedValueOnce(undefined);
+
+    const {
+      element,
+      setPendingSegmentAction,
+      setSavedSegmentOperationStatus,
+      setSavedSegments,
+    } = renderShell({
+      savedSegments: [segment],
+      savedSegmentsRequestState: {
+        status: "ready",
+        error: null,
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    setPendingSegmentAction.mockClear();
+    setSavedSegmentOperationStatus.mockClear();
+    setSavedSegments.mockClear();
+
+    await element.props.onDeleteSegment(segment);
+
+    expect(deleteSavedSegmentMock).toHaveBeenCalledWith(segment.id);
+    expect(setPendingSegmentAction).toHaveBeenNthCalledWith(1, `delete:${segment.id}`);
+    expect(setPendingSegmentAction).toHaveBeenLastCalledWith(null);
+    expect(setSavedSegmentOperationStatus).toHaveBeenLastCalledWith({
+      type: "success",
+      message: 'Deleted segment "Space creators".',
+    });
+
+    const updateSavedSegments = setSavedSegments.mock.calls.at(-1)?.[0] as
+      | ((current: SegmentResponse[]) => SegmentResponse[])
+      | undefined;
+
+    expect(updateSavedSegments?.([segment])).toEqual([]);
   });
 
   it("preserves active filters while paging forward and backward", () => {
@@ -286,20 +514,30 @@ describe("catalog table shell behavior", () => {
     expect(replaceMock).toHaveBeenCalledWith("/catalog?page=1&query=space&enrichmentStatus=failed");
   });
 
-  it("retries the current page by bumping the reload token", () => {
-    const { element, setReloadToken } = renderShell({
+  it("retries both channel and saved segment loads by bumping reload tokens", () => {
+    const { element, setReloadToken, setSavedSegmentsReloadToken } = renderShell({
       requestState: {
         status: "error",
         data: null,
         error: "Unable to load channels. Please try again.",
       },
+      savedSegmentsRequestState: {
+        status: "error",
+        error: "Unable to manage saved segments. Please try again.",
+      },
     });
 
     element.props.onRetry();
+    element.props.onRetrySavedSegments();
 
-    expect(setReloadToken).toHaveBeenCalledTimes(1);
+    const updateReloadToken = setReloadToken.mock.calls[0]?.[0] as
+      | ((current: number) => number)
+      | undefined;
+    const updateSavedSegmentsReloadToken = setSavedSegmentsReloadToken.mock.calls[0]?.[0] as
+      | ((current: number) => number)
+      | undefined;
 
-    const updateReloadToken = setReloadToken.mock.calls[0]?.[0] as ((current: number) => number) | undefined;
     expect(updateReloadToken?.(0)).toBe(1);
+    expect(updateSavedSegmentsReloadToken?.(0)).toBe(1);
   });
 });

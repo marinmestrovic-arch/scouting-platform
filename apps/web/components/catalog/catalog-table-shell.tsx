@@ -6,6 +6,8 @@ import type {
   ChannelEnrichmentStatus,
   ChannelSummary,
   ListChannelsResponse,
+  SegmentFilters,
+  SegmentResponse,
 } from "@scouting-platform/contracts";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,6 +15,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
 import { fetchChannels } from "../../lib/channels-api";
+import {
+  createSavedSegment,
+  deleteSavedSegment,
+  fetchSavedSegments,
+} from "../../lib/segments-api";
 
 type CatalogTableShellProps = {
   pageSize?: number;
@@ -34,6 +41,25 @@ type CatalogTableRequestState =
       data: ListChannelsResponse;
       error: null;
     };
+
+type SavedSegmentsRequestState =
+  | {
+      status: "loading";
+      error: null;
+    }
+  | {
+      status: "error";
+      error: string;
+    }
+  | {
+      status: "ready";
+      error: null;
+    };
+
+type SavedSegmentOperationStatus = {
+  type: "idle" | "success" | "error";
+  message: string;
+};
 
 type CatalogFiltersState = {
   query: string;
@@ -59,7 +85,17 @@ type CatalogFilterOption<T extends string> = {
 type CatalogTableShellViewProps = {
   draftFilters: CatalogFiltersState;
   requestState: CatalogTableRequestState;
+  savedSegments: SegmentResponse[];
+  savedSegmentsRequestState: SavedSegmentsRequestState;
+  savedSegmentName: string;
+  savedSegmentOperationStatus: SavedSegmentOperationStatus;
+  pendingSegmentAction: string | null;
   hasPendingFilterChanges: boolean;
+  onSavedSegmentNameChange: (value: string) => void;
+  onCreateSegment: () => void | Promise<void>;
+  onLoadSegment: (segment: SegmentResponse) => void;
+  onDeleteSegment: (segment: SegmentResponse) => void | Promise<void>;
+  onRetrySavedSegments: () => void;
   onDraftQueryChange: (value: string) => void;
   onToggleEnrichmentStatus: (value: ChannelEnrichmentStatus) => void;
   onToggleAdvancedReportStatus: (value: ChannelAdvancedReportStatus) => void;
@@ -100,6 +136,19 @@ const DEFAULT_FILTERS: CatalogFiltersState = {
   enrichmentStatus: [],
   advancedReportStatus: [],
 };
+
+const IDLE_SAVED_SEGMENT_OPERATION_STATUS: SavedSegmentOperationStatus = {
+  type: "idle",
+  message: "",
+};
+
+const ENRICHMENT_FILTER_LABELS = new Map(
+  ENRICHMENT_FILTER_OPTIONS.map((option) => [option.value, option.label]),
+);
+
+const ADVANCED_REPORT_FILTER_LABELS = new Map(
+  ADVANCED_REPORT_FILTER_OPTIONS.map((option) => [option.value, option.label]),
+);
 
 type CatalogPaginationState = Pick<ListChannelsResponse, "page" | "pageSize" | "total">;
 
@@ -210,6 +259,93 @@ export function normalizeCatalogFilters(filters: CatalogFilterInput): CatalogFil
       ADVANCED_REPORT_FILTER_OPTIONS,
     ),
   };
+}
+
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+export function buildSavedSegmentFilters(filters: CatalogFiltersState): SegmentFilters {
+  const normalized = normalizeCatalogFilters(filters);
+  const savedFilters: SegmentFilters = {};
+
+  if (normalized.query) {
+    savedFilters.query = normalized.query;
+  }
+
+  if (normalized.enrichmentStatus.length > 0) {
+    savedFilters.enrichmentStatus = [...normalized.enrichmentStatus];
+  }
+
+  if (normalized.advancedReportStatus.length > 0) {
+    savedFilters.advancedReportStatus = [...normalized.advancedReportStatus];
+  }
+
+  return savedFilters;
+}
+
+export function getCatalogFiltersFromSavedSegment(filters: SegmentFilters): CatalogFiltersState {
+  return normalizeCatalogFilters({
+    query: typeof filters.query === "string" ? filters.query : undefined,
+    enrichmentStatus: getStringArray(filters.enrichmentStatus),
+    advancedReportStatus: getStringArray(filters.advancedReportStatus),
+  });
+}
+
+function formatStatusLabels<T extends string>(
+  values: readonly T[],
+  labels: ReadonlyMap<T, string>,
+): string {
+  return values.map((value) => labels.get(value) ?? value).join(", ");
+}
+
+export function formatSavedSegmentSummary(filters: SegmentFilters): string {
+  const catalogFilters = getCatalogFiltersFromSavedSegment(filters);
+  const summaryParts: string[] = [];
+
+  if (catalogFilters.query) {
+    summaryParts.push(`Search: ${catalogFilters.query}`);
+  }
+
+  if (catalogFilters.enrichmentStatus.length > 0) {
+    summaryParts.push(
+      `Enrichment: ${formatStatusLabels(catalogFilters.enrichmentStatus, ENRICHMENT_FILTER_LABELS)}`,
+    );
+  }
+
+  if (catalogFilters.advancedReportStatus.length > 0) {
+    summaryParts.push(
+      `Report: ${formatStatusLabels(
+        catalogFilters.advancedReportStatus,
+        ADVANCED_REPORT_FILTER_LABELS,
+      )}`,
+    );
+  }
+
+  return summaryParts.length > 0 ? summaryParts.join(" · ") : "All catalog channels";
+}
+
+function sortSavedSegments(segments: readonly SegmentResponse[]): SegmentResponse[] {
+  return [...segments].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+function upsertSavedSegment(
+  segments: readonly SegmentResponse[],
+  segment: SegmentResponse,
+): SegmentResponse[] {
+  return sortSavedSegments([segment, ...segments.filter((item) => item.id !== segment.id)]);
+}
+
+function getSavedSegmentErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to manage saved segments. Please try again.";
 }
 
 export function parseCatalogUrlState(
@@ -325,7 +461,17 @@ function FilterCheckboxGroup<T extends string>({
 export function CatalogTableShellView({
   draftFilters,
   requestState,
+  savedSegments,
+  savedSegmentsRequestState,
+  savedSegmentName,
+  savedSegmentOperationStatus,
+  pendingSegmentAction,
   hasPendingFilterChanges,
+  onSavedSegmentNameChange,
+  onCreateSegment,
+  onLoadSegment,
+  onDeleteSegment,
+  onRetrySavedSegments,
   onDraftQueryChange,
   onToggleEnrichmentStatus,
   onToggleAdvancedReportStatus,
@@ -336,9 +482,119 @@ export function CatalogTableShellView({
   onNextPage,
 }: CatalogTableShellViewProps) {
   const activeFilters = hasActiveCatalogFilters(draftFilters);
+  const isSavingSegment = pendingSegmentAction === "create";
+  const hasSavedSegments = savedSegments.length > 0;
 
   return (
     <div className="catalog-table">
+      <section aria-labelledby="catalog-saved-segments-heading" className="catalog-table__segments">
+        <div className="catalog-table__segments-header">
+          <div>
+            <h2 id="catalog-saved-segments-heading">Saved segments</h2>
+            <p>Save your current catalog filters and reload them later without rebuilding the query.</p>
+          </div>
+        </div>
+
+        <div className="catalog-table__segments-actions">
+          <label className="catalog-table__search">
+            <span>Segment name</span>
+            <input
+              name="segmentName"
+              onChange={(event) => {
+                onSavedSegmentNameChange(event.target.value);
+              }}
+              placeholder="Space creators"
+              type="text"
+              value={savedSegmentName}
+            />
+          </label>
+
+          <button
+            className="catalog-table__button"
+            disabled={isSavingSegment || savedSegmentName.trim().length === 0}
+            onClick={() => {
+              void onCreateSegment();
+            }}
+            type="button"
+          >
+            {isSavingSegment ? "Saving..." : "Save current filters"}
+          </button>
+        </div>
+
+        {savedSegmentOperationStatus.message ? (
+          <p
+            className={`catalog-table__segment-status catalog-table__segment-status--${savedSegmentOperationStatus.type}`}
+            role={savedSegmentOperationStatus.type === "error" ? "alert" : undefined}
+          >
+            {savedSegmentOperationStatus.message}
+          </p>
+        ) : null}
+
+        {savedSegmentsRequestState.status === "loading" && !hasSavedSegments ? (
+          <p className="catalog-table__feedback catalog-table__feedback--loading">
+            Loading saved segments...
+          </p>
+        ) : null}
+
+        {savedSegmentsRequestState.status === "error" ? (
+          <div className="catalog-table__feedback catalog-table__feedback--error" role="alert">
+            <p>{savedSegmentsRequestState.error}</p>
+            <button
+              className="catalog-table__button catalog-table__button--secondary"
+              onClick={onRetrySavedSegments}
+              type="button"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {!hasSavedSegments && savedSegmentsRequestState.status === "ready" ? (
+          <p className="catalog-table__feedback catalog-table__feedback--empty">
+            No saved segments yet.
+          </p>
+        ) : null}
+
+        {hasSavedSegments ? (
+          <ul className="catalog-table__segment-list">
+            {savedSegments.map((segment) => {
+              const isDeletingSegment = pendingSegmentAction === `delete:${segment.id}`;
+
+              return (
+                <li className="catalog-table__segment-item" key={segment.id}>
+                  <div className="catalog-table__segment-copy">
+                    <h3>{segment.name}</h3>
+                    <p>{formatSavedSegmentSummary(segment.filters)}</p>
+                  </div>
+                  <div className="catalog-table__segment-item-actions">
+                    <button
+                      className="catalog-table__button catalog-table__button--secondary"
+                      disabled={pendingSegmentAction !== null}
+                      onClick={() => {
+                        onLoadSegment(segment);
+                      }}
+                      type="button"
+                    >
+                      Load
+                    </button>
+                    <button
+                      className="catalog-table__button catalog-table__button--secondary"
+                      disabled={pendingSegmentAction !== null}
+                      onClick={() => {
+                        void onDeleteSegment(segment);
+                      }}
+                      type="button"
+                    >
+                      {isDeletingSegment ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </section>
+
       <section aria-labelledby="catalog-filter-heading" className="catalog-table__filters">
         <div className="catalog-table__filters-header">
           <div>
@@ -535,6 +791,16 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
     error: null,
   });
   const [reloadToken, setReloadToken] = useState(0);
+  const [savedSegments, setSavedSegments] = useState<SegmentResponse[]>([]);
+  const [savedSegmentsRequestState, setSavedSegmentsRequestState] = useState<SavedSegmentsRequestState>({
+    status: "loading",
+    error: null,
+  });
+  const [savedSegmentsReloadToken, setSavedSegmentsReloadToken] = useState(0);
+  const [savedSegmentName, setSavedSegmentName] = useState("");
+  const [savedSegmentOperationStatus, setSavedSegmentOperationStatus] =
+    useState<SavedSegmentOperationStatus>(IDLE_SAVED_SEGMENT_OPERATION_STATUS);
+  const [pendingSegmentAction, setPendingSegmentAction] = useState<string | null>(null);
 
   useEffect(() => {
     setDraftFilters(appliedState.filters);
@@ -591,26 +857,133 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
     };
   }, [appliedStateKey, pageSize, reloadToken]);
 
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    setSavedSegmentsRequestState({
+      status: "loading",
+      error: null,
+    });
+
+    void fetchSavedSegments(abortController.signal)
+      .then((items) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setSavedSegments(sortSavedSegments(items));
+        setSavedSegmentsRequestState({
+          status: "ready",
+          error: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setSavedSegmentsRequestState({
+          status: "error",
+          error: getSavedSegmentErrorMessage(error),
+        });
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [savedSegmentsReloadToken]);
+
   function replaceCatalogState(state: CatalogUrlState): void {
     router.replace(buildCatalogHref(pathname, state));
+  }
+
+  async function handleCreateSegment(): Promise<void> {
+    const name = savedSegmentName.trim();
+
+    if (!name) {
+      return;
+    }
+
+    setPendingSegmentAction("create");
+    setSavedSegmentOperationStatus(IDLE_SAVED_SEGMENT_OPERATION_STATUS);
+
+    try {
+      const created = await createSavedSegment({
+        name,
+        filters: buildSavedSegmentFilters(draftFilters),
+      });
+
+      setSavedSegments((current) => upsertSavedSegment(current, created));
+      setSavedSegmentName("");
+      setSavedSegmentOperationStatus({
+        type: "success",
+        message: `Saved segment "${created.name}".`,
+      });
+    } catch (error) {
+      setSavedSegmentOperationStatus({
+        type: "error",
+        message: getSavedSegmentErrorMessage(error),
+      });
+    } finally {
+      setPendingSegmentAction(null);
+    }
+  }
+
+  function handleLoadSegment(segment: SegmentResponse): void {
+    const filters = getCatalogFiltersFromSavedSegment(segment.filters);
+
+    setDraftFilters(filters);
+    setSavedSegmentName(segment.name);
+    setSavedSegmentOperationStatus({
+      type: "success",
+      message: `Loaded segment "${segment.name}".`,
+    });
+    replaceCatalogState({
+      page: 1,
+      filters,
+    });
+  }
+
+  async function handleDeleteSegment(segment: SegmentResponse): Promise<void> {
+    setPendingSegmentAction(`delete:${segment.id}`);
+    setSavedSegmentOperationStatus(IDLE_SAVED_SEGMENT_OPERATION_STATUS);
+
+    try {
+      await deleteSavedSegment(segment.id);
+      setSavedSegments((current) => current.filter((item) => item.id !== segment.id));
+      setSavedSegmentOperationStatus({
+        type: "success",
+        message: `Deleted segment "${segment.name}".`,
+      });
+    } catch (error) {
+      setSavedSegmentOperationStatus({
+        type: "error",
+        message: getSavedSegmentErrorMessage(error),
+      });
+    } finally {
+      setPendingSegmentAction(null);
+    }
   }
 
   return (
     <CatalogTableShellView
       draftFilters={draftFilters}
       hasPendingFilterChanges={!areCatalogFiltersEqual(draftFilters, appliedState.filters)}
+      onCreateSegment={handleCreateSegment}
       onApplyFilters={() => {
         replaceCatalogState({
           page: 1,
           filters: draftFilters,
         });
       }}
+      onDeleteSegment={handleDeleteSegment}
       onDraftQueryChange={(value) => {
         setDraftFilters((current) => ({
           ...current,
           query: value,
         }));
       }}
+      onLoadSegment={handleLoadSegment}
       onNextPage={() => {
         if (requestState.status !== "ready") {
           return;
@@ -650,8 +1023,14 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
           filters: DEFAULT_FILTERS,
         });
       }}
+      onRetrySavedSegments={() => {
+        setSavedSegmentsReloadToken((current) => current + 1);
+      }}
       onRetry={() => {
         setReloadToken((current) => current + 1);
+      }}
+      onSavedSegmentNameChange={(value) => {
+        setSavedSegmentName(value);
       }}
       onToggleAdvancedReportStatus={(value) => {
         setDraftFilters((current) => ({
@@ -665,7 +1044,12 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
           enrichmentStatus: toggleCatalogStatusFilter(current.enrichmentStatus, value),
         }));
       }}
+      pendingSegmentAction={pendingSegmentAction}
       requestState={requestState}
+      savedSegmentName={savedSegmentName}
+      savedSegmentOperationStatus={savedSegmentOperationStatus}
+      savedSegments={savedSegments}
+      savedSegmentsRequestState={savedSegmentsRequestState}
     />
   );
 }

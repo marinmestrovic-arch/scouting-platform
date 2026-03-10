@@ -109,7 +109,7 @@ Done when:
 
 - [done] catalog filters
 - [done] channel detail page
-- saved segments UX
+- [done] saved segments UX
 - admin manual edit UI
 - row selection UX
 
@@ -119,7 +119,8 @@ Done when:
 - segments save/load
 - admin manual edits persist and override automated values
 - evidence note: backend catalog queries are live via `GET /api/channels` and `GET /api/channels/:id` with integration coverage in `apps/web/app/api/week1.integration.test.ts`
-- phased delivery note: segment persistence backend is delivered as personal saved filter segments CRUD; remaining Week 2 items stay open
+- evidence note: saved segments now work end-to-end in the catalog via `/api/segments` save/load/delete UX with coverage in `apps/web/lib/segments-api.test.ts`, `apps/web/components/catalog/catalog-table-shell.test.ts`, and `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`
+- phased delivery note: saved segments are delivered end-to-end; admin manual edit UI and row selection UX remain open
 
 ### Week 3: Runs and discovery
 

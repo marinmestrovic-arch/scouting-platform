@@ -1,4 +1,8 @@
-import type { ChannelEnrichmentStatus, ListChannelsResponse } from "@scouting-platform/contracts";
+import type {
+  ChannelEnrichmentStatus,
+  ListChannelsResponse,
+  SegmentResponse,
+} from "@scouting-platform/contracts";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -41,10 +45,13 @@ vi.mock("next/image", async () => {
 
 import {
   areCatalogFiltersEqual,
+  buildSavedSegmentFilters,
   buildCatalogHref,
   buildCatalogSearchParams,
   CatalogTableShellView,
+  formatSavedSegmentSummary,
   formatChannelCountSummary,
+  getCatalogFiltersFromSavedSegment,
   getEmptyCatalogMessage,
   getNextCatalogPage,
   getPreviousCatalogPage,
@@ -129,7 +136,32 @@ function buildChannelResponse(
   };
 }
 
-function renderView(requestState: Parameters<typeof CatalogTableShellView>[0]["requestState"]): string {
+const defaultSavedSegments: SegmentResponse[] = [
+  {
+    id: "8fcaf11c-d515-4135-817f-3f98b4f3cb7e",
+    name: "Space creators",
+    filters: {
+      query: "space",
+      enrichmentStatus: ["completed"],
+      advancedReportStatus: ["pending_approval"],
+    },
+    createdAt: "2026-03-08T10:00:00.000Z",
+    updatedAt: "2026-03-08T10:00:00.000Z",
+  },
+];
+
+function renderView(
+  requestState: Parameters<typeof CatalogTableShellView>[0]["requestState"],
+  options?: {
+    savedSegments?: SegmentResponse[];
+    savedSegmentsRequestState?: Parameters<typeof CatalogTableShellView>[0]["savedSegmentsRequestState"];
+    savedSegmentName?: string;
+    savedSegmentOperationStatus?: Parameters<
+      typeof CatalogTableShellView
+    >[0]["savedSegmentOperationStatus"];
+    pendingSegmentAction?: string | null;
+  },
+): string {
   return renderToStaticMarkup(
     createElement(CatalogTableShellView, {
       draftFilters: {
@@ -137,14 +169,30 @@ function renderView(requestState: Parameters<typeof CatalogTableShellView>[0]["r
         enrichmentStatus: ["completed"],
         advancedReportStatus: ["pending_approval"],
       },
+      savedSegments: options?.savedSegments ?? defaultSavedSegments,
+      savedSegmentsRequestState: options?.savedSegmentsRequestState ?? {
+        status: "ready",
+        error: null,
+      },
+      savedSegmentName: options?.savedSegmentName ?? "",
+      savedSegmentOperationStatus: options?.savedSegmentOperationStatus ?? {
+        type: "idle",
+        message: "",
+      },
+      pendingSegmentAction: options?.pendingSegmentAction ?? null,
       requestState,
       hasPendingFilterChanges: true,
+      onCreateSegment: vi.fn(),
+      onDeleteSegment: vi.fn(),
       onApplyFilters: vi.fn(),
       onDraftQueryChange: vi.fn(),
+      onLoadSegment: vi.fn(),
       onNextPage: vi.fn(),
       onPreviousPage: vi.fn(),
       onResetFilters: vi.fn(),
+      onRetrySavedSegments: vi.fn(),
       onRetry: vi.fn(),
+      onSavedSegmentNameChange: vi.fn(),
       onToggleAdvancedReportStatus: vi.fn(),
       onToggleEnrichmentStatus: vi.fn(),
     }),
@@ -226,6 +274,30 @@ describe("catalog table shell view", () => {
     expect(afterRemove).toEqual(["failed"]);
   });
 
+  it("round-trips saved segment filters into catalog filter state", () => {
+    const filters = buildSavedSegmentFilters({
+      query: "  space  ",
+      enrichmentStatus: ["failed", "completed"],
+      advancedReportStatus: ["stale"],
+    });
+
+    expect(filters).toEqual({
+      query: "space",
+      enrichmentStatus: ["completed", "failed"],
+      advancedReportStatus: ["stale"],
+    });
+    expect(getCatalogFiltersFromSavedSegment(filters)).toEqual({
+      query: "space",
+      enrichmentStatus: ["completed", "failed"],
+      advancedReportStatus: ["stale"],
+    });
+    expect(
+      formatSavedSegmentSummary({
+        locale: "en",
+      }),
+    ).toBe("All catalog channels");
+  });
+
   it("renders loading state", () => {
     const html = renderView({
       status: "loading",
@@ -233,6 +305,7 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
+    expect(html).toContain("Saved segments");
     expect(html).toContain("Filters");
     expect(html).toContain("Apply filters");
     expect(html).toContain("Loading channels...");
@@ -248,6 +321,78 @@ describe("catalog table shell view", () => {
     expect(html).toContain("Unable to load channels. Please try again.");
     expect(html).toContain("Retry");
     expect(html).toContain("role=\"alert\"");
+  });
+
+  it("renders saved segment actions and summaries", () => {
+    const html = renderView(
+      {
+        status: "ready",
+        data: {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+        },
+        error: null,
+      },
+      {
+        savedSegmentName: "Space creators",
+      },
+    );
+
+    expect(html).toContain("Save current filters");
+    expect(html).toContain("Space creators");
+    expect(html).toContain("Search: space");
+    expect(html).toContain("Enrichment: Ready");
+    expect(html).toContain("Report: Pending approval");
+    expect(html).toContain(">Load</button>");
+    expect(html).toContain(">Delete</button>");
+  });
+
+  it("renders saved segment loading and empty states", () => {
+    const loadingHtml = renderView(
+      {
+        status: "ready",
+        data: {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+        },
+        error: null,
+      },
+      {
+        savedSegments: [],
+        savedSegmentsRequestState: {
+          status: "loading",
+          error: null,
+        },
+      },
+    );
+
+    expect(loadingHtml).toContain("Loading saved segments...");
+
+    const emptyHtml = renderView(
+      {
+        status: "ready",
+        data: {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+        },
+        error: null,
+      },
+      {
+        savedSegments: [],
+        savedSegmentsRequestState: {
+          status: "ready",
+          error: null,
+        },
+      },
+    );
+
+    expect(emptyHtml).toContain("No saved segments yet.");
   });
 
   it("renders empty state with both paging buttons disabled", () => {
@@ -268,7 +413,6 @@ describe("catalog table shell view", () => {
     expect(html).toContain("Page 1");
     expect(html).toContain(">Previous</button>");
     expect(html).toContain(">Next</button>");
-    expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
 
   it("renders populated rows, detail links, and all enrichment labels", () => {

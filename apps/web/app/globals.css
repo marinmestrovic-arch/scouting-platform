@@ -197,6 +197,99 @@ a {
   gap: var(--space-4);
 }
 
+.catalog-table__segments {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #f8fcfb 0%, #eef6f3 100%);
+  padding: var(--space-5);
+}
+
+.catalog-table__segments-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 1.125rem;
+  line-height: var(--line-height-tight);
+}
+
+.catalog-table__segments-header p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+}
+
+.catalog-table__segments-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.catalog-table__segments-actions .catalog-table__search {
+  flex: 1 1 16rem;
+}
+
+.catalog-table__segment-status {
+  margin: 0;
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.catalog-table__segment-status--success {
+  color: #145749;
+}
+
+.catalog-table__segment-status--error {
+  color: #8b2727;
+}
+
+.catalog-table__segment-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.catalog-table__segment-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.75);
+  padding: var(--space-4);
+}
+
+.catalog-table__segment-copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.catalog-table__segment-copy h3,
+.catalog-table__segment-copy p {
+  margin: 0;
+}
+
+.catalog-table__segment-copy h3 {
+  font-size: 1rem;
+  line-height: var(--line-height-tight);
+}
+
+.catalog-table__segment-copy p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+}
+
+.catalog-table__segment-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .catalog-table__filters {
   display: grid;
   gap: var(--space-4);
@@ -508,6 +601,7 @@ a {
 }
 
 @media (max-width: 720px) {
+  .catalog-table__segments-actions,
   .catalog-table__filters-header,
   .catalog-table__toolbar {
     align-items: flex-start;
