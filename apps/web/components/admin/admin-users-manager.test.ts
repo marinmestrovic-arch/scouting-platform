@@ -337,7 +337,7 @@ describe("admin users manager", () => {
       ReactElement<{ suppressHydrationWarning?: boolean }>
     >;
     const buttons = findElementsByType(tree, "button") as Array<
-      ReactElement<{ suppressHydrationWarning?: boolean; type?: string }>
+      ReactElement<{ suppressHydrationWarning?: boolean; type?: string; children?: ReactNode }>
     >;
     const inputs = findElementsByType(tree, "input") as Array<
       ReactElement<{ suppressHydrationWarning?: boolean; type?: string; name?: string }>
