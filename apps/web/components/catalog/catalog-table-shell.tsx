@@ -85,6 +85,7 @@ type CatalogFilterOption<T extends string> = {
 type CatalogTableShellViewProps = {
   draftFilters: CatalogFiltersState;
   requestState: CatalogTableRequestState;
+  selectedChannelIds: readonly string[];
   savedSegments: SegmentResponse[];
   savedSegmentsRequestState: SavedSegmentsRequestState;
   savedSegmentName: string;
@@ -99,6 +100,9 @@ type CatalogTableShellViewProps = {
   onDraftQueryChange: (value: string) => void;
   onToggleEnrichmentStatus: (value: ChannelEnrichmentStatus) => void;
   onToggleAdvancedReportStatus: (value: ChannelAdvancedReportStatus) => void;
+  onToggleChannelSelection: (channelId: string) => void;
+  onTogglePageSelection: () => void;
+  onClearSelection: () => void;
   onApplyFilters: () => void;
   onResetFilters: () => void;
   onRetry: () => void;
@@ -413,6 +417,91 @@ export function toggleCatalogStatusFilter<T extends string>(values: readonly T[]
   return [...values, value];
 }
 
+function getCatalogPageChannelIds(channels: readonly Pick<ChannelSummary, "id">[]): string[] {
+  return [...new Set(channels.map((channel) => channel.id))];
+}
+
+export function countSelectedCatalogPageRows(
+  selectedChannelIds: readonly string[],
+  channels: readonly Pick<ChannelSummary, "id">[],
+): number {
+  const selected = new Set(selectedChannelIds);
+
+  return getCatalogPageChannelIds(channels).filter((channelId) => selected.has(channelId)).length;
+}
+
+export function areAllCatalogPageRowsSelected(
+  selectedChannelIds: readonly string[],
+  channels: readonly Pick<ChannelSummary, "id">[],
+): boolean {
+  const pageChannelIds = getCatalogPageChannelIds(channels);
+
+  return (
+    pageChannelIds.length > 0 &&
+    countSelectedCatalogPageRows(selectedChannelIds, channels) === pageChannelIds.length
+  );
+}
+
+export function toggleCatalogChannelSelection(
+  selectedChannelIds: readonly string[],
+  channelId: string,
+): string[] {
+  if (selectedChannelIds.includes(channelId)) {
+    return selectedChannelIds.filter((value) => value !== channelId);
+  }
+
+  return [...selectedChannelIds, channelId];
+}
+
+export function toggleCatalogPageSelection(
+  selectedChannelIds: readonly string[],
+  channels: readonly Pick<ChannelSummary, "id">[],
+): string[] {
+  const pageChannelIds = getCatalogPageChannelIds(channels);
+
+  if (pageChannelIds.length === 0) {
+    return [...new Set(selectedChannelIds)];
+  }
+
+  const pageChannelIdSet = new Set(pageChannelIds);
+
+  if (areAllCatalogPageRowsSelected(selectedChannelIds, channels)) {
+    return selectedChannelIds.filter((channelId) => !pageChannelIdSet.has(channelId));
+  }
+
+  const nextSelectedChannelIds = [...selectedChannelIds];
+  const selectedChannelIdSet = new Set(selectedChannelIds);
+
+  for (const channelId of pageChannelIds) {
+    if (!selectedChannelIdSet.has(channelId)) {
+      nextSelectedChannelIds.push(channelId);
+    }
+  }
+
+  return nextSelectedChannelIds;
+}
+
+export function formatCatalogSelectionSummary(
+  selectedCount: number,
+  selectedOnPageCount: number,
+): string {
+  if (selectedCount === 0) {
+    return "No channels selected.";
+  }
+
+  const summary = `${selectedCount} channel${selectedCount === 1 ? "" : "s"} selected`;
+
+  if (selectedOnPageCount === selectedCount) {
+    return summary;
+  }
+
+  if (selectedOnPageCount === 0) {
+    return `${summary} · none on this page`;
+  }
+
+  return `${summary} · ${selectedOnPageCount} on this page`;
+}
+
 function hasActiveCatalogFilters(filters: CatalogFiltersState): boolean {
   return Boolean(
     filters.query || filters.enrichmentStatus.length > 0 || filters.advancedReportStatus.length > 0,
@@ -461,6 +550,7 @@ function FilterCheckboxGroup<T extends string>({
 export function CatalogTableShellView({
   draftFilters,
   requestState,
+  selectedChannelIds,
   savedSegments,
   savedSegmentsRequestState,
   savedSegmentName,
@@ -475,6 +565,9 @@ export function CatalogTableShellView({
   onDraftQueryChange,
   onToggleEnrichmentStatus,
   onToggleAdvancedReportStatus,
+  onToggleChannelSelection,
+  onTogglePageSelection,
+  onClearSelection,
   onApplyFilters,
   onResetFilters,
   onRetry,
@@ -667,8 +760,12 @@ export function CatalogTableShellView({
       {requestState.status === "ready" ? (
         <CatalogTableResults
           data={requestState.data}
+          onClearSelection={onClearSelection}
           onNextPage={onNextPage}
           onPreviousPage={onPreviousPage}
+          onToggleChannelSelection={onToggleChannelSelection}
+          onTogglePageSelection={onTogglePageSelection}
+          selectedChannelIds={selectedChannelIds}
         />
       ) : null}
     </div>
@@ -677,21 +774,48 @@ export function CatalogTableShellView({
 
 function CatalogTableResults({
   data,
+  selectedChannelIds,
+  onToggleChannelSelection,
+  onTogglePageSelection,
+  onClearSelection,
   onPreviousPage,
   onNextPage,
 }: {
   data: ListChannelsResponse;
+  selectedChannelIds: readonly string[];
+  onToggleChannelSelection: (channelId: string) => void;
+  onTogglePageSelection: () => void;
+  onClearSelection: () => void;
   onPreviousPage: () => void;
   onNextPage: () => void;
 }) {
   const hasChannels = data.items.length > 0;
   const hasPreviousPage = hasPreviousCatalogPage(data);
   const hasNextPage = hasNextCatalogPage(data);
+  const selectedOnPageCount = countSelectedCatalogPageRows(selectedChannelIds, data.items);
+  const allRowsSelected = areAllCatalogPageRowsSelected(selectedChannelIds, data.items);
+  const hasSelection = selectedChannelIds.length > 0;
 
   return (
     <>
       <div className="catalog-table__toolbar">
-        <p className="catalog-table__summary">{formatChannelCountSummary(data)}</p>
+        <div className="catalog-table__toolbar-copy">
+          <p className="catalog-table__summary">{formatChannelCountSummary(data)}</p>
+          <div className="catalog-table__selection">
+            <p aria-live="polite" className="catalog-table__selection-summary">
+              {formatCatalogSelectionSummary(selectedChannelIds.length, selectedOnPageCount)}
+            </p>
+            {hasSelection ? (
+              <button
+                className="catalog-table__button catalog-table__button--secondary"
+                onClick={onClearSelection}
+                type="button"
+              >
+                Clear selection
+              </button>
+            ) : null}
+          </div>
+        </div>
         <div className="catalog-table__pagination">
           <button
             className="catalog-table__button catalog-table__button--secondary"
@@ -722,6 +846,18 @@ function CatalogTableResults({
           <table className="catalog-table__table">
             <thead>
               <tr>
+                <th scope="col">
+                  <div className="catalog-table__select-header">
+                    <span>Select</span>
+                    <input
+                      aria-label="Select all channels on this page"
+                      checked={allRowsSelected}
+                      disabled={!hasChannels}
+                      onChange={onTogglePageSelection}
+                      type="checkbox"
+                    />
+                  </div>
+                </th>
                 <th scope="col">Channel</th>
                 <th scope="col">YouTube channel ID</th>
                 <th scope="col">Enrichment</th>
@@ -729,47 +865,71 @@ function CatalogTableResults({
               </tr>
             </thead>
             <tbody>
-              {data.items.map((channel) => (
-                <tr key={channel.id}>
-                  <td>
-                    <div className="catalog-table__identity">
-                      {channel.thumbnailUrl ? (
-                        <Image
-                          alt={`${channel.title} thumbnail`}
-                          className="catalog-table__thumbnail"
-                          height={48}
-                          src={channel.thumbnailUrl}
-                          unoptimized
-                          width={48}
-                        />
-                      ) : (
-                        <div className="catalog-table__thumbnail catalog-table__thumbnail--fallback" aria-hidden="true">
-                          {getIdentityFallback(channel)}
+              {data.items.map((channel) => {
+                const isSelected = selectedChannelIds.includes(channel.id);
+
+                return (
+                  <tr
+                    className={
+                      isSelected
+                        ? "catalog-table__row catalog-table__row--selected"
+                        : "catalog-table__row"
+                    }
+                    key={channel.id}
+                  >
+                    <td className="catalog-table__select-cell">
+                      <input
+                        aria-label={`Select ${channel.title}`}
+                        checked={isSelected}
+                        onChange={() => {
+                          onToggleChannelSelection(channel.id);
+                        }}
+                        type="checkbox"
+                      />
+                    </td>
+                    <td>
+                      <div className="catalog-table__identity">
+                        {channel.thumbnailUrl ? (
+                          <Image
+                            alt={`${channel.title} thumbnail`}
+                            className="catalog-table__thumbnail"
+                            height={48}
+                            src={channel.thumbnailUrl}
+                            unoptimized
+                            width={48}
+                          />
+                        ) : (
+                          <div
+                            className="catalog-table__thumbnail catalog-table__thumbnail--fallback"
+                            aria-hidden="true"
+                          >
+                            {getIdentityFallback(channel)}
+                          </div>
+                        )}
+                        <div className="catalog-table__identity-copy">
+                          <p className="catalog-table__title">{channel.title}</p>
+                          <p className="catalog-table__meta">{getChannelHandle(channel)}</p>
                         </div>
-                      )}
-                      <div className="catalog-table__identity-copy">
-                        <p className="catalog-table__title">{channel.title}</p>
-                        <p className="catalog-table__meta">{getChannelHandle(channel)}</p>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <code className="catalog-table__code">{channel.youtubeChannelId}</code>
-                  </td>
-                  <td>
-                    <span
-                      className={`catalog-table__status catalog-table__status--${channel.enrichment.status}`}
-                    >
-                      {getEnrichmentLabel(channel)}
-                    </span>
-                  </td>
-                  <td>
-                    <Link className="catalog-table__link" href={`/catalog/${channel.id}`}>
-                      Open channel
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <code className="catalog-table__code">{channel.youtubeChannelId}</code>
+                    </td>
+                    <td>
+                      <span
+                        className={`catalog-table__status catalog-table__status--${channel.enrichment.status}`}
+                      >
+                        {getEnrichmentLabel(channel)}
+                      </span>
+                    </td>
+                    <td>
+                      <Link className="catalog-table__link" href={`/catalog/${channel.id}`}>
+                        Open channel
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -801,6 +961,7 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
   const [savedSegmentOperationStatus, setSavedSegmentOperationStatus] =
     useState<SavedSegmentOperationStatus>(IDLE_SAVED_SEGMENT_OPERATION_STATUS);
   const [pendingSegmentAction, setPendingSegmentAction] = useState<string | null>(null);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
 
   useEffect(() => {
     setDraftFilters(appliedState.filters);
@@ -969,6 +1130,9 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
     <CatalogTableShellView
       draftFilters={draftFilters}
       hasPendingFilterChanges={!areCatalogFiltersEqual(draftFilters, appliedState.filters)}
+      onClearSelection={() => {
+        setSelectedChannelIds([]);
+      }}
       onCreateSegment={handleCreateSegment}
       onApplyFilters={() => {
         replaceCatalogState({
@@ -1032,6 +1196,16 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
       onSavedSegmentNameChange={(value) => {
         setSavedSegmentName(value);
       }}
+      onToggleChannelSelection={(channelId) => {
+        setSelectedChannelIds((current) => toggleCatalogChannelSelection(current, channelId));
+      }}
+      onTogglePageSelection={() => {
+        if (requestState.status !== "ready") {
+          return;
+        }
+
+        setSelectedChannelIds((current) => toggleCatalogPageSelection(current, requestState.data.items));
+      }}
       onToggleAdvancedReportStatus={(value) => {
         setDraftFilters((current) => ({
           ...current,
@@ -1050,6 +1224,7 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
       savedSegmentOperationStatus={savedSegmentOperationStatus}
       savedSegments={savedSegments}
       savedSegmentsRequestState={savedSegmentsRequestState}
+      selectedChannelIds={selectedChannelIds}
     />
   );
 }

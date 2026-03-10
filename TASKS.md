@@ -111,7 +111,7 @@ Done when:
 - [done] channel detail page
 - [done] saved segments UX
 - [done] admin manual edit UI
-- row selection UX
+- [done] row selection UX
 
 Done when:
 
@@ -121,7 +121,7 @@ Done when:
 - evidence note: backend catalog queries are live via `GET /api/channels` and `GET /api/channels/:id` with integration coverage in `apps/web/app/api/week1.integration.test.ts`
 - evidence note: saved segments now work end-to-end in the catalog via `/api/segments` save/load/delete UX with coverage in `apps/web/lib/segments-api.test.ts`, `apps/web/components/catalog/catalog-table-shell.test.ts`, and `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`
 - evidence note: admin manual edit UI now ships on `/catalog/[channelId]` for admins via `/api/admin/channels/:id/manual-overrides`, with coverage in `apps/web/lib/admin-channels-api.test.ts`, `apps/web/components/catalog/admin-channel-manual-edit-panel.test.ts`, `apps/web/components/catalog/admin-channel-manual-edit-panel.behavior.test.ts`, `apps/web/components/catalog/channel-detail-shell.test.ts`, and `apps/web/app/(authenticated)/catalog/[channelId]/page.test.ts`
-- phased delivery note: saved segments and admin manual edit UI are delivered end-to-end; row selection UX remains open
+- evidence note: row selection now works in the catalog table via per-row and per-page checkboxes, persistent selection state across paging/filter refreshes, and a clear-selection summary with coverage in `apps/web/components/catalog/catalog-table-shell.test.ts` and `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`
 
 ### Week 3: Runs and discovery
 

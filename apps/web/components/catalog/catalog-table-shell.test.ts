@@ -45,10 +45,13 @@ vi.mock("next/image", async () => {
 
 import {
   areCatalogFiltersEqual,
+  areAllCatalogPageRowsSelected,
   buildSavedSegmentFilters,
   buildCatalogHref,
   buildCatalogSearchParams,
   CatalogTableShellView,
+  countSelectedCatalogPageRows,
+  formatCatalogSelectionSummary,
   formatSavedSegmentSummary,
   formatChannelCountSummary,
   getCatalogFiltersFromSavedSegment,
@@ -58,6 +61,8 @@ import {
   hasNextCatalogPage,
   hasPreviousCatalogPage,
   parseCatalogUrlState,
+  toggleCatalogChannelSelection,
+  toggleCatalogPageSelection,
   toggleCatalogStatusFilter,
 } from "./catalog-table-shell";
 
@@ -153,6 +158,7 @@ const defaultSavedSegments: SegmentResponse[] = [
 function renderView(
   requestState: Parameters<typeof CatalogTableShellView>[0]["requestState"],
   options?: {
+    selectedChannelIds?: string[];
     savedSegments?: SegmentResponse[];
     savedSegmentsRequestState?: Parameters<typeof CatalogTableShellView>[0]["savedSegmentsRequestState"];
     savedSegmentName?: string;
@@ -169,6 +175,7 @@ function renderView(
         enrichmentStatus: ["completed"],
         advancedReportStatus: ["pending_approval"],
       },
+      selectedChannelIds: options?.selectedChannelIds ?? [],
       savedSegments: options?.savedSegments ?? defaultSavedSegments,
       savedSegmentsRequestState: options?.savedSegmentsRequestState ?? {
         status: "ready",
@@ -185,6 +192,7 @@ function renderView(
       onCreateSegment: vi.fn(),
       onDeleteSegment: vi.fn(),
       onApplyFilters: vi.fn(),
+      onClearSelection: vi.fn(),
       onDraftQueryChange: vi.fn(),
       onLoadSegment: vi.fn(),
       onNextPage: vi.fn(),
@@ -194,7 +202,9 @@ function renderView(
       onRetry: vi.fn(),
       onSavedSegmentNameChange: vi.fn(),
       onToggleAdvancedReportStatus: vi.fn(),
+      onToggleChannelSelection: vi.fn(),
       onToggleEnrichmentStatus: vi.fn(),
+      onTogglePageSelection: vi.fn(),
     }),
   );
 }
@@ -272,6 +282,33 @@ describe("catalog table shell view", () => {
 
     const afterRemove = toggleCatalogStatusFilter(afterAdd, "completed");
     expect(afterRemove).toEqual(["failed"]);
+  });
+
+  it("tracks row selection across individual rows and the current page", () => {
+    const pageItems = pagedChannels.items;
+
+    expect(toggleCatalogChannelSelection([], pageItems[0]!.id)).toEqual([pageItems[0]!.id]);
+    expect(toggleCatalogChannelSelection([pageItems[0]!.id], pageItems[0]!.id)).toEqual([]);
+    expect(
+      toggleCatalogPageSelection(["sticky-selection"], pageItems).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+    ).toEqual(["sticky-selection", pageItems[0]!.id, pageItems[1]!.id].sort((left, right) => left.localeCompare(right)));
+    expect(
+      toggleCatalogPageSelection(
+        ["sticky-selection", pageItems[0]!.id, pageItems[1]!.id],
+        pageItems,
+      ),
+    ).toEqual(["sticky-selection"]);
+    expect(countSelectedCatalogPageRows([pageItems[0]!.id, "other"], pageItems)).toBe(1);
+    expect(areAllCatalogPageRowsSelected([pageItems[0]!.id, pageItems[1]!.id], pageItems)).toBe(true);
+  });
+
+  it("formats selection summary copy", () => {
+    expect(formatCatalogSelectionSummary(0, 0)).toBe("No channels selected.");
+    expect(formatCatalogSelectionSummary(2, 2)).toBe("2 channels selected");
+    expect(formatCatalogSelectionSummary(3, 1)).toBe("3 channels selected · 1 on this page");
+    expect(formatCatalogSelectionSummary(1, 0)).toBe("1 channel selected · none on this page");
   });
 
   it("round-trips saved segment filters into catalog filter state", () => {
@@ -457,5 +494,24 @@ describe("catalog table shell view", () => {
     expect(html).toContain("Pending approval");
     expect(html).toContain("href=\"/catalog/00000000-0000-0000-0000-000000000001\"");
     expect(html).toContain("Open channel");
+  });
+
+  it("renders row selection controls and highlights selected rows", () => {
+    const html = renderView(
+      {
+        status: "ready",
+        data: pagedChannels,
+        error: null,
+      },
+      {
+        selectedChannelIds: [pagedChannels.items[0]!.id],
+      },
+    );
+
+    expect(html).toContain("Select all channels on this page");
+    expect(html).toContain("Select Channel One");
+    expect(html).toContain("1 channel selected");
+    expect(html).toContain("Clear selection");
+    expect(html).toContain("catalog-table__row catalog-table__row--selected");
   });
 });

@@ -56,6 +56,7 @@ import { CatalogTableShell } from "./catalog-table-shell";
 
 type CatalogShellElement = ReactElement<{
   onApplyFilters: () => void;
+  onClearSelection: () => void;
   onCreateSegment: () => Promise<void> | void;
   onDeleteSegment: (segment: SegmentResponse) => Promise<void> | void;
   onLoadSegment: (segment: SegmentResponse) => void;
@@ -65,7 +66,9 @@ type CatalogShellElement = ReactElement<{
   onRetry: () => void;
   onRetrySavedSegments: () => void;
   onDraftQueryChange: (value: string) => void;
+  onToggleChannelSelection: (channelId: string) => void;
   onToggleEnrichmentStatus: (value: "completed" | "failed") => void;
+  onTogglePageSelection: () => void;
   draftFilters: {
     query: string;
     enrichmentStatus: string[];
@@ -76,6 +79,7 @@ type CatalogShellElement = ReactElement<{
   };
   savedSegmentName: string;
   hasPendingFilterChanges: boolean;
+  selectedChannelIds: string[];
 }>;
 
 type SavedSegmentsRequestState =
@@ -151,6 +155,29 @@ function createSavedSegment(overrides?: Partial<SegmentResponse>): SegmentRespon
   };
 }
 
+function createChannel(id: string, title: string) {
+  return {
+    id,
+    youtubeChannelId: `UC_${title.toUpperCase().replace(/\s+/g, "_")}`,
+    title,
+    handle: `@${title.toLowerCase().replace(/\s+/g, "")}`,
+    thumbnailUrl: null,
+    enrichment: {
+      status: "missing" as const,
+      updatedAt: null,
+      completedAt: null,
+      lastError: null,
+    },
+    advancedReport: {
+      requestId: null,
+      status: "missing" as const,
+      updatedAt: null,
+      completedAt: null,
+      lastError: null,
+    },
+  };
+}
+
 function renderShell(options?: {
   requestState?: ReturnType<typeof createReadyState> | {
     status: "loading";
@@ -174,6 +201,7 @@ function renderShell(options?: {
   savedSegmentName?: string;
   savedSegmentOperationStatus?: SavedSegmentOperationStatus;
   pendingSegmentAction?: string | null;
+  selectedChannelIds?: string[];
 }) {
   const setDraftFilters = vi.fn();
   const setRequestState = vi.fn();
@@ -184,6 +212,7 @@ function renderShell(options?: {
   const setSavedSegmentName = vi.fn();
   const setSavedSegmentOperationStatus = vi.fn();
   const setPendingSegmentAction = vi.fn();
+  const setSelectedChannelIds = vi.fn();
   const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
@@ -234,7 +263,8 @@ function renderShell(options?: {
       },
       setSavedSegmentOperationStatus,
     ])
-    .mockReturnValueOnce([options?.pendingSegmentAction ?? null, setPendingSegmentAction]);
+    .mockReturnValueOnce([options?.pendingSegmentAction ?? null, setPendingSegmentAction])
+    .mockReturnValueOnce([options?.selectedChannelIds ?? [], setSelectedChannelIds]);
 
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
     const maybeCleanup = effect();
@@ -255,6 +285,7 @@ function renderShell(options?: {
     setRequestState,
     setSavedSegmentName,
     setSavedSegmentOperationStatus,
+    setSelectedChannelIds,
     setSavedSegments,
     setSavedSegmentsReloadToken,
     setSavedSegmentsRequestState,
@@ -539,5 +570,83 @@ describe("catalog table shell behavior", () => {
 
     expect(updateReloadToken?.(0)).toBe(1);
     expect(updateSavedSegmentsReloadToken?.(0)).toBe(1);
+  });
+
+  it("toggles individual channel selection without disturbing existing selections", () => {
+    const channel = createChannel("00000000-0000-0000-0000-000000000101", "Orbit Lab");
+    const { element, setSelectedChannelIds } = renderShell({
+      requestState: createReadyState({
+        items: [channel],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+      selectedChannelIds: ["sticky-selection"],
+    });
+
+    element.props.onToggleChannelSelection(channel.id);
+
+    const updateSelectedChannelIds = setSelectedChannelIds.mock.calls[0]?.[0] as
+      | ((current: string[]) => string[])
+      | undefined;
+
+    expect(updateSelectedChannelIds?.(["sticky-selection"])).toEqual([
+      "sticky-selection",
+      channel.id,
+    ]);
+  });
+
+  it("selects and clears the current page without losing selections on other pages", () => {
+    const firstChannel = createChannel("00000000-0000-0000-0000-000000000201", "Luna One");
+    const secondChannel = createChannel("00000000-0000-0000-0000-000000000202", "Luna Two");
+    const pageItems = [firstChannel, secondChannel];
+    const initialSelection = ["sticky-selection"];
+    const withPageSelected = [...initialSelection, firstChannel.id, secondChannel.id];
+
+    const selectPage = renderShell({
+      requestState: createReadyState({
+        items: pageItems,
+        total: 2,
+        page: 1,
+        pageSize: 20,
+      }),
+      selectedChannelIds: initialSelection,
+    });
+
+    selectPage.element.props.onTogglePageSelection();
+
+    const selectPageUpdate = selectPage.setSelectedChannelIds.mock.calls[0]?.[0] as
+      | ((current: string[]) => string[])
+      | undefined;
+
+    expect(selectPageUpdate?.(initialSelection)).toEqual(withPageSelected);
+
+    const clearPage = renderShell({
+      requestState: createReadyState({
+        items: pageItems,
+        total: 2,
+        page: 1,
+        pageSize: 20,
+      }),
+      selectedChannelIds: withPageSelected,
+    });
+
+    clearPage.element.props.onTogglePageSelection();
+
+    const clearPageUpdate = clearPage.setSelectedChannelIds.mock.calls[0]?.[0] as
+      | ((current: string[]) => string[])
+      | undefined;
+
+    expect(clearPageUpdate?.(withPageSelected)).toEqual(initialSelection);
+  });
+
+  it("clears all selected channels explicitly", () => {
+    const { element, setSelectedChannelIds } = renderShell({
+      selectedChannelIds: ["one", "two"],
+    });
+
+    element.props.onClearSelection();
+
+    expect(setSelectedChannelIds).toHaveBeenCalledWith([]);
   });
 });
