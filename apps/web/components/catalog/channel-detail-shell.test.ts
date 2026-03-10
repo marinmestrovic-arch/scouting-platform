@@ -133,6 +133,26 @@ describe("channel detail shell view", () => {
     expect(html).toContain("USD 500-900");
   });
 
+  it("renders the admin manual edit panel when manual edit controls are enabled", () => {
+    const html = renderToStaticMarkup(
+      createElement(ChannelDetailShellView, {
+        channelId: baseChannelDetail.id,
+        canManageManualEdits: true,
+        onChannelUpdated: vi.fn(),
+        onRetry: vi.fn(),
+        requestState: {
+          status: "ready",
+          data: baseChannelDetail,
+          error: null,
+        },
+      }),
+    );
+
+    expect(html).toContain("Admin manual edits");
+    expect(html).toContain("Save override");
+    expect(html).toContain("Restore fallback");
+  });
+
   it("renders retryable error feedback when the request fails", () => {
     const html = renderToStaticMarkup(
       createElement(ChannelDetailShellView, {

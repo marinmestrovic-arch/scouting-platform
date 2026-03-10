@@ -11,9 +11,11 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchChannelDetail } from "../../lib/channels-api";
+import { AdminChannelManualEditPanel } from "./admin-channel-manual-edit-panel";
 
 type ChannelDetailShellProps = Readonly<{
   channelId: string;
+  canManageManualEdits?: boolean;
 }>;
 
 type ChannelDetailRequestState =
@@ -41,6 +43,7 @@ type ChannelDetailRequestState =
 type ChannelDetailShellViewProps = ChannelDetailShellProps & {
   requestState: ChannelDetailRequestState;
   onRetry: () => void;
+  onChannelUpdated?: (channel: ChannelDetail) => void;
 };
 
 const INITIAL_REQUEST_STATE: ChannelDetailRequestState = {
@@ -169,7 +172,13 @@ function hasAudienceInsights(channel: ChannelDetail): boolean {
   );
 }
 
-function renderReadyState(channel: ChannelDetail) {
+function renderReadyState(
+  channel: ChannelDetail,
+  options?: {
+    canManageManualEdits: boolean;
+    onChannelUpdated?: (channel: ChannelDetail) => void;
+  },
+) {
   return (
     <>
       <section aria-labelledby="channel-detail-shell-heading" className="channel-detail-shell__hero">
@@ -457,13 +466,19 @@ function renderReadyState(channel: ChannelDetail) {
             </p>
           )}
         </section>
+
+        {options?.canManageManualEdits && options.onChannelUpdated ? (
+          <AdminChannelManualEditPanel channel={channel} onChannelUpdated={options.onChannelUpdated} />
+        ) : null}
       </div>
     </>
   );
 }
 
 export function ChannelDetailShellView({
+  canManageManualEdits,
   channelId,
+  onChannelUpdated,
   onRetry,
   requestState,
 }: ChannelDetailShellViewProps) {
@@ -497,12 +512,18 @@ export function ChannelDetailShellView({
         </section>
       ) : null}
 
-      {requestState.status === "ready" ? renderReadyState(requestState.data) : null}
+      {requestState.status === "ready"
+        ? renderReadyState(requestState.data, {
+            canManageManualEdits: canManageManualEdits ?? false,
+            ...(onChannelUpdated ? { onChannelUpdated } : {}),
+          })
+        : null}
     </div>
   );
 }
 
-export function ChannelDetailShell({ channelId }: ChannelDetailShellProps) {
+export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelDetailShellProps) {
+  const isManualEditEnabled = canManageManualEdits ?? false;
   const [requestState, setRequestState] = useState<ChannelDetailRequestState>(INITIAL_REQUEST_STATE);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -561,7 +582,21 @@ export function ChannelDetailShell({ channelId }: ChannelDetailShellProps) {
 
   return (
     <ChannelDetailShellView
+      canManageManualEdits={isManualEditEnabled}
       channelId={channelId}
+      onChannelUpdated={(channel) => {
+        setRequestState((current) => {
+          if (current.status !== "ready") {
+            return current;
+          }
+
+          return {
+            status: "ready",
+            data: channel,
+            error: null,
+          };
+        });
+      }}
       onRetry={() => {
         setReloadToken((currentValue) => currentValue + 1);
       }}

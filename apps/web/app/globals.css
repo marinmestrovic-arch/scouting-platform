@@ -1338,10 +1338,110 @@ a {
   padding: var(--space-2) var(--space-4);
 }
 
+.channel-detail-shell__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.channel-detail-shell__button--secondary {
+  background: transparent;
+}
+
 .channel-detail-shell__button:hover {
   cursor: pointer;
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
+}
+
+.channel-detail-shell__button:disabled:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.channel-detail-shell__button--secondary:disabled:hover {
+  background: transparent;
+}
+
+.channel-detail-shell__manual-edit-note {
+  border-left: 3px solid rgba(15, 106, 104, 0.22);
+  padding-left: var(--space-3);
+}
+
+.channel-detail-shell__manual-edit-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.channel-detail-shell__manual-edit-card {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--color-surface-muted);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.96) 0%, rgba(247, 241, 229, 0.7) 100%);
+  padding: var(--space-4);
+}
+
+.channel-detail-shell__manual-edit-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.channel-detail-shell__manual-edit-copy p {
+  margin: 0;
+}
+
+.channel-detail-shell__manual-edit-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.channel-detail-shell__manual-edit-field span {
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.channel-detail-shell__manual-edit-field input,
+.channel-detail-shell__manual-edit-field textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  padding: var(--space-3);
+}
+
+.channel-detail-shell__manual-edit-field textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.channel-detail-shell__manual-edit-field input:focus,
+.channel-detail-shell__manual-edit-field textarea:focus {
+  outline: 2px solid rgba(15, 106, 104, 0.18);
+  outline-offset: 0;
+  border-color: rgba(15, 106, 104, 0.45);
+}
+
+.channel-detail-shell__manual-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.channel-detail-shell__manual-edit-status {
+  margin: 0;
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.channel-detail-shell__manual-edit-status--success {
+  color: var(--color-accent);
+}
+
+.channel-detail-shell__manual-edit-status--error {
+  color: #8f2f2f;
 }
 
 @media (max-width: 900px) {
@@ -1380,6 +1480,14 @@ a {
 
   .channel-detail-shell__feedback {
     align-items: flex-start;
+  }
+
+  .channel-detail-shell__manual-edit-actions {
+    flex-direction: column;
+  }
+
+  .channel-detail-shell__manual-edit-actions .channel-detail-shell__button {
+    width: 100%;
   }
 
   .channel-detail-shell__list li {
