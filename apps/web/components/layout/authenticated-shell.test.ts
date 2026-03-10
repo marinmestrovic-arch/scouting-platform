@@ -30,4 +30,15 @@ describe("authenticated shell", () => {
     expect(html).toContain('href="/admin"');
     expect(html).toContain("admin page");
   });
+
+  it("suppresses hydration warnings on the root shell wrapper", () => {
+    const tree = AuthenticatedShell({
+      role: "user",
+      children: "catalog page",
+    });
+
+    expect((tree.props as { suppressHydrationWarning?: boolean }).suppressHydrationWarning).toBe(
+      true,
+    );
+  });
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import type { AppRole } from "../../lib/navigation";
 import { APP_TITLE } from "../../lib/shell";
 import { SignOutForm } from "../auth/sign-out-form";
@@ -11,7 +11,7 @@ type AuthenticatedShellProps = Readonly<{
 
 export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) {
   return (
-    <div className="auth-shell">
+    <div className="auth-shell" suppressHydrationWarning>
       <aside className="auth-shell__sidebar">
         <p className="auth-shell__eyebrow">Internal Workspace</p>
         <p className="auth-shell__brand">{APP_TITLE}</p>

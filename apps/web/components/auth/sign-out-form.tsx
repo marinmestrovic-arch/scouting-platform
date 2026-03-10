@@ -1,3 +1,5 @@
+import React from "react";
+
 export function SignOutForm() {
   return (
     <form
@@ -6,8 +8,9 @@ export function SignOutForm() {
         const { signOut } = await import("../../auth");
         await signOut({ redirectTo: "/login" });
       }}
+      suppressHydrationWarning
     >
-      <button className="auth-shell__signout" type="submit">
+      <button className="auth-shell__signout" suppressHydrationWarning type="submit">
         Sign out
       </button>
     </form>

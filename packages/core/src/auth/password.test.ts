@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -5,6 +6,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "./password";
 
 const originalCwd = process.cwd();
+
+function resolveAppsWebDirectory(): string {
+  const candidates = [
+    path.resolve(originalCwd, "apps", "web"),
+    path.resolve(originalCwd, "..", "..", "apps", "web"),
+  ];
+
+  const match = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!match) {
+    throw new Error("Unable to locate apps/web for cwd-independence test");
+  }
+
+  return match;
+}
 
 describe("password hashing", () => {
   afterEach(() => {
@@ -19,7 +35,7 @@ describe("password hashing", () => {
   });
 
   it("resolves argon2 independently of the current working directory", async () => {
-    process.chdir(path.resolve(originalCwd, "..", "..", "apps", "web"));
+    process.chdir(resolveAppsWebDirectory());
 
     const hash = await hashPassword("DirectoryIndependentPass123");
 

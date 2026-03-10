@@ -536,6 +536,7 @@ function FilterCheckboxGroup<T extends string>({
                 onChange={() => {
                   onToggle(option.value);
                 }}
+                suppressHydrationWarning
                 type="checkbox"
               />
               <span>{option.label}</span>
@@ -597,6 +598,7 @@ export function CatalogTableShellView({
                 onSavedSegmentNameChange(event.target.value);
               }}
               placeholder="Space creators"
+              suppressHydrationWarning
               type="text"
               value={savedSegmentName}
             />
@@ -608,6 +610,7 @@ export function CatalogTableShellView({
             onClick={() => {
               void onCreateSegment();
             }}
+            suppressHydrationWarning
             type="button"
           >
             {isSavingSegment ? "Saving..." : "Save current filters"}
@@ -635,6 +638,7 @@ export function CatalogTableShellView({
             <button
               className="catalog-table__button catalog-table__button--secondary"
               onClick={onRetrySavedSegments}
+              suppressHydrationWarning
               type="button"
             >
               Retry
@@ -666,6 +670,7 @@ export function CatalogTableShellView({
                       onClick={() => {
                         onLoadSegment(segment);
                       }}
+                      suppressHydrationWarning
                       type="button"
                     >
                       Load
@@ -676,6 +681,7 @@ export function CatalogTableShellView({
                       onClick={() => {
                         void onDeleteSegment(segment);
                       }}
+                      suppressHydrationWarning
                       type="button"
                     >
                       {isDeletingSegment ? "Deleting..." : "Delete"}
@@ -706,6 +712,7 @@ export function CatalogTableShellView({
                 onDraftQueryChange(event.target.value);
               }}
               placeholder="Search title, handle, or YouTube channel ID"
+              suppressHydrationWarning
               type="search"
               value={draftFilters.query}
             />
@@ -727,13 +734,19 @@ export function CatalogTableShellView({
         </div>
 
         <div className="catalog-table__filter-actions">
-          <button className="catalog-table__button" onClick={onApplyFilters} type="button">
+          <button
+            className="catalog-table__button"
+            onClick={onApplyFilters}
+            suppressHydrationWarning
+            type="button"
+          >
             Apply filters
           </button>
           <button
             className="catalog-table__button catalog-table__button--secondary"
             disabled={!activeFilters && !hasPendingFilterChanges}
             onClick={onResetFilters}
+            suppressHydrationWarning
             type="button"
           >
             Reset
@@ -751,7 +764,12 @@ export function CatalogTableShellView({
       {requestState.status === "error" ? (
         <div className="catalog-table__feedback catalog-table__feedback--error" role="alert">
           <p>{requestState.error}</p>
-          <button className="catalog-table__button catalog-table__button--secondary" onClick={onRetry} type="button">
+          <button
+            className="catalog-table__button catalog-table__button--secondary"
+            onClick={onRetry}
+            suppressHydrationWarning
+            type="button"
+          >
             Retry
           </button>
         </div>
@@ -809,6 +827,7 @@ function CatalogTableResults({
               <button
                 className="catalog-table__button catalog-table__button--secondary"
                 onClick={onClearSelection}
+                suppressHydrationWarning
                 type="button"
               >
                 Clear selection
@@ -821,6 +840,7 @@ function CatalogTableResults({
             className="catalog-table__button catalog-table__button--secondary"
             disabled={!hasPreviousPage}
             onClick={onPreviousPage}
+            suppressHydrationWarning
             type="button"
           >
             Previous
@@ -830,6 +850,7 @@ function CatalogTableResults({
             className="catalog-table__button catalog-table__button--secondary"
             disabled={!hasNextPage}
             onClick={onNextPage}
+            suppressHydrationWarning
             type="button"
           >
             Next
@@ -854,6 +875,7 @@ function CatalogTableResults({
                       checked={allRowsSelected}
                       disabled={!hasChannels}
                       onChange={onTogglePageSelection}
+                      suppressHydrationWarning
                       type="checkbox"
                     />
                   </div>
@@ -884,6 +906,7 @@ function CatalogTableResults({
                         onChange={() => {
                           onToggleChannelSelection(channel.id);
                         }}
+                        suppressHydrationWarning
                         type="checkbox"
                       />
                     </td>

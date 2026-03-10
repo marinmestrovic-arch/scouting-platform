@@ -26,6 +26,18 @@ docker compose version
 
 From repo root:
 
+Fastest container-only path:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+This boots Postgres, runs bootstrap setup, applies Prisma migrations, seeds the initial admin, and
+starts both the web app and worker entirely inside Docker.
+
+If you also want host-side `pnpm` commands available, use the longer toolchain setup:
+
 ```bash
 nvm install
 nvm use
@@ -197,9 +209,10 @@ Symptoms:
 - login page shows `Unable to sign in right now. Please try again.`
 - `pnpm infra:logs` or `docker compose logs web` shows `No native build was found ... webpack=true`
 - the same log mentions `.next/server/vendor-chunks`
+- or `docker compose logs web` shows `CallbackRouteError` with `RUNTIME_REQUIRE is not a function`
 
 Fix:
-- keep native password hashing externalized in [apps/web/next.config.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/.worktrees/feature-agent-feat-local-dev-compose-stack/apps/web/next.config.ts) and runtime-resolved in [packages/core/src/auth/password.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/.worktrees/feature-agent-feat-local-dev-compose-stack/packages/core/src/auth/password.ts)
+- keep native password hashing externalized in [apps/web/next.config.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/apps/web/next.config.ts) and runtime-resolved in [packages/core/src/auth/password.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/packages/core/src/auth/password.ts)
 - restart the web service so Next picks up the config change:
 
 ```bash

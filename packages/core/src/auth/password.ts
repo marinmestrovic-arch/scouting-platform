@@ -4,7 +4,10 @@ import { createRequire } from "node:module";
 
 const PASSWORD_MIN_LENGTH = 8;
 type Argon2Module = typeof import("argon2");
+type RuntimeRequire = (id: string) => unknown;
 const ARGON2_MODULE_ID = Buffer.from("YXJnb24y", "base64").toString("utf8");
+
+declare const __non_webpack_require__: RuntimeRequire | undefined;
 
 function getRequireRoot(): string {
   const candidates = [
@@ -23,14 +26,29 @@ function getRequireRoot(): string {
   return packageJsonPath;
 }
 
-const RUNTIME_REQUIRE = createRequire(getRequireRoot());
+function getRuntimeRequire(): RuntimeRequire {
+  if (typeof __non_webpack_require__ === "function") {
+    return __non_webpack_require__;
+  }
+
+  try {
+    const runtimeRequire = (0, eval)("require") as RuntimeRequire;
+
+    if (typeof runtimeRequire === "function") {
+      return runtimeRequire;
+    }
+  } catch {
+    // Fall through to createRequire for plain Node execution contexts.
+  }
+
+  return createRequire(getRequireRoot());
+}
 
 let argon2Module: Argon2Module | null = null;
 
 async function loadArgon2(): Promise<Argon2Module> {
   if (!argon2Module) {
-    // Build the specifier at runtime so Next does not bundle the native addon into server chunks.
-    argon2Module = RUNTIME_REQUIRE(ARGON2_MODULE_ID) as Argon2Module;
+    argon2Module = getRuntimeRequire()(ARGON2_MODULE_ID) as Argon2Module;
   }
 
   return argon2Module;

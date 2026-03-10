@@ -17,6 +17,17 @@ describe("sign out form", () => {
     expect(html).toContain('<button class="auth-shell__signout" type="submit">Sign out</button>');
   });
 
+  it("suppresses hydration warnings on the form and button", () => {
+    const formElement = SignOutForm();
+    const buttonElement = (formElement.props as { children: { props: { suppressHydrationWarning?: boolean } } })
+      .children;
+
+    expect((formElement.props as { suppressHydrationWarning?: boolean }).suppressHydrationWarning).toBe(
+      true,
+    );
+    expect(buttonElement.props.suppressHydrationWarning).toBe(true);
+  });
+
   it("signs out with login redirect when submitted", async () => {
     const formElement = SignOutForm();
     const formAction = (formElement.props as { action: () => Promise<void> }).action;

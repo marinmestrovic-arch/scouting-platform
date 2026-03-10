@@ -102,6 +102,17 @@ Use the local runbook at [`/docs/setup/local.md`](./docs/setup/local.md).
 
 ## Local Development Setup
 
+Fastest container-only path:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+That is enough to boot Postgres, install dependencies in Docker volumes, run migrations, seed the
+initial admin, and start both the web app and worker. Host-side `nvm`/`pnpm` setup is only needed
+if you want to run workspace commands directly on your machine outside Docker.
+
 Prerequisites:
 - git
 - Docker
