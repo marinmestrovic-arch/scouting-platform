@@ -1,10 +1,29 @@
+import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
 const PASSWORD_MIN_LENGTH = 8;
 type Argon2Module = typeof import("argon2");
 const ARGON2_MODULE_ID = Buffer.from("YXJnb24y", "base64").toString("utf8");
-const RUNTIME_REQUIRE = createRequire(path.join(process.cwd(), "package.json"));
+
+function getRequireRoot(): string {
+  const candidates = [
+    path.resolve(process.cwd(), "packages/core/package.json"),
+    path.resolve(process.cwd(), "../packages/core/package.json"),
+    path.resolve(process.cwd(), "../../packages/core/package.json"),
+    path.resolve(process.cwd(), "package.json"),
+  ];
+
+  const packageJsonPath = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!packageJsonPath) {
+    throw new Error("Unable to locate a package root for argon2 resolution");
+  }
+
+  return packageJsonPath;
+}
+
+const RUNTIME_REQUIRE = createRequire(getRequireRoot());
 
 let argon2Module: Argon2Module | null = null;
 

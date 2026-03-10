@@ -19,12 +19,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   try {
     const url = new URL(request.url);
+    const enrichmentStatus = url.searchParams.getAll("enrichmentStatus");
+    const advancedReportStatus = url.searchParams.getAll("advancedReportStatus");
     const parsedQuery = listChannelsQuerySchema.safeParse({
       page: url.searchParams.get("page") ?? undefined,
       pageSize: url.searchParams.get("pageSize") ?? undefined,
       query: url.searchParams.get("query") ?? undefined,
-      enrichmentStatus: url.searchParams.getAll("enrichmentStatus"),
-      advancedReportStatus: url.searchParams.getAll("advancedReportStatus"),
+      ...(enrichmentStatus.length > 0 ? { enrichmentStatus } : {}),
+      ...(advancedReportStatus.length > 0 ? { advancedReportStatus } : {}),
     });
 
     if (!parsedQuery.success) {
