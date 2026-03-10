@@ -129,6 +129,10 @@ Automated ingestions never overwrite a field that has an active admin manual ove
 Managers may request HypeAuditor advanced reports, but every request must be approved by an admin
 before execution.
 
+Managers may request a new advanced report even when a prior completed report exists.
+Admins must be able to see how many days ago the last completed report finished and whether it is
+still inside the 120-day review window.
+
 Request lifecycle:
 - `pending_approval`
 - `approved`

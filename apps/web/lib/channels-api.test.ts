@@ -32,6 +32,13 @@ describe("channels api helpers", () => {
               completedAt: "2026-03-08T10:00:00.000Z",
               lastError: null,
             },
+            advancedReport: {
+              requestId: null,
+              status: "missing",
+              updatedAt: null,
+              completedAt: null,
+              lastError: null,
+            },
           },
         ],
         total: 32,

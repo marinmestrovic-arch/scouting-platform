@@ -56,6 +56,32 @@ enum ChannelEnrichmentStatus {
   @@map("channel_enrichment_status")
 }
 
+enum AdvancedReportRequestStatus {
+  PENDING_APPROVAL @map("pending_approval")
+  APPROVED         @map("approved")
+  REJECTED         @map("rejected")
+  QUEUED           @map("queued")
+  RUNNING          @map("running")
+  COMPLETED        @map("completed")
+  FAILED           @map("failed")
+
+  @@map("advanced_report_request_status")
+}
+
+enum ChannelInsightSource {
+  ADMIN_MANUAL @map("admin_manual")
+  CSV_IMPORT   @map("csv_import")
+  HYPEAUDITOR  @map("hypeauditor")
+
+  @@map("channel_insight_source")
+}
+
+enum ChannelProviderPayloadProvider {
+  HYPEAUDITOR @map("hypeauditor")
+
+  @@map("channel_provider_payload_provider")
+}
+
 model User {
   id                            String                  @id @default(uuid()) @db.Uuid
   name                          String?
@@ -76,6 +102,8 @@ model User {
   createdChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideCreatedBy")
   updatedChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideUpdatedBy")
   requestedChannelEnrichments   ChannelEnrichment[]     @relation("ChannelEnrichmentRequestedBy")
+  requestedAdvancedReports      AdvancedReportRequest[] @relation("AdvancedReportRequestedBy")
+  reviewedAdvancedReports       AdvancedReportRequest[] @relation("AdvancedReportReviewedBy")
 
   @@map("users")
 }
@@ -155,6 +183,9 @@ model Channel {
   manualOverrides ChannelManualOverride[]
   youtubeContext  ChannelYoutubeContext?
   enrichment      ChannelEnrichment?
+  insights        ChannelInsight?
+  providerPayloads ChannelProviderPayload[]
+  advancedReportRequests AdvancedReportRequest[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@map("channels")
@@ -217,6 +248,75 @@ model ChannelEnrichment {
   @@index([completedAt], map: "channel_enrichments_completed_at_idx")
   @@index([requestedByUserId], map: "channel_enrichments_requested_by_user_id_idx")
   @@map("channel_enrichments")
+}
+
+model ChannelInsight {
+  channelId                              String               @id @map("channel_id") @db.Uuid
+  audienceCountries                      Json?                @map("audience_countries")
+  audienceCountriesSource                ChannelInsightSource? @map("audience_countries_source")
+  audienceCountriesSourceUpdatedAt       DateTime?            @map("audience_countries_source_updated_at")
+  audienceGenderAge                      Json?                @map("audience_gender_age")
+  audienceGenderAgeSource                ChannelInsightSource? @map("audience_gender_age_source")
+  audienceGenderAgeSourceUpdatedAt       DateTime?            @map("audience_gender_age_source_updated_at")
+  audienceInterests                      Json?                @map("audience_interests")
+  audienceInterestsSource                ChannelInsightSource? @map("audience_interests_source")
+  audienceInterestsSourceUpdatedAt       DateTime?            @map("audience_interests_source_updated_at")
+  estimatedPriceCurrencyCode             String?              @map("estimated_price_currency_code")
+  estimatedPriceMin                      Float?               @map("estimated_price_min")
+  estimatedPriceMax                      Float?               @map("estimated_price_max")
+  estimatedPriceSource                   ChannelInsightSource? @map("estimated_price_source")
+  estimatedPriceSourceUpdatedAt          DateTime?            @map("estimated_price_source_updated_at")
+  brandMentions                          Json?                @map("brand_mentions")
+  brandMentionsSource                    ChannelInsightSource? @map("brand_mentions_source")
+  brandMentionsSourceUpdatedAt           DateTime?            @map("brand_mentions_source_updated_at")
+  createdAt                              DateTime             @default(now()) @map("created_at")
+  updatedAt                              DateTime             @updatedAt @map("updated_at")
+  channel                                Channel              @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("channel_insights")
+}
+
+model ChannelProviderPayload {
+  id                   String                        @id @default(uuid()) @db.Uuid
+  channelId            String                        @map("channel_id") @db.Uuid
+  provider             ChannelProviderPayloadProvider
+  payload              Json
+  fetchedAt            DateTime                      @default(now()) @map("fetched_at")
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  channel              Channel                       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  advancedReportRequest AdvancedReportRequest?       @relation("AdvancedReportRequestProviderPayload")
+
+  @@index([channelId], map: "channel_provider_payloads_channel_id_idx")
+  @@index([provider, fetchedAt], map: "channel_provider_payloads_provider_fetched_at_idx")
+  @@map("channel_provider_payloads")
+}
+
+model AdvancedReportRequest {
+  id                String                       @id @default(uuid()) @db.Uuid
+  channelId         String                       @map("channel_id") @db.Uuid
+  requestedByUserId String                       @map("requested_by_user_id") @db.Uuid
+  status            AdvancedReportRequestStatus  @default(PENDING_APPROVAL)
+  decisionNote      String?                      @map("decision_note") @db.Text
+  reviewedByUserId  String?                      @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt        DateTime?                    @map("reviewed_at")
+  providerPayloadId String?                      @unique @map("provider_payload_id") @db.Uuid
+  startedAt         DateTime?                    @map("started_at")
+  completedAt       DateTime?                    @map("completed_at")
+  lastError         String?                      @map("last_error") @db.Text
+  createdAt         DateTime                     @default(now()) @map("created_at")
+  updatedAt         DateTime                     @updatedAt @map("updated_at")
+  channel           Channel                      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  requestedByUser   User                         @relation("AdvancedReportRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  reviewedByUser    User?                        @relation("AdvancedReportReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  providerPayload   ChannelProviderPayload?      @relation("AdvancedReportRequestProviderPayload", fields: [providerPayloadId], references: [id], onDelete: SetNull)
+
+  @@index([channelId], map: "advanced_report_requests_channel_id_idx")
+  @@index([channelId, createdAt], map: "advanced_report_requests_channel_id_created_at_idx")
+  @@index([status], map: "advanced_report_requests_status_idx")
+  @@index([requestedByUserId], map: "advanced_report_requests_requested_by_user_id_idx")
+  @@index([reviewedByUserId], map: "advanced_report_requests_reviewed_by_user_id_idx")
+  @@index([createdAt], map: "advanced_report_requests_created_at_idx")
+  @@map("advanced_report_requests")
 }
 
 model AuditEvent {

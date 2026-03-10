@@ -91,10 +91,10 @@ Done when (Week 0 completion checkpoint):
 
 Done when:
 
-- admin can create a user
-- admin can assign/update YouTube key
-- user can log in
-- empty catalog pages load safely
+- [done] admin can create a user
+- [done] admin can assign/update YouTube key
+- [done] user can log in
+- [done] empty catalog pages load safely
 
 ### Week 2: Catalog browsing, segments, manual edit
 
@@ -178,10 +178,10 @@ Done when:
 
 #### You:
 
-- HypeAuditor adapter
-- advanced report request model
-- approval workflow backend
-- worker execution for approved requests
+- [done] HypeAuditor adapter
+- [done] advanced report request model
+- [done] approval workflow backend
+- [done] worker execution for approved requests
 - admin CSV import backend
 - import validation and row error reporting
 
@@ -198,6 +198,8 @@ Done when:
 - managers can request advanced reports
 - admins can approve/reject
 - admins can import CSV and see row-level failures
+- phased delivery note: Week 5 HypeAuditor backend slice is delivered end-to-end via `POST /api/channels/:id/advanced-report-requests`, `GET /api/admin/advanced-report-requests`, `GET /api/admin/advanced-report-requests/:id`, `POST /api/admin/advanced-report-requests/:id/approve`, `POST /api/admin/advanced-report-requests/:id/reject`, queue/worker execution for approved requests, persisted `pending_approval/approved/rejected/queued/running/completed/failed` lifecycle with visible `last_error`, normalized audience/commercial insights on `GET /api/channels/:id`, and admin-only raw payload inspection; CSV import backend items remain open.
+- evidence note: backend coverage lives in `packages/core/src/week5.integration.test.ts`, `apps/web/app/api/week5.integration.test.ts`, `apps/worker/src/channels-enrich-hypeauditor-worker.test.ts`, `packages/integrations/src/hypeauditor/report.test.ts`, and `packages/core/src/approvals/status.test.ts`.
 
 ### Week 6: Export and HubSpot
 

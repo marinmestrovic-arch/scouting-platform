@@ -49,6 +49,16 @@ import {
   hasPreviousCatalogPage,
 } from "./catalog-table-shell";
 
+function createAdvancedReportSummary() {
+  return {
+    requestId: null,
+    status: "missing" as const,
+    updatedAt: null,
+    completedAt: null,
+    lastError: null,
+  };
+}
+
 const pagedChannels: ListChannelsResponse = {
   items: [
     {
@@ -63,6 +73,7 @@ const pagedChannels: ListChannelsResponse = {
         completedAt: "2026-03-08T10:00:00.000Z",
         lastError: null,
       },
+      advancedReport: createAdvancedReportSummary(),
     },
     {
       id: "e11e5184-79a2-42bf-bceb-345f30611c39",
@@ -76,6 +87,7 @@ const pagedChannels: ListChannelsResponse = {
         completedAt: null,
         lastError: null,
       },
+      advancedReport: createAdvancedReportSummary(),
     },
   ],
   total: 42,
@@ -103,6 +115,7 @@ function buildChannelResponse(
           completedAt: null,
           lastError: null,
         },
+        advancedReport: createAdvancedReportSummary(),
       },
     ],
     total,
@@ -225,6 +238,7 @@ describe("catalog table shell view", () => {
             completedAt: null,
             lastError: status === "failed" ? "Provider error" : null,
           },
+          advancedReport: createAdvancedReportSummary(),
         })),
         total: statuses.length,
         page: 1,

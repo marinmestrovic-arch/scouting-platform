@@ -71,5 +71,21 @@ if (!databaseUrl) {
       expect(requestRows[0]?.relation_name).toBe("run_requests");
       expect(resultRows[0]?.relation_name).toBe("run_results");
     });
+
+    it("sees week 5 advanced report and insights tables after migrations are applied", async () => {
+      const requestRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('advanced_report_requests')::text AS relation_name
+      `;
+      const insightRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('channel_insights')::text AS relation_name
+      `;
+      const payloadRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('channel_provider_payloads')::text AS relation_name
+      `;
+
+      expect(requestRows[0]?.relation_name).toBe("advanced_report_requests");
+      expect(insightRows[0]?.relation_name).toBe("channel_insights");
+      expect(payloadRows[0]?.relation_name).toBe("channel_provider_payloads");
+    });
   });
 }
