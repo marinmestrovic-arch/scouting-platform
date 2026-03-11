@@ -34,6 +34,10 @@ const week5CsvImportBackendMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260310103000_week5_csv_import_backend/migration.sql",
 );
+const week6HubspotPushBackendMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260311143000_week6_hubspot_push_backend/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -126,6 +130,23 @@ describe("week 5 csv import backend migration", () => {
     expect(migrationSql).toContain('CREATE UNIQUE INDEX "csv_import_rows_batch_id_row_number_key"');
     expect(migrationSql).toContain(
       'ALTER TABLE "csv_import_batches" ADD CONSTRAINT "csv_import_batches_requested_by_user_id_fkey"',
+    );
+  });
+});
+
+describe("week 6 hubspot push backend migration", () => {
+  it("creates push batch and row lifecycle tables", () => {
+    const migrationSql = readFileSync(week6HubspotPushBackendMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "hubspot_push_batch_status" AS ENUM');
+    expect(migrationSql).toContain('CREATE TYPE "hubspot_push_batch_row_status" AS ENUM');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_push_batches"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_push_batch_rows"');
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_push_batch_rows_batch_id_channel_id_key"',
+    );
+    expect(migrationSql).toContain(
+      'ALTER TABLE "hubspot_push_batches" ADD CONSTRAINT "hubspot_push_batches_requested_by_user_id_fkey"',
     );
   });
 });

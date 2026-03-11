@@ -5,6 +5,7 @@ export * from "./channels";
 export * from "./enrichment";
 export * from "./errors";
 export * from "./exports";
+export * from "./hubspot";
 export * from "./imports";
 export * from "./runs";
 export * from "./segments";
