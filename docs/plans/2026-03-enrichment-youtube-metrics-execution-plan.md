@@ -18,6 +18,29 @@ This plan preserves the current system shape and does not replace any existing g
 
 ---
 
+# Scope Constraint
+
+This plan is backend-only.
+
+It is limited to Ivan-owned backend work in:
+
+- `packages/core`
+- `packages/integrations`
+- `packages/db`
+- `packages/contracts`
+- worker execution
+- additive server/API response changes where required for backend delivery
+
+It does not include:
+
+- new frontend screens
+- frontend UX changes
+- Playwright coverage
+- design-system work
+- UI changes that require Marin to rework or pause Week 6 catch-up work
+
+---
+
 # Current Repo Baseline
 
 The current backend already has:
@@ -31,6 +54,10 @@ The current backend already has:
   - `confidence`
 - canonical metric storage in `channel_metrics`
 - source-aware metric precedence fields on `channel_metrics`
+- Week 6 backend delivery for:
+  - CSV export batches
+  - HubSpot push batches
+  - related worker execution, audits, and integration coverage
 
 This plan therefore **extends the current enrichment model**. It does not introduce structured enrichment from scratch.
 
@@ -40,17 +67,14 @@ This plan therefore **extends the current enrichment model**. It does not introd
 
 `/TASKS.md` remains authoritative.
 
-The next open committed milestone is Week 6:
-
-- CSV export
-- HubSpot push
+Week 6 backend work is complete on Ivan's side. Week 6 still has open UI work on Marin's side.
 
 Because of that, this document should be treated as:
 
-- the default plan **after Week 6**, or
-- an explicit founder-approved reprioritization if work is pulled forward
+- an intentional backend-forward follow-up while frontend Week 6 work catches up, or
+- a founder-approved reprioritization if Week 7 stabilization must take precedence instead
 
-This plan must not be treated as an automatic pre-Week-6 override.
+This plan must not be treated as a hidden scope change for Week 6. It is a separate additive backend slice.
 
 ---
 
@@ -71,6 +95,28 @@ No change in this document should require a new ADR.
 
 ---
 
+# Delivery Shape
+
+This work should be implemented as **three separate PRs**, matching the three batches below.
+
+That split is intentional for safety:
+
+- each PR stays reviewable and migration scope remains bounded
+- rollback risk is lower if one batch causes integration issues
+- Batch 3 depends directly on the richer cached YouTube context from Batch 2
+- frontend work stays unblocked because each PR is backend-complete on its own surface
+
+Recommended PR order:
+
+1. PR 1: structured enrichment extension only
+2. PR 2: expanded cached YouTube context only
+3. PR 3: precedence-safe YouTube raw metrics only
+
+Do not combine all three batches into one PR unless there is a strong schedule reason and both
+founders explicitly prefer the larger review surface.
+
+---
+
 # Non-Goals
 
 The following are out of scope for this plan:
@@ -79,6 +125,9 @@ The following are out of scope for this plan:
 - new queue/job families for enrichment stages
 - discovery redesign
 - UI redesign
+- frontend implementation for new enrichment or metric fields
+- admin or catalog UI changes for this slice
+- any UI dependency that blocks Marin's Week 6 catch-up work
 - YouTube Analytics or Reporting APIs
 - comment sentiment or moderation pipelines
 - export schema decisions
@@ -231,6 +280,127 @@ Optional if trivial:
 
 - `averageLikes`
 
+`averageLikes` is optional only as a delivery-size constraint, not because it is lower-quality data.
+If it can be added without materially widening the migration, merge logic, and test surface for PR
+3, it is reasonable to include it in the same batch.
+
+If it noticeably expands the PR, defer it to a follow-up rather than delaying the required raw
+metric work.
+
+### Field Governance Model
+
+This implementation should use field governance to keep data ownership sane without changing the
+repo's global precedence rules.
+
+#### YouTube-only factual fields
+
+These are direct platform facts or deterministic derivatives of YouTube raw data.
+
+Examples:
+
+- `subscriberCount`
+- `viewCount`
+- `videoCount`
+- `averageViews`
+- `averageLikes`
+- upload-derived cadence/counts
+- cached recent-video stats such as `viewCount`, `likeCount`, and `commentCount`
+
+Rules:
+
+- `LLM` must not write these fields
+- `HypeAuditor` must not overwrite these fields in this slice
+- `YouTube raw` is the primary automated source for these factual fields
+- these fields still obey the repo's fixed global precedence order when a higher-ranked source
+  already owns the field
+
+#### HypeAuditor-owned audience/commercial fields
+
+These are audience/commercial enrichment fields already aligned with the Week 5 model.
+
+Examples:
+
+- audience geography
+- audience gender/age
+- audience interests
+- estimated price
+- brand mentions
+
+Rules:
+
+- `YouTube raw` does not populate these fields
+- `LLM` may populate provisional values for these fields where that is already part of the
+  enrichment design
+- `HypeAuditor` overwrites `LLM` values for these fields when present
+- `LLM` may still reference these fields in narrative output, but should not own factual platform
+  metrics
+
+#### LLM-only interpretive fields
+
+These remain descriptive and inferential only.
+
+Examples:
+
+- `summary`
+- `topics`
+- `brandFitNotes`
+- `structuredProfile`
+  - niche
+  - sponsor signals
+  - geo hints
+  - brand safety rationale
+  - content-format interpretation
+
+Rules:
+
+- no factual platform metrics belong here
+- these fields remain additive enrichment metadata, not canonical raw facts
+
+#### Heuristics
+
+Heuristics remain below `LLM` and above `YouTube raw` under the current repo-wide precedence
+model.
+
+In practice, heuristics should stay narrow and deterministic.
+
+Examples:
+
+- contact extraction signals
+- lightweight metadata hints
+- simple text-derived support signals where already justified
+
+Rules:
+
+- heuristics should not own factual platform metrics
+- heuristics should not replace HypeAuditor-owned audience/commercial fields when HypeAuditor or
+  LLM already owns them
+
+#### Admin/CSV override layer
+
+For this plan, the top override layer remains unchanged:
+
+- `admin_manual`
+- `csv_import`
+
+Both continue to outrank automated sources under the current locked precedence rules.
+
+### Separate Precedence Decision
+
+The idea that "only manual edits should override, not CSV" is **not** part of this implementation
+plan.
+
+That would be a separate precedence-change decision because the current repo rules explicitly place
+`csv_import` above `HypeAuditor`, `LLM`, `heuristics`, and `YouTube raw`.
+
+This plan must therefore preserve the current global precedence order:
+
+1. admin manual edit
+2. admin CSV import
+3. HypeAuditor
+4. LLM
+5. heuristics
+6. YouTube raw
+
 Good follow-on metrics after the initial slice:
 
 - `averageComments`
@@ -261,6 +431,7 @@ Field ownership for this slice is:
 - `YOUTUBE_RAW` is the primary automated source for factual observable performance metrics
 - `LLM` is not used as a source for factual metrics such as `subscriberCount`, `averageViews`, `averageLikes`, `averageComments`, `channelViewCount`, or `videoCount`
 - `LLM` remains limited to interpretive fields such as summary, topics, niche hints, brand-fit observations, language hints, and brand-safety metadata
+- `HypeAuditor` remains the higher-precedence source for audience/commercial fields when present
 
 For each metric field:
 
@@ -355,7 +526,7 @@ This plan is safe if treated as an extension of the current Week 4 enrichment fo
 
 Its critical constraints are:
 
-- do not reorder Week 6 by accident
+- do not destabilize completed Week 6 backend behavior while frontend Week 6 work is still catching up
 - do not overwrite higher-precedence metric sources
 - do not define a 12-video metric using an insufficient fetch window
 
