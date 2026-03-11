@@ -298,7 +298,8 @@ describe("channel detail shell behavior", () => {
     });
     expect(setEnrichmentActionState).toHaveBeenNthCalledWith(2, {
       type: "success",
-      message: "Enrichment request recorded. This page refreshes automatically while the worker runs.",
+      message:
+        "Enrichment request recorded. This page refreshes automatically while the worker runs, and the current result stays visible below until the refresh completes.",
     });
     expect(setRequestState).toHaveBeenCalledWith(expect.any(Function));
     expect(setReloadToken).toHaveBeenCalledWith(expect.any(Function));

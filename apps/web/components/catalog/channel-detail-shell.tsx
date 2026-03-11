@@ -201,6 +201,20 @@ export function shouldPollEnrichmentStatus(status: ChannelEnrichmentStatus): boo
   return status === "queued" || status === "running";
 }
 
+function hasVisibleEnrichmentResult(
+  enrichment: Pick<
+    ChannelEnrichmentDetail,
+    "summary" | "topics" | "brandFitNotes" | "confidence"
+  >,
+): boolean {
+  return (
+    (enrichment.summary?.trim().length ?? 0) > 0 ||
+    (enrichment.topics?.length ?? 0) > 0 ||
+    (enrichment.brandFitNotes?.trim().length ?? 0) > 0 ||
+    enrichment.confidence !== null
+  );
+}
+
 export function getEnrichmentActionLabel(status: ChannelEnrichmentStatus): string {
   if (status === "missing") {
     return "Enrich now";
@@ -221,34 +235,75 @@ export function getEnrichmentActionLabel(status: ChannelEnrichmentStatus): strin
   return "Refresh enrichment";
 }
 
+function getEnrichmentFeedbackTitle(status: ChannelEnrichmentStatus): string {
+  if (status === "missing") {
+    return "No enrichment requested";
+  }
+
+  if (status === "queued") {
+    return "Refresh queued";
+  }
+
+  if (status === "running") {
+    return "Refresh running";
+  }
+
+  if (status === "failed") {
+    return "Refresh failed";
+  }
+
+  if (status === "stale") {
+    return "Refresh recommended";
+  }
+
+  return "Latest enrichment ready";
+}
+
 export function getEnrichmentStatusMessage(
-  enrichment: Pick<ChannelEnrichmentDetail, "status" | "lastError">,
+  enrichment: Pick<
+    ChannelEnrichmentDetail,
+    "status" | "lastError" | "summary" | "topics" | "brandFitNotes" | "confidence"
+  >,
 ): string {
+  const hasRetainedResult = hasVisibleEnrichmentResult(enrichment);
+
   if (enrichment.status === "missing") {
     return "No enrichment has been requested yet. Queue one when you want a generated summary, topics, and brand fit notes.";
   }
 
   if (enrichment.status === "queued") {
-    return "Enrichment is queued. This page refreshes automatically while the worker waits to start.";
+    return hasRetainedResult
+      ? "Enrichment is queued. This page refreshes automatically while the worker waits to start, and the previous result stays visible below until the refresh finishes."
+      : "Enrichment is queued. This page refreshes automatically while the worker waits to start.";
   }
 
   if (enrichment.status === "running") {
-    return "Enrichment is running in the background. This page refreshes automatically while processing continues.";
+    return hasRetainedResult
+      ? "Enrichment is running in the background. This page refreshes automatically while processing continues, and the previous result stays visible below until the new result is stored."
+      : "Enrichment is running in the background. This page refreshes automatically while processing continues.";
   }
 
   if (enrichment.status === "failed") {
     if (enrichment.lastError) {
-      return `Last enrichment attempt failed: ${enrichment.lastError}`;
+      return hasRetainedResult
+        ? `Last enrichment attempt failed: ${enrichment.lastError}. The last successful enrichment stays visible below while you decide whether to retry.`
+        : `Last enrichment attempt failed: ${enrichment.lastError}`;
     }
 
-    return "The last enrichment attempt failed before the worker could complete it.";
+    return hasRetainedResult
+      ? "The last enrichment attempt failed before the worker could complete it. The last successful enrichment stays visible below while you decide whether to retry."
+      : "The last enrichment attempt failed before the worker could complete it.";
   }
 
   if (enrichment.status === "stale") {
-    return "This enrichment is stale because the channel changed or the freshness window expired. Refresh it to queue a new run.";
+    return hasRetainedResult
+      ? "This enrichment is stale because the channel changed or the freshness window expired. The last successful result stays visible below until you refresh it."
+      : "This enrichment is stale because the channel changed or the freshness window expired. Refresh it to queue a new run.";
   }
 
-  return "Enrichment is ready. Refresh it when the channel changes or you need a newer result.";
+  return hasRetainedResult
+    ? "Enrichment is ready. The latest stored result is visible below."
+    : "Enrichment is ready. Refresh it when the channel changes or you need a newer result.";
 }
 
 function getChannelDetailRequestErrorMessage(error: unknown): string {
@@ -283,16 +338,25 @@ function getEnrichmentRequestErrorMessage(error: unknown): string {
   return "Unable to request channel enrichment. Please try again.";
 }
 
-function getEnrichmentRequestSuccessMessage(status: ChannelEnrichmentStatus): string {
+function getEnrichmentRequestSuccessMessage(
+  status: ChannelEnrichmentStatus,
+  hasRetainedResult: boolean,
+): string {
   if (status === "running") {
-    return "Enrichment is already running. This page refreshes automatically while the worker finishes.";
+    return hasRetainedResult
+      ? "Enrichment is already running. This page refreshes automatically while the worker finishes, and the current result stays visible below."
+      : "Enrichment is already running. This page refreshes automatically while the worker finishes.";
   }
 
   if (status === "completed") {
-    return "Enrichment is already ready.";
+    return hasRetainedResult
+      ? "Enrichment is already ready. The current stored result remains visible below."
+      : "Enrichment is already ready.";
   }
 
-  return "Enrichment request recorded. This page refreshes automatically while the worker runs.";
+  return hasRetainedResult
+    ? "Enrichment request recorded. This page refreshes automatically while the worker runs, and the current result stays visible below until the refresh completes."
+    : "Enrichment request recorded. This page refreshes automatically while the worker runs.";
 }
 
 export function mergeChannelEnrichment(
@@ -422,6 +486,17 @@ function renderReadyState(
             <p>Request or refresh LLM enrichment here and keep the current result visible while new work runs.</p>
           </header>
 
+          <div
+            className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.enrichment.status}`}
+          >
+            <h3 className="channel-detail-shell__subheading">
+              {getEnrichmentFeedbackTitle(channel.enrichment.status)}
+            </h3>
+            <p className="channel-detail-shell__body-copy">
+              {getEnrichmentStatusMessage(channel.enrichment)}
+            </p>
+          </div>
+
           <div className="channel-detail-shell__actions">
             <button
               className="channel-detail-shell__button"
@@ -435,20 +510,18 @@ function renderReadyState(
                 ? "Requesting..."
                 : getEnrichmentActionLabel(channel.enrichment.status)}
             </button>
+          </div>
 
-            {actionStatus.message ? (
+          {actionStatus.message ? (
+            <div className="channel-detail-shell__request-feedback">
               <p
                 className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionStatus.type}`}
                 role={actionStatus.type === "error" ? "alert" : "status"}
               >
                 {actionStatus.message}
               </p>
-            ) : null}
-          </div>
-
-          <p className="channel-detail-shell__body-copy">
-            {getEnrichmentStatusMessage(channel.enrichment)}
-          </p>
+            </div>
+          ) : null}
 
           <dl className="channel-detail-shell__details">
             <div>
@@ -467,10 +540,12 @@ function renderReadyState(
               <dt>Confidence</dt>
               <dd>{formatConfidence(channel.enrichment.confidence)}</dd>
             </div>
-            <div>
-              <dt>Last error</dt>
-              <dd>{channel.enrichment.lastError ?? EMPTY_VALUE}</dd>
-            </div>
+            {channel.enrichment.lastError ? (
+              <div>
+                <dt>Last error</dt>
+                <dd>{channel.enrichment.lastError}</dd>
+              </div>
+            ) : null}
           </dl>
 
           <div className="channel-detail-shell__stack">
@@ -783,6 +858,8 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
       return;
     }
 
+    const hadVisibleEnrichment = hasVisibleEnrichmentResult(requestState.data.enrichment);
+
     setEnrichmentActionState({
       type: "submitting",
       message: "",
@@ -804,7 +881,10 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
       });
       setEnrichmentActionState({
         type: "success",
-        message: getEnrichmentRequestSuccessMessage(response.enrichment.status),
+        message: getEnrichmentRequestSuccessMessage(
+          response.enrichment.status,
+          hadVisibleEnrichment || hasVisibleEnrichmentResult(response.enrichment),
+        ),
       });
       setReloadToken((currentValue) => currentValue + 1);
     } catch (error) {

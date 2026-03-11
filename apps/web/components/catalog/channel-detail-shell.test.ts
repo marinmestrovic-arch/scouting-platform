@@ -162,8 +162,9 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Orbital Deep Dive");
     expect(html).toContain("@orbitaldeepdive");
     expect(html).toContain("Enrichment: Ready");
+    expect(html).toContain("Latest enrichment ready");
     expect(html).toContain("Refresh enrichment");
-    expect(html).toContain("Enrichment is ready. Refresh it when the channel changes or you need a newer result.");
+    expect(html).toContain("Enrichment is ready. The latest stored result is visible below.");
     expect(html).toContain("Advanced report: Completed");
     expect(html).toContain("Weekly coverage of launch systems and creator strategy.");
     expect(html).toContain("Creator focused on launches and industry analysis.");
@@ -171,6 +172,7 @@ describe("channel detail shell view", () => {
     expect(html).toContain("United States");
     expect(html).toContain("SpaceX");
     expect(html).toContain("USD 500-900");
+    expect(html.match(/>Last error</g)?.length ?? 0).toBe(1);
   });
 
   it("renders status-specific enrichment actions for requestable states", () => {
@@ -188,13 +190,14 @@ describe("channel detail shell view", () => {
       {
         status: "failed",
         actionLabel: "Retry enrichment",
-        statusCopy: "Last enrichment attempt failed: OpenAI enrichment request failed",
+        statusCopy:
+          "Last enrichment attempt failed: OpenAI enrichment request failed. The last successful enrichment stays visible below while you decide whether to retry.",
       },
       {
         status: "stale",
         actionLabel: "Refresh enrichment",
         statusCopy:
-          "This enrichment is stale because the channel changed or the freshness window expired. Refresh it to queue a new run.",
+          "This enrichment is stale because the channel changed or the freshness window expired. The last successful result stays visible below until you refresh it.",
       },
     ];
 
@@ -217,11 +220,15 @@ describe("channel detail shell view", () => {
     });
 
     expect(queuedHtml).toContain("Enrichment queued");
-    expect(queuedHtml).toContain("This page refreshes automatically while the worker waits to start.");
+    expect(queuedHtml).toContain(
+      "This page refreshes automatically while the worker waits to start, and the previous result stays visible below until the refresh finishes.",
+    );
     expect(queuedHtml).toContain("disabled=\"\"");
 
     expect(runningHtml).toContain("Enrichment running");
-    expect(runningHtml).toContain("This page refreshes automatically while processing continues.");
+    expect(runningHtml).toContain(
+      "This page refreshes automatically while processing continues, and the previous result stays visible below until the new result is stored.",
+    );
     expect(runningHtml).toContain("disabled=\"\"");
   });
 
@@ -229,7 +236,8 @@ describe("channel detail shell view", () => {
     const successHtml = renderReadyView({
       enrichmentActionState: {
         type: "success",
-        message: "Enrichment request recorded. This page refreshes automatically while the worker runs.",
+        message:
+          "Enrichment request recorded. This page refreshes automatically while the worker runs, and the current result stays visible below until the refresh completes.",
       },
     });
     const busyHtml = renderReadyView({
@@ -239,7 +247,9 @@ describe("channel detail shell view", () => {
       },
     });
 
-    expect(successHtml).toContain("Enrichment request recorded. This page refreshes automatically while the worker runs.");
+    expect(successHtml).toContain(
+      "Enrichment request recorded. This page refreshes automatically while the worker runs, and the current result stays visible below until the refresh completes.",
+    );
     expect(successHtml).toContain("role=\"status\"");
     expect(busyHtml).toContain("Requesting...");
     expect(busyHtml).toContain("disabled=\"\"");

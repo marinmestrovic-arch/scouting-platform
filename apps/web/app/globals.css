@@ -434,6 +434,48 @@ a {
   background: #fff6f3;
 }
 
+.run-detail__job-feedback,
+.recent-runs__job-feedback {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.run-detail__job-feedback h3,
+.recent-runs__job-feedback h4 {
+  margin: 0;
+}
+
+.run-detail__job-feedback p,
+.recent-runs__job-feedback p {
+  margin: 0;
+}
+
+.run-detail__job-feedback--info,
+.recent-runs__job-feedback--info {
+  border-color: rgba(15, 106, 104, 0.16);
+  background: linear-gradient(180deg, rgba(244, 250, 248, 0.96) 0%, rgba(234, 244, 240, 0.82) 100%);
+}
+
+.run-detail__job-feedback--success,
+.recent-runs__job-feedback--success {
+  border-color: rgba(20, 87, 73, 0.18);
+  background: linear-gradient(180deg, rgba(240, 249, 245, 0.96) 0%, rgba(223, 243, 235, 0.88) 100%);
+}
+
+.run-detail__job-feedback--error,
+.recent-runs__job-feedback--error {
+  border-color: rgba(159, 29, 29, 0.18);
+  background: linear-gradient(180deg, rgba(255, 245, 243, 0.96) 0%, rgba(252, 231, 229, 0.88) 100%);
+}
+
+.run-detail__job-feedback-note,
+.recent-runs__job-feedback-note {
+  color: var(--color-text-muted);
+}
+
 .recent-runs__panel,
 .recent-runs__feedback {
   border: 1px solid var(--color-border);
@@ -1835,6 +1877,37 @@ a {
 .channel-detail-shell__actions {
   display: grid;
   gap: var(--space-3);
+}
+
+.channel-detail-shell__job-feedback,
+.channel-detail-shell__request-feedback {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.channel-detail-shell__job-feedback--completed {
+  border-color: rgba(15, 106, 104, 0.18);
+  background: linear-gradient(180deg, rgba(244, 250, 248, 0.98) 0%, rgba(230, 244, 238, 0.9) 100%);
+}
+
+.channel-detail-shell__job-feedback--failed {
+  border-color: rgba(179, 69, 69, 0.2);
+  background: linear-gradient(180deg, rgba(255, 245, 243, 0.98) 0%, rgba(252, 231, 229, 0.9) 100%);
+}
+
+.channel-detail-shell__job-feedback--missing,
+.channel-detail-shell__job-feedback--queued,
+.channel-detail-shell__job-feedback--running,
+.channel-detail-shell__job-feedback--stale {
+  border-color: rgba(91, 103, 119, 0.16);
+  background: linear-gradient(180deg, rgba(250, 249, 245, 0.98) 0%, rgba(245, 241, 232, 0.88) 100%);
+}
+
+.channel-detail-shell__request-feedback {
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .channel-detail-shell__action-status {

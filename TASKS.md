@@ -167,18 +167,19 @@ Done when:
 - [done] enrichment status UI
 - [done] row-level enrichment visibility
 - [done] batch enrich actions
-- better job feedback in runs and channel detail
+- [done] better job feedback in runs and channel detail
 
 Done when:
 
-- manager can enrich from UI
-- errors are visible
-- repeated enrich does not re-fetch wastefully
-- phased delivery note: Week 4 backend foundation is delivered end-to-end via `POST /api/channels/:id/enrich`, additive enrichment state on `GET /api/channels` and `GET /api/channels/:id`, cached YouTube context reuse/refresh, OpenAI-backed worker execution, persisted `queued/running/completed/failed/stale` lifecycle, and visible `last_error`; Marin Week 4 UI items remain open.
+- [done] manager can enrich from UI
+- [done] errors are visible
+- [done] repeated enrich does not re-fetch wastefully
+- phased delivery note: Week 4 backend foundation is delivered end-to-end via `POST /api/channels/:id/enrich`, additive enrichment state on `GET /api/channels` and `GET /api/channels/:id`, cached YouTube context reuse/refresh, OpenAI-backed worker execution, persisted `queued/running/completed/failed/stale` lifecycle, and visible `last_error`; Marin Week 4 UI is now complete across catalog, runs, and channel detail.
 - evidence note: backend coverage lives in `packages/core/src/week4.integration.test.ts`, `apps/web/app/api/week4.integration.test.ts`, and `apps/worker/src/channels-enrich-llm-worker.test.ts`.
 - [done] evidence note: channel detail enrichment UI now ships on `/catalog/[channelId]` with request/retry/refresh actions backed by `POST /api/channels/:id/enrich`, automatic polling for `queued/running` states, preserved last successful enrichment content during refresh, and focused coverage in `apps/web/lib/channels-api.test.ts`, `apps/web/components/catalog/channel-detail-shell.test.ts`, and `apps/web/components/catalog/channel-detail-shell.behavior.test.ts`.
 - [done] evidence note: catalog row-level enrichment visibility now ships on `/catalog` with stacked per-row status context, timestamp/failure copy for completed/stale/failed rows, automatic polling while visible rows remain `queued` or `running`, and focused coverage in `apps/web/components/catalog/catalog-table-shell.test.ts` and `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`.
 - [done] evidence note: catalog batch enrichment now ships on `/catalog` with selection-aware `Enrich selected` actions, aggregated queued/running/error feedback for the current bulk request, immediate visible-row status updates before the next poll, and focused coverage in `apps/web/lib/channels-api.test.ts`, `apps/web/components/catalog/catalog-table-shell.test.ts`, and `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`.
+- [done] evidence note: runs and channel detail now surface dedicated Week 4 worker-feedback callouts on `/runs`, `/runs/[runId]`, and `/catalog/[channelId]`, including updated timestamp context for recent runs, clearer queued/running/completed/failed next-step guidance, explicit empty-snapshot feedback, preserved-result refresh messaging, and focused coverage in `apps/web/components/runs/recent-runs-shell.test.ts`, `apps/web/components/runs/run-detail-shell.test.ts`, `apps/web/components/catalog/channel-detail-shell.test.ts`, and `apps/web/components/catalog/channel-detail-shell.behavior.test.ts`.
 
 ### Week 5: HypeAuditor and admin workflows
 

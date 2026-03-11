@@ -9,9 +9,12 @@ import { ApiRequestError, fetchRunStatus } from "../../lib/runs-api";
 import {
   RUN_STATUS_POLL_INTERVAL_MS,
   formatRunResultCount as formatRunResultCountValue,
+  getRunJobFeedback,
+  getRunResultsEmptyMessage,
   formatRunStatusLabel,
   formatRunTimestamp,
   getRunFailureMessage,
+  getRunStatusSummary,
   shouldPollRunStatus,
 } from "./run-presentation";
 
@@ -65,23 +68,11 @@ export function formatRunResultCount(run: Pick<RunStatusResponse, "results">): s
 }
 
 export function getRunProgressMessage(run: Pick<RunStatusResponse, "status" | "results">): string {
-  if (run.status === "queued") {
-    return "This run is waiting for the discovery worker to pick it up.";
-  }
-
-  if (run.status === "running") {
-    return "Discovery is in progress. This page refreshes automatically while results are still changing.";
-  }
-
-  if (run.status === "completed") {
-    if (run.results.length === 0) {
-      return "Discovery completed without storing any matching channels in the snapshot.";
-    }
-
-    return "Discovery completed and the run snapshot is now fixed for review.";
-  }
-
-  return "Discovery failed before the snapshot finished.";
+  return getRunStatusSummary({
+    status: run.status,
+    resultCount: run.results.length,
+    lastError: null,
+  });
 }
 
 export function getRunDetailRequestErrorMessage(error: unknown): string {
@@ -150,7 +141,11 @@ function renderResultCard(result: RunResultItem) {
 }
 
 function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
-  const failureMessage = run.status === "failed" ? getRunFailureMessage(run) : null;
+  const jobFeedback = getRunJobFeedback({
+    status: run.status,
+    resultCount: run.results.length,
+    lastError: run.lastError,
+  });
 
   return (
     <>
@@ -179,6 +174,10 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
             <dd>{formatRunResultCount(run)}</dd>
           </div>
           <div>
+            <dt>Updated</dt>
+            <dd>{formatRunTimestamp(run.updatedAt)}</dd>
+          </div>
+          <div>
             <dt>Created</dt>
             <dd>{formatRunTimestamp(run.createdAt)}</dd>
           </div>
@@ -193,11 +192,28 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
         </dl>
       </section>
 
-      {failureMessage ? (
+      <section
+        aria-labelledby="run-detail-job-feedback-heading"
+        className={`run-detail__job-feedback run-detail__job-feedback--${jobFeedback.tone}`}
+      >
+        <div>
+          <p className="run-detail__eyebrow">Worker feedback</p>
+          <h3 id="run-detail-job-feedback-heading">{jobFeedback.title}</h3>
+          <p>{jobFeedback.summary}</p>
+          <p>{jobFeedback.nextStep}</p>
+          {jobFeedback.autoRefresh ? (
+            <p className="run-detail__job-feedback-note">
+              Auto-refresh is active while this discovery job is still queued or running.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+      {run.status === "failed" ? (
         <section aria-labelledby="run-detail-error-heading" className="run-detail__feedback run-detail__feedback--error">
           <div>
             <h3 id="run-detail-error-heading">Run failed</h3>
-            <p>{failureMessage}</p>
+            <p>{getRunFailureMessage(run)}</p>
           </div>
           <button className="run-detail__button" onClick={onRetry} type="button">
             Retry status check
@@ -209,7 +225,10 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
         <header className="run-detail__panel-header">
           <div>
             <h2 id="run-detail-results-heading">Snapshot results</h2>
-            <p>Stored in rank order so the run remains reproducible even after catalog data changes.</p>
+            <p>
+              Stored in rank order so the run remains reproducible even after catalog data changes.
+              Use the catalog links below to review each channel&apos;s enrichment status.
+            </p>
           </div>
           <button className="run-detail__button run-detail__button--secondary" onClick={onRetry} type="button">
             Refresh now
@@ -219,7 +238,11 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
         {run.results.length > 0 ? (
           <ul className="run-detail__results-list">{run.results.map((result) => renderResultCard(result))}</ul>
         ) : (
-          <p className="run-detail__empty-state">{getRunProgressMessage(run)}</p>
+          <p className="run-detail__empty-state">{getRunResultsEmptyMessage({
+            status: run.status,
+            resultCount: run.results.length,
+            lastError: run.lastError,
+          })}</p>
         )}
       </section>
     </>

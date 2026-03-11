@@ -10,7 +10,8 @@ import {
   formatRunResultCount,
   formatRunStatusLabel,
   formatRunTimestamp,
-  getRunFailureMessage,
+  getRunJobFeedback,
+  getRunStatusSummary,
   shouldPollRunStatus,
 } from "./run-presentation";
 
@@ -77,26 +78,16 @@ export function getRecentRunsSummary(data: ListRecentRunsResponse): string {
 export function getRecentRunProgressMessage(
   run: Pick<RecentRunItem, "status" | "resultCount" | "lastError">,
 ): string {
-  if (run.status === "queued") {
-    return "Waiting for the discovery worker to pick up this run.";
-  }
-
-  if (run.status === "running") {
-    return "Discovery is still in progress and this card refreshes automatically while it runs.";
-  }
-
-  if (run.status === "completed") {
-    if (run.resultCount === 0) {
-      return "Discovery completed without saving any matching channels in the snapshot.";
-    }
-
-    return "Snapshot is complete and ready for review.";
-  }
-
-  return getRunFailureMessage(run);
+  return getRunStatusSummary(run);
 }
 
 function renderRunCard(run: RecentRunItem) {
+  const jobFeedback = getRunJobFeedback({
+    status: run.status,
+    resultCount: run.resultCount,
+    lastError: run.lastError,
+  });
+
   return (
     <li className="recent-runs__item" key={run.id}>
       <div className="recent-runs__item-header">
@@ -113,6 +104,17 @@ function renderRunCard(run: RecentRunItem) {
 
       <p className="recent-runs__copy">{getRecentRunProgressMessage(run)}</p>
 
+      <div className={`recent-runs__job-feedback recent-runs__job-feedback--${jobFeedback.tone}`}>
+        <h4>{jobFeedback.title}</h4>
+        <p>{jobFeedback.summary}</p>
+        <p>{jobFeedback.nextStep}</p>
+        {jobFeedback.autoRefresh ? (
+          <p className="recent-runs__job-feedback-note">
+            Auto-refresh is active while this job is queued or running.
+          </p>
+        ) : null}
+      </div>
+
       <dl className="recent-runs__meta-grid">
         <div>
           <dt>Results</dt>
@@ -121,6 +123,10 @@ function renderRunCard(run: RecentRunItem) {
         <div>
           <dt>Created</dt>
           <dd>{formatRunTimestamp(run.createdAt)}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{formatRunTimestamp(run.updatedAt)}</dd>
         </div>
         <div>
           <dt>Started</dt>

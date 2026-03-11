@@ -63,15 +63,11 @@ describe("recent runs shell", () => {
     expect(hasActiveRecentRuns([buildRun("completed")])).toBe(false);
   });
 
-  it("maps failed and completed states to actionable copy", () => {
+  it("maps failed and completed states to short status summaries", () => {
     expect(
       getRecentRunProgressMessage(buildRun("failed", { lastError: "YouTube API quota exceeded" })),
-    ).toBe(
-      "YouTube API quota was exhausted before discovery completed. Retry later or ask an admin to rotate the assigned key.",
-    );
-    expect(getRecentRunProgressMessage(buildRun("completed", { resultCount: 0 }))).toBe(
-      "Discovery completed without saving any matching channels in the snapshot.",
-    );
+    ).toBe("Run needs attention before you try again.");
+    expect(getRecentRunProgressMessage(buildRun("completed", { resultCount: 0 }))).toBe("Snapshot complete with no saved matches.");
   });
 
   it("renders loading and error states", () => {
@@ -120,7 +116,11 @@ describe("recent runs shell", () => {
     expect(readyHtml).toContain("Running Run");
     expect(readyHtml).toContain("Completed Run");
     expect(readyHtml).toContain("Failed Run");
+    expect(readyHtml).toContain("Discovery job running");
+    expect(readyHtml).toContain("Auto-refresh is active while this job is queued or running.");
+    expect(readyHtml).toContain("Discovery job failed");
     expect(readyHtml).toContain("This account needs an assigned YouTube API key before the worker can run discovery.");
+    expect(readyHtml).toContain("Updated");
     expect(readyHtml).toContain('href="/runs/run-completed"');
   });
 });
