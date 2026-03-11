@@ -108,6 +108,23 @@ enum CsvExportBatchStatus {
   @@map("csv_export_batch_status")
 }
 
+enum HubspotPushBatchStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("hubspot_push_batch_status")
+}
+
+enum HubspotPushBatchRowStatus {
+  PENDING @map("pending")
+  PUSHED  @map("pushed")
+  FAILED  @map("failed")
+
+  @@map("hubspot_push_batch_row_status")
+}
+
 enum CsvExportScopeType {
   SELECTED @map("selected")
   FILTERED @map("filtered")
@@ -139,6 +156,7 @@ model User {
   reviewedAdvancedReports       AdvancedReportRequest[] @relation("AdvancedReportReviewedBy")
   requestedCsvImportBatches     CsvImportBatch[]        @relation("CsvImportRequestedBy")
   requestedCsvExportBatches     CsvExportBatch[]        @relation("CsvExportRequestedBy")
+  requestedHubspotPushBatches   HubspotPushBatch[]      @relation("HubspotPushRequestedBy")
 
   @@map("users")
 }
@@ -224,6 +242,7 @@ model Channel {
   contacts        ChannelContact[]
   metrics         ChannelMetric?
   csvImportRows   CsvImportRow[]
+  hubspotPushBatchRows HubspotPushBatchRow[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@map("channels")
@@ -491,6 +510,48 @@ model CsvExportBatch {
   @@index([status], map: "csv_export_batches_status_idx")
   @@index([createdAt], map: "csv_export_batches_created_at_idx")
   @@map("csv_export_batches")
+}
+
+model HubspotPushBatch {
+  id                String                 @id @default(uuid()) @db.Uuid
+  requestedByUserId String                 @map("requested_by_user_id") @db.Uuid
+  scopePayload      Json                   @map("scope_payload")
+  status            HubspotPushBatchStatus @default(QUEUED)
+  totalRowCount     Int                    @default(0) @map("total_row_count")
+  pushedRowCount    Int                    @default(0) @map("pushed_row_count")
+  failedRowCount    Int                    @default(0) @map("failed_row_count")
+  startedAt         DateTime?              @map("started_at")
+  completedAt       DateTime?              @map("completed_at")
+  lastError         String?                @map("last_error") @db.Text
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  requestedByUser   User                   @relation("HubspotPushRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  rows              HubspotPushBatchRow[]
+
+  @@index([requestedByUserId], map: "hubspot_push_batches_requested_by_user_id_idx")
+  @@index([status], map: "hubspot_push_batches_status_idx")
+  @@index([createdAt], map: "hubspot_push_batches_created_at_idx")
+  @@map("hubspot_push_batches")
+}
+
+model HubspotPushBatchRow {
+  id              String                    @id @default(uuid()) @db.Uuid
+  batchId         String                    @map("batch_id") @db.Uuid
+  channelId       String                    @map("channel_id") @db.Uuid
+  contactEmail    String?                   @map("contact_email")
+  status          HubspotPushBatchRowStatus @default(PENDING)
+  hubspotObjectId String?                   @map("hubspot_object_id")
+  errorMessage    String?                   @map("error_message") @db.Text
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  batch           HubspotPushBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  channel         Channel                   @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, channelId], map: "hubspot_push_batch_rows_batch_id_channel_id_key")
+  @@index([batchId], map: "hubspot_push_batch_rows_batch_id_idx")
+  @@index([channelId], map: "hubspot_push_batch_rows_channel_id_idx")
+  @@index([status], map: "hubspot_push_batch_rows_status_idx")
+  @@map("hubspot_push_batch_rows")
 }
 
 model RunRequest {

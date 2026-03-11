@@ -497,7 +497,7 @@ export async function approveAdvancedReportRequest(
       },
     });
   } catch (error) {
-    await prisma.advancedReportRequest.update({
+    await prisma.advancedReportRequest.updateMany({
       where: {
         id: input.advancedReportRequestId,
       },

@@ -107,5 +107,17 @@ if (!databaseUrl) {
       expect(contactRows[0]?.relation_name).toBe("channel_contacts");
       expect(metricRows[0]?.relation_name).toBe("channel_metrics");
     });
+
+    it("sees week 6 hubspot push tables after migrations are applied", async () => {
+      const batchRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('hubspot_push_batches')::text AS relation_name
+      `;
+      const rowRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('hubspot_push_batch_rows')::text AS relation_name
+      `;
+
+      expect(batchRows[0]?.relation_name).toBe("hubspot_push_batches");
+      expect(rowRows[0]?.relation_name).toBe("hubspot_push_batch_rows");
+    });
   });
 }
