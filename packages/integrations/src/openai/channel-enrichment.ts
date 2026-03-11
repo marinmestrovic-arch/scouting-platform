@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import type { YoutubeChannelContext } from "../youtube/context";
 
+const OPENAI_MODEL_FALLBACK = "gpt-5-nano";
+
 const outputSchema = z.object({
   summary: z.string().trim().min(1),
   topics: z.array(z.string().trim().min(1)).min(1).max(20),
@@ -21,7 +23,7 @@ const inputSchema = z.object({
   }),
   youtubeContext: z.custom<YoutubeChannelContext>(),
   apiKey: z.string().trim().min(1).optional(),
-  model: z.string().trim().min(1).default("gpt-4.1-mini"),
+  model: z.string().trim().min(1).optional(),
   client: z.custom<OpenAiClientLike>().optional(),
 });
 
@@ -90,6 +92,10 @@ function getApiKey(override?: string): string {
 
 function getClient(apiKey: string, override?: OpenAiClientLike): OpenAiClientLike {
   return override ?? (new OpenAI({ apiKey }) as unknown as OpenAiClientLike);
+}
+
+function getModel(override?: string): string {
+  return override?.trim() || process.env.OPENAI_MODEL?.trim() || OPENAI_MODEL_FALLBACK;
 }
 
 function buildPrompt(input: z.output<typeof inputSchema>): string {
@@ -185,13 +191,13 @@ export async function enrichChannelWithOpenAi(
   const input = inputSchema.parse(rawInput);
   const apiKey = getApiKey(input.apiKey);
   const client = getClient(apiKey, input.client);
+  const model = getModel(input.model);
 
   let response: OpenAiCompletionResponse;
 
   try {
     response = await client.chat.completions.create({
-      model: input.model,
-      temperature: 0.2,
+      model,
       response_format: {
         type: "json_object",
       },

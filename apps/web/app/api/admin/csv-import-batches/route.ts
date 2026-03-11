@@ -1,5 +1,6 @@
 import {
   csvImportBatchSummarySchema,
+  csvImportUploadFileSchema,
   listCsvImportBatchesResponseSchema,
 } from "@scouting-platform/contracts";
 import { createCsvImportBatch, listCsvImportBatches } from "@scouting-platform/core";
@@ -38,10 +39,26 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "CSV file is required" }, { status: 400 });
     }
 
-    const batch = await createCsvImportBatch({
-      requestedByUserId: admin.userId,
+    const parsedFile = csvImportUploadFileSchema.safeParse({
       fileName: file.name,
       fileSize: file.size,
+      mimeType: file.type,
+    });
+
+    if (!parsedFile.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid request payload",
+          details: parsedFile.error.flatten(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const batch = await createCsvImportBatch({
+      requestedByUserId: admin.userId,
+      fileName: parsedFile.data.fileName,
+      fileSize: parsedFile.data.fileSize,
       csvText: await file.text(),
     });
     const payload = csvImportBatchSummarySchema.parse(batch);

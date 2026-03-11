@@ -6,13 +6,15 @@ For staging deployment, use [`/docs/setup/staging-railway.md`](./staging-railway
 
 ## Prerequisites
 
-Install:
+Required for the container-only path:
 - Git
 - Docker Engine + Docker Compose
+
+Optional for host-side workspace commands:
 - nvm (recommended, installs Node.js 22 from `.nvmrc`)
 - Corepack (bundled with modern Node)
 
-Verify:
+If you plan to run host-side workspace commands, verify:
 
 ```bash
 nvm --version
@@ -49,6 +51,8 @@ pnpm infra:ps
 pnpm infra:logs
 ```
 
+`pnpm infra:up` is the host-side shorthand for the same full-stack Docker Compose bring-up.
+
 Then sign in at `http://localhost:3000/login` with:
 
 ```text
@@ -78,7 +82,6 @@ pnpm test
 ```bash
 pnpm infra:up         # build and start postgres + bootstrap + web + worker
 pnpm dev:stack        # alias for the full local dev stack
-pnpm infra:db:up      # start only local Postgres
 pnpm infra:pull       # pull latest postgres:17-alpine image
 pnpm infra:refresh-postgres # pull + recreate postgres service + wait for readiness
 pnpm infra:ps         # inspect container status
@@ -88,12 +91,19 @@ pnpm infra:reset-db   # destroy and recreate DB volume
 pnpm security:scan:postgres # advisory High/Critical CVE scan for postgres image
 ```
 
+Advanced helper:
+
+```bash
+pnpm infra:db:up      # start only local Postgres for edge-case troubleshooting
+```
+
 ## DB integration test prep (Week 3 backend)
 
 Run this sequence before DB-backed integration suites:
 
 ```bash
-pnpm infra:db:up
+docker compose up --build
+# or: pnpm infra:up
 pnpm infra:ps
 pnpm db:migrate:test
 pnpm verify:week3:backend
@@ -162,7 +172,7 @@ Fix:
 - set an alternate local port:
 
 ```bash
-POSTGRES_PORT=5433 pnpm infra:db:up
+POSTGRES_PORT=5433 pnpm infra:up
 ```
 
 - update `DATABASE_URL` and `DATABASE_URL_TEST` in `.env` to match the new port
@@ -212,7 +222,7 @@ Symptoms:
 - or `docker compose logs web` shows `CallbackRouteError` with `RUNTIME_REQUIRE is not a function`
 
 Fix:
-- keep native password hashing externalized in [apps/web/next.config.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/apps/web/next.config.ts) and runtime-resolved in [packages/core/src/auth/password.ts](/Users/marinmestrovic/Desktop/code/scouting-platform/packages/core/src/auth/password.ts)
+- keep native password hashing externalized in `apps/web/next.config.ts` and runtime-resolved in `packages/core/src/auth/password.ts`
 - restart the web service so Next picks up the config change:
 
 ```bash
@@ -231,8 +241,8 @@ Common cause:
 
 Fix:
 - run `pnpm infra:ps` and confirm compose Postgres is up and mapped to the expected host port
-- if needed, remap compose Postgres and align `.env` URLs:
-  - `POSTGRES_PORT=5433 pnpm infra:db:up`
+- if needed, remap the full stack and align `.env` URLs:
+  - `POSTGRES_PORT=5433 pnpm infra:up`
   - update both `DATABASE_URL` and `DATABASE_URL_TEST` to `localhost:5433`
 - run `pnpm db:migrate:test`
 - rerun `pnpm verify:week3:backend`

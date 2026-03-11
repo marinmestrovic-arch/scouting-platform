@@ -113,13 +113,15 @@ That is enough to boot Postgres, install dependencies in Docker volumes, run mig
 initial admin, and start both the web app and worker. Host-side `nvm`/`pnpm` setup is only needed
 if you want to run workspace commands directly on your machine outside Docker.
 
-Prerequisites:
+Required for the container-only path:
 - git
 - Docker
+
+Optional for host-side workspace commands:
 - nvm
 - pnpm
 
-Setup flow:
+If you also want the host-side shorthand for the same full-stack Docker flow, use:
 
 ```bash
 nvm install
@@ -133,8 +135,8 @@ cp .env.example .env
 pnpm infra:up
 ```
 
-The Compose stack now boots local Postgres, runs bootstrap setup, then starts both the web app and
-worker. Sign in with the seeded initial admin from `.env` or `.env.example`:
+`pnpm infra:up` is just the scripted shorthand for bringing up the same Docker Compose stack.
+Sign in with the seeded initial admin from `.env` or `.env.example`:
 
 ```text
 email: admin@example.com
