@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiRequestError, fetchChannelDetail, fetchChannels } from "./channels-api";
+import {
+  ApiRequestError,
+  fetchChannelDetail,
+  fetchChannels,
+  requestChannelEnrichment,
+} from "./channels-api";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -276,6 +281,60 @@ describe("channels api helpers", () => {
       }),
     );
     expect(response.enrichment.topics).toEqual(["space", "launches"]);
+  });
+
+  it("requests enrichment from POST /api/channels/:id/enrich", async () => {
+    const channelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        channelId,
+        enrichment: buildChannelDetailPayload().enrichment,
+      }),
+    );
+
+    const response = await requestChannelEnrichment(channelId);
+
+    expect(fetchSpy).toHaveBeenCalledWith(`/api/channels/${channelId}/enrich`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+    expect(response.channelId).toBe(channelId);
+    expect(response.enrichment.summary).toBe("Creator focused on launches and industry analysis.");
+  });
+
+  it("surfaces actionable enrichment request errors from the API", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: "Assigned YouTube API key is required before requesting enrichment",
+        },
+        400,
+      ),
+    );
+
+    await expect(
+      requestChannelEnrichment("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toMatchObject({
+      message: "Assigned YouTube API key is required before requesting enrichment",
+      status: 400,
+    } satisfies Partial<ApiRequestError>);
+  });
+
+  it("throws when the enrichment response shape is invalid", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        channelId: "53adac17-f39d-4731-a61f-194150fbc431",
+        enrichment: {
+          status: "queued",
+        },
+      }),
+    );
+
+    await expect(
+      requestChannelEnrichment("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toThrow("Received an invalid channel enrichment response from the server.");
   });
 
   it("surfaces not found responses for the detail page", async () => {

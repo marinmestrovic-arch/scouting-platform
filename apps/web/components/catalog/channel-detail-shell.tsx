@@ -3,6 +3,7 @@
 import type {
   ChannelAdvancedReportStatus,
   ChannelDetail,
+  ChannelEnrichmentDetail,
   ChannelEnrichmentStatus,
   ChannelEstimatedPrice,
 } from "@scouting-platform/contracts";
@@ -10,7 +11,11 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
-import { ApiRequestError, fetchChannelDetail } from "../../lib/channels-api";
+import {
+  ApiRequestError,
+  fetchChannelDetail,
+  requestChannelEnrichment,
+} from "../../lib/channels-api";
 import { AdminChannelManualEditPanel } from "./admin-channel-manual-edit-panel";
 
 type ChannelDetailShellProps = Readonly<{
@@ -40,9 +45,16 @@ type ChannelDetailRequestState =
       error: null;
     };
 
+type ChannelEnrichmentActionState = {
+  type: "idle" | "submitting" | "success" | "error";
+  message: string;
+};
+
 type ChannelDetailShellViewProps = ChannelDetailShellProps & {
   requestState: ChannelDetailRequestState;
+  enrichmentActionState: ChannelEnrichmentActionState;
   onRetry: () => void;
+  onRequestEnrichment: () => void | Promise<void>;
   onChannelUpdated?: (channel: ChannelDetail) => void;
 };
 
@@ -52,7 +64,20 @@ const INITIAL_REQUEST_STATE: ChannelDetailRequestState = {
   error: null,
 };
 
+const NOT_FOUND_REQUEST_STATE: ChannelDetailRequestState = {
+  status: "notFound",
+  data: null,
+  error: null,
+};
+
+const IDLE_ENRICHMENT_ACTION_STATE: ChannelEnrichmentActionState = {
+  type: "idle",
+  message: "",
+};
+
 const EMPTY_VALUE = "Not available";
+
+export const ENRICHMENT_STATUS_POLL_INTERVAL_MS = 3000;
 
 function formatIsoTimestamp(value: string | null): string {
   if (!value) {
@@ -172,13 +197,134 @@ function hasAudienceInsights(channel: ChannelDetail): boolean {
   );
 }
 
+export function shouldPollEnrichmentStatus(status: ChannelEnrichmentStatus): boolean {
+  return status === "queued" || status === "running";
+}
+
+export function getEnrichmentActionLabel(status: ChannelEnrichmentStatus): string {
+  if (status === "missing") {
+    return "Enrich now";
+  }
+
+  if (status === "failed") {
+    return "Retry enrichment";
+  }
+
+  if (status === "queued") {
+    return "Enrichment queued";
+  }
+
+  if (status === "running") {
+    return "Enrichment running";
+  }
+
+  return "Refresh enrichment";
+}
+
+export function getEnrichmentStatusMessage(
+  enrichment: Pick<ChannelEnrichmentDetail, "status" | "lastError">,
+): string {
+  if (enrichment.status === "missing") {
+    return "No enrichment has been requested yet. Queue one when you want a generated summary, topics, and brand fit notes.";
+  }
+
+  if (enrichment.status === "queued") {
+    return "Enrichment is queued. This page refreshes automatically while the worker waits to start.";
+  }
+
+  if (enrichment.status === "running") {
+    return "Enrichment is running in the background. This page refreshes automatically while processing continues.";
+  }
+
+  if (enrichment.status === "failed") {
+    if (enrichment.lastError) {
+      return `Last enrichment attempt failed: ${enrichment.lastError}`;
+    }
+
+    return "The last enrichment attempt failed before the worker could complete it.";
+  }
+
+  if (enrichment.status === "stale") {
+    return "This enrichment is stale because the channel changed or the freshness window expired. Refresh it to queue a new run.";
+  }
+
+  return "Enrichment is ready. Refresh it when the channel changes or you need a newer result.";
+}
+
+function getChannelDetailRequestErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401 || error.status === 403) {
+      return "Your session does not allow access to this channel anymore. Sign in again and retry.";
+    }
+
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to load channel details. Please try again.";
+}
+
+function getEnrichmentRequestErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401 || error.status === 403) {
+      return "Your session does not allow enrichment requests anymore. Sign in again and retry.";
+    }
+
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to request channel enrichment. Please try again.";
+}
+
+function getEnrichmentRequestSuccessMessage(status: ChannelEnrichmentStatus): string {
+  if (status === "running") {
+    return "Enrichment is already running. This page refreshes automatically while the worker finishes.";
+  }
+
+  if (status === "completed") {
+    return "Enrichment is already ready.";
+  }
+
+  return "Enrichment request recorded. This page refreshes automatically while the worker runs.";
+}
+
+export function mergeChannelEnrichment(
+  channel: ChannelDetail,
+  enrichment: ChannelEnrichmentDetail,
+): ChannelDetail {
+  return {
+    ...channel,
+    enrichment: {
+      ...enrichment,
+      summary: enrichment.summary ?? channel.enrichment.summary,
+      topics: enrichment.topics ?? channel.enrichment.topics,
+      brandFitNotes: enrichment.brandFitNotes ?? channel.enrichment.brandFitNotes,
+      confidence: enrichment.confidence ?? channel.enrichment.confidence,
+    },
+  };
+}
+
 function renderReadyState(
   channel: ChannelDetail,
-  options?: {
+  options: {
     canManageManualEdits: boolean;
+    enrichmentActionState: ChannelEnrichmentActionState;
+    onRequestEnrichment: () => void | Promise<void>;
     onChannelUpdated?: (channel: ChannelDetail) => void;
   },
 ) {
+  const isBusy =
+    options.enrichmentActionState.type === "submitting" ||
+    shouldPollEnrichmentStatus(channel.enrichment.status);
+  const actionStatus = options.enrichmentActionState;
+
   return (
     <>
       <section aria-labelledby="channel-detail-shell-heading" className="channel-detail-shell__hero">
@@ -273,8 +419,36 @@ function renderReadyState(
         >
           <header>
             <h2 id="channel-detail-shell-enrichment-heading">Enrichment</h2>
-            <p>Read-only enrichment status is visible here. Mutations stay in later milestones.</p>
+            <p>Request or refresh LLM enrichment here and keep the current result visible while new work runs.</p>
           </header>
+
+          <div className="channel-detail-shell__actions">
+            <button
+              className="channel-detail-shell__button"
+              disabled={isBusy}
+              onClick={() => {
+                void options.onRequestEnrichment();
+              }}
+              type="button"
+            >
+              {options.enrichmentActionState.type === "submitting"
+                ? "Requesting..."
+                : getEnrichmentActionLabel(channel.enrichment.status)}
+            </button>
+
+            {actionStatus.message ? (
+              <p
+                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionStatus.type}`}
+                role={actionStatus.type === "error" ? "alert" : "status"}
+              >
+                {actionStatus.message}
+              </p>
+            ) : null}
+          </div>
+
+          <p className="channel-detail-shell__body-copy">
+            {getEnrichmentStatusMessage(channel.enrichment)}
+          </p>
 
           <dl className="channel-detail-shell__details">
             <div>
@@ -467,7 +641,7 @@ function renderReadyState(
           )}
         </section>
 
-        {options?.canManageManualEdits && options.onChannelUpdated ? (
+        {options.canManageManualEdits && options.onChannelUpdated ? (
           <AdminChannelManualEditPanel channel={channel} onChannelUpdated={options.onChannelUpdated} />
         ) : null}
       </div>
@@ -478,7 +652,9 @@ function renderReadyState(
 export function ChannelDetailShellView({
   canManageManualEdits,
   channelId,
+  enrichmentActionState,
   onChannelUpdated,
+  onRequestEnrichment,
   onRetry,
   requestState,
 }: ChannelDetailShellViewProps) {
@@ -515,6 +691,8 @@ export function ChannelDetailShellView({
       {requestState.status === "ready"
         ? renderReadyState(requestState.data, {
             canManageManualEdits: canManageManualEdits ?? false,
+            enrichmentActionState,
+            onRequestEnrichment,
             ...(onChannelUpdated ? { onChannelUpdated } : {}),
           })
         : null}
@@ -526,19 +704,24 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
   const isManualEditEnabled = canManageManualEdits ?? false;
   const [requestState, setRequestState] = useState<ChannelDetailRequestState>(INITIAL_REQUEST_STATE);
   const [reloadToken, setReloadToken] = useState(0);
+  const [enrichmentActionState, setEnrichmentActionState] = useState<ChannelEnrichmentActionState>(
+    IDLE_ENRICHMENT_ACTION_STATE,
+  );
 
   useEffect(() => {
+    let didCancel = false;
     const abortController = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    setRequestState({
-      status: "loading",
-      data: null,
-      error: null,
-    });
+    async function loadChannel(polling = false) {
+      if (!polling && requestState.status !== "ready") {
+        setRequestState(INITIAL_REQUEST_STATE);
+      }
 
-    void fetchChannelDetail(channelId, abortController.signal)
-      .then((channel) => {
-        if (abortController.signal.aborted) {
+      try {
+        const channel = await fetchChannelDetail(channelId, abortController.signal);
+
+        if (didCancel) {
           return;
         }
 
@@ -547,43 +730,96 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
           data: channel,
           error: null,
         });
-      })
-      .catch((error: unknown) => {
-        if (
-          abortController.signal.aborted ||
-          (error instanceof Error && error.name === "AbortError")
-        ) {
+
+        if (shouldPollEnrichmentStatus(channel.enrichment.status)) {
+          timeoutId = setTimeout(() => {
+            void loadChannel(true);
+          }, ENRICHMENT_STATUS_POLL_INTERVAL_MS);
+        }
+      } catch (error: unknown) {
+        if (didCancel || (error instanceof Error && error.name === "AbortError")) {
           return;
         }
 
         if (error instanceof ApiRequestError && error.status === 404) {
-          setRequestState({
-            status: "notFound",
-            data: null,
-            error: null,
-          });
+          setRequestState(NOT_FOUND_REQUEST_STATE);
+          return;
+        }
+
+        if (polling && requestState.status === "ready") {
           return;
         }
 
         setRequestState({
           status: "error",
           data: null,
-          error:
-            error instanceof Error && error.message
-              ? error.message
-              : "Unable to load channel details. Please try again.",
+          error: getChannelDetailRequestErrorMessage(error),
         });
-      });
+      }
+    }
+
+    void loadChannel();
 
     return () => {
+      didCancel = true;
       abortController.abort();
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [channelId, reloadToken]);
+
+  useEffect(() => {
+    setEnrichmentActionState(IDLE_ENRICHMENT_ACTION_STATE);
+  }, [channelId]);
+
+  async function handleRequestEnrichment(): Promise<void> {
+    if (requestState.status !== "ready") {
+      return;
+    }
+
+    if (shouldPollEnrichmentStatus(requestState.data.enrichment.status)) {
+      return;
+    }
+
+    setEnrichmentActionState({
+      type: "submitting",
+      message: "",
+    });
+
+    try {
+      const response = await requestChannelEnrichment(channelId);
+
+      setRequestState((current) => {
+        if (current.status !== "ready") {
+          return current;
+        }
+
+        return {
+          status: "ready",
+          data: mergeChannelEnrichment(current.data, response.enrichment),
+          error: null,
+        };
+      });
+      setEnrichmentActionState({
+        type: "success",
+        message: getEnrichmentRequestSuccessMessage(response.enrichment.status),
+      });
+      setReloadToken((currentValue) => currentValue + 1);
+    } catch (error) {
+      setEnrichmentActionState({
+        type: "error",
+        message: getEnrichmentRequestErrorMessage(error),
+      });
+    }
+  }
 
   return (
     <ChannelDetailShellView
       canManageManualEdits={isManualEditEnabled}
       channelId={channelId}
+      enrichmentActionState={enrichmentActionState}
       onChannelUpdated={(channel) => {
         setRequestState((current) => {
           if (current.status !== "ready") {
@@ -597,6 +833,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
           };
         });
       }}
+      onRequestEnrichment={handleRequestEnrichment}
       onRetry={() => {
         setReloadToken((currentValue) => currentValue + 1);
       }}

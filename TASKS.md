@@ -164,7 +164,7 @@ Done when:
 
 #### Marin:
 
-- enrichment status UI
+- [done] enrichment status UI
 - row-level enrichment visibility
 - batch enrich actions
 - better job feedback in runs and channel detail
@@ -176,6 +176,7 @@ Done when:
 - repeated enrich does not re-fetch wastefully
 - phased delivery note: Week 4 backend foundation is delivered end-to-end via `POST /api/channels/:id/enrich`, additive enrichment state on `GET /api/channels` and `GET /api/channels/:id`, cached YouTube context reuse/refresh, OpenAI-backed worker execution, persisted `queued/running/completed/failed/stale` lifecycle, and visible `last_error`; Marin Week 4 UI items remain open.
 - evidence note: backend coverage lives in `packages/core/src/week4.integration.test.ts`, `apps/web/app/api/week4.integration.test.ts`, and `apps/worker/src/channels-enrich-llm-worker.test.ts`.
+- [done] evidence note: channel detail enrichment UI now ships on `/catalog/[channelId]` with request/retry/refresh actions backed by `POST /api/channels/:id/enrich`, automatic polling for `queued/running` states, preserved last successful enrichment content during refresh, and focused coverage in `apps/web/lib/channels-api.test.ts`, `apps/web/components/catalog/channel-detail-shell.test.ts`, and `apps/web/components/catalog/channel-detail-shell.behavior.test.ts`.
 
 ### Week 5: HypeAuditor and admin workflows
 
