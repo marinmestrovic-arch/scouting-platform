@@ -1789,6 +1789,25 @@ a {
   gap: var(--space-4);
 }
 
+.channel-detail-shell__actions {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.channel-detail-shell__action-status {
+  margin: 0;
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.channel-detail-shell__action-status--success {
+  color: var(--color-accent);
+}
+
+.channel-detail-shell__action-status--error {
+  color: #8f2f2f;
+}
+
 .channel-detail-shell__insights-grid {
   display: grid;
   gap: var(--space-4);

@@ -4,14 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   fetchChannelDetailMock,
-  setRequestStateMock,
-  setReloadTokenMock,
+  requestChannelEnrichmentMock,
   useEffectMock,
   useStateMock,
 } = vi.hoisted(() => ({
   fetchChannelDetailMock: vi.fn(),
-  setRequestStateMock: vi.fn(),
-  setReloadTokenMock: vi.fn(),
+  requestChannelEnrichmentMock: vi.fn(),
   useEffectMock: vi.fn(),
   useStateMock: vi.fn(),
 }));
@@ -34,24 +32,29 @@ vi.mock("react", async () => {
   };
 });
 
-vi.mock("../../lib/channels-api", async () => {
-  const actual = await vi.importActual<typeof import("../../lib/channels-api")>("../../lib/channels-api");
+vi.mock("../../lib/channels-api", () => ({
+  ApiRequestError: class ApiRequestError extends Error {
+    readonly status: number;
 
-  return {
-    ...actual,
-    fetchChannelDetail: fetchChannelDetailMock,
-  };
-});
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "ApiRequestError";
+      this.status = status;
+    }
+  },
+  fetchChannelDetail: fetchChannelDetailMock,
+  requestChannelEnrichment: requestChannelEnrichmentMock,
+}));
 
 import { ApiRequestError } from "../../lib/channels-api";
-import { ChannelDetailShell } from "./channel-detail-shell";
+import {
+  ChannelDetailShell,
+  ENRICHMENT_STATUS_POLL_INTERVAL_MS,
+} from "./channel-detail-shell";
 
 type ChannelDetailShellElement = ReactElement<{
-  channelId: string;
-  requestState: {
-    status: "loading" | "error" | "notFound" | "ready";
-  };
   onRetry: () => void;
+  onRequestEnrichment: () => void | Promise<void>;
 }>;
 
 function createChannelDetail(overrides?: Partial<ChannelDetail>): ChannelDetail {
@@ -109,14 +112,19 @@ function renderShell(options?: {
     error: string | null;
   };
   reloadToken?: number;
+  enrichmentActionState?: {
+    type: "idle" | "submitting" | "success" | "error";
+    message: string;
+  };
+  runEffects?: boolean;
 }) {
-  let cleanup: (() => void) | undefined;
+  const setRequestState = vi.fn();
+  const setReloadToken = vi.fn();
+  const setEnrichmentActionState = vi.fn();
+  const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
   useEffectMock.mockReset();
-  setRequestStateMock.mockReset();
-  setReloadTokenMock.mockReset();
-
   useStateMock
     .mockReturnValueOnce([
       options?.requestState ?? {
@@ -124,13 +132,26 @@ function renderShell(options?: {
         data: null,
         error: null,
       },
-      setRequestStateMock,
+      setRequestState,
     ])
-    .mockReturnValueOnce([options?.reloadToken ?? 0, setReloadTokenMock]);
-
+    .mockReturnValueOnce([options?.reloadToken ?? 0, setReloadToken])
+    .mockReturnValueOnce([
+      options?.enrichmentActionState ?? {
+        type: "idle",
+        message: "",
+      },
+      setEnrichmentActionState,
+    ]);
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+    if (options?.runEffects === false) {
+      return;
+    }
+
     const maybeCleanup = effect();
-    cleanup = typeof maybeCleanup === "function" ? maybeCleanup : undefined;
+
+    if (typeof maybeCleanup === "function") {
+      cleanups.push(maybeCleanup);
+    }
   });
 
   const element = ChannelDetailShell({
@@ -138,8 +159,11 @@ function renderShell(options?: {
   }) as ChannelDetailShellElement;
 
   return {
-    cleanup,
+    cleanups,
     element,
+    setEnrichmentActionState,
+    setReloadToken,
+    setRequestState,
   };
 }
 
@@ -147,68 +171,215 @@ describe("channel detail shell behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchChannelDetailMock.mockResolvedValue(createChannelDetail());
+    requestChannelEnrichmentMock.mockResolvedValue({
+      channelId: "53adac17-f39d-4731-a61f-194150fbc431",
+      enrichment: createChannelDetail().enrichment,
+    });
   });
 
-  it("loads the current channel detail on mount and aborts on cleanup", async () => {
-    const response = createChannelDetail();
-    fetchChannelDetailMock.mockResolvedValueOnce(response);
+  it("loads channel detail on mount, polls while enrichment is active, and aborts on cleanup", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler) => {
+      void handler();
+      return 321 as unknown as ReturnType<typeof setTimeout>;
+    });
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
 
-    const { cleanup } = renderShell();
-
-    expect(fetchChannelDetailMock).toHaveBeenCalledWith(
-      "53adac17-f39d-4731-a61f-194150fbc431",
-      expect.any(AbortSignal),
+    fetchChannelDetailMock.mockResolvedValueOnce(
+      createChannelDetail({
+        enrichment: {
+          ...createChannelDetail().enrichment,
+          status: "running",
+          completedAt: null,
+        },
+      }),
     );
-    expect(setRequestStateMock).toHaveBeenNthCalledWith(1, {
+    fetchChannelDetailMock.mockResolvedValueOnce(createChannelDetail());
+
+    const { cleanups, setEnrichmentActionState, setRequestState } = renderShell();
+
+    expect(setRequestState).toHaveBeenNthCalledWith(1, {
       status: "loading",
       data: null,
       error: null,
     });
+    expect(setEnrichmentActionState).toHaveBeenCalledWith({
+      type: "idle",
+      message: "",
+    });
+    expect(fetchChannelDetailMock).toHaveBeenCalledWith(
+      "53adac17-f39d-4731-a61f-194150fbc431",
+      expect.any(AbortSignal),
+    );
 
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(setRequestStateMock).toHaveBeenNthCalledWith(2, {
+    expect(setRequestState).toHaveBeenNthCalledWith(2, {
       status: "ready",
-      data: response,
+      data: createChannelDetail({
+        enrichment: {
+          ...createChannelDetail().enrichment,
+          status: "running",
+          completedAt: null,
+        },
+      }),
+      error: null,
+    });
+    expect(setTimeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      ENRICHMENT_STATUS_POLL_INTERVAL_MS,
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setRequestState).toHaveBeenNthCalledWith(3, {
+      status: "ready",
+      data: createChannelDetail(),
       error: null,
     });
 
     const signal = fetchChannelDetailMock.mock.calls[0]?.[1] as AbortSignal | undefined;
-    expect(signal?.aborted).toBe(false);
 
-    cleanup?.();
+    cleanups.forEach((cleanup) => {
+      cleanup();
+    });
 
     expect(signal?.aborted).toBe(true);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(321);
   });
 
   it("maps 404 detail responses into a not-found request state", async () => {
     fetchChannelDetailMock.mockRejectedValueOnce(new ApiRequestError("Channel not found.", 404));
 
-    renderShell();
+    const { setRequestState } = renderShell();
 
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(setRequestStateMock).toHaveBeenNthCalledWith(2, {
+    expect(setRequestState).toHaveBeenLastCalledWith({
       status: "notFound",
       data: null,
       error: null,
     });
   });
 
+  it("requests enrichment, merges the returned state, and triggers a refresh cycle", async () => {
+    const currentChannel = createChannelDetail();
+    requestChannelEnrichmentMock.mockResolvedValueOnce({
+      channelId: currentChannel.id,
+      enrichment: {
+        status: "queued",
+        updatedAt: "2026-03-09T10:00:00.000Z",
+        completedAt: null,
+        lastError: null,
+        summary: null,
+        topics: null,
+        brandFitNotes: null,
+        confidence: null,
+      },
+    });
+
+    const { element, setEnrichmentActionState, setReloadToken, setRequestState } = renderShell({
+      requestState: {
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      },
+      runEffects: false,
+    });
+
+    await element.props.onRequestEnrichment();
+
+    expect(requestChannelEnrichmentMock).toHaveBeenCalledWith(currentChannel.id);
+    expect(setEnrichmentActionState).toHaveBeenNthCalledWith(1, {
+      type: "submitting",
+      message: "",
+    });
+    expect(setEnrichmentActionState).toHaveBeenNthCalledWith(2, {
+      type: "success",
+      message: "Enrichment request recorded. This page refreshes automatically while the worker runs.",
+    });
+    expect(setRequestState).toHaveBeenCalledWith(expect.any(Function));
+    expect(setReloadToken).toHaveBeenCalledWith(expect.any(Function));
+
+    const requestStateUpdater = setRequestState.mock.calls[0]?.[0] as
+      | ((current: {
+          status: "ready";
+          data: ChannelDetail;
+          error: null;
+        }) => unknown)
+      | undefined;
+    expect(requestStateUpdater).toBeTypeOf("function");
+    expect(
+      requestStateUpdater?.({
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      }),
+    ).toEqual({
+      status: "ready",
+      data: {
+        ...currentChannel,
+        enrichment: {
+          ...currentChannel.enrichment,
+          status: "queued",
+          updatedAt: "2026-03-09T10:00:00.000Z",
+          completedAt: null,
+          lastError: null,
+        },
+      },
+      error: null,
+    });
+
+    const reloadTokenUpdater = setReloadToken.mock.calls[0]?.[0] as ((value: number) => number) | undefined;
+    expect(reloadTokenUpdater?.(4)).toBe(5);
+  });
+
+  it("shows enrichment request errors without clearing the loaded detail state", async () => {
+    requestChannelEnrichmentMock.mockRejectedValueOnce(
+      new ApiRequestError(
+        "Assigned YouTube API key is required before requesting enrichment",
+        400,
+      ),
+    );
+
+    const { element, setEnrichmentActionState, setRequestState } = renderShell({
+      requestState: {
+        status: "ready",
+        data: createChannelDetail(),
+        error: null,
+      },
+      runEffects: false,
+    });
+
+    await element.props.onRequestEnrichment();
+
+    expect(setEnrichmentActionState).toHaveBeenNthCalledWith(1, {
+      type: "submitting",
+      message: "",
+    });
+    expect(setEnrichmentActionState).toHaveBeenNthCalledWith(2, {
+      type: "error",
+      message: "Assigned YouTube API key is required before requesting enrichment",
+    });
+    expect(setRequestState).not.toHaveBeenCalled();
+  });
+
   it("exposes a retry callback that triggers a reload token increment", () => {
-    const { element } = renderShell({
+    const { element, setReloadToken } = renderShell({
       requestState: {
         status: "error",
         data: null,
         error: "Catalog temporarily unavailable.",
       },
+      runEffects: false,
     });
 
     element.props.onRetry();
 
-    expect(setReloadTokenMock).toHaveBeenCalledTimes(1);
-    const updater = setReloadTokenMock.mock.calls[0]?.[0] as ((value: number) => number) | undefined;
+    expect(setReloadToken).toHaveBeenCalledTimes(1);
+    const updater = setReloadToken.mock.calls[0]?.[0] as ((value: number) => number) | undefined;
     expect(typeof updater).toBe("function");
     expect(updater?.(4)).toBe(5);
   });
