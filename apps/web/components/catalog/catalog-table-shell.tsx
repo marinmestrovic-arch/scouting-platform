@@ -111,6 +111,7 @@ type CatalogTableShellViewProps = {
 };
 
 const DEFAULT_PAGE_SIZE = 20;
+export const CATALOG_ENRICHMENT_POLL_INTERVAL_MS = 3000;
 
 const ENRICHMENT_FILTER_OPTIONS: ReadonlyArray<CatalogFilterOption<ChannelEnrichmentStatus>> = [
   { value: "missing", label: "Missing" },
@@ -173,6 +174,62 @@ function getEnrichmentLabel(channel: ChannelSummary): string {
     default:
       return channel.enrichment.status;
   }
+}
+
+function formatCatalogTimestamp(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+
+  if (!match) {
+    return value;
+  }
+
+  return `${match[1]} ${match[2]} UTC`;
+}
+
+function getCatalogEnrichmentActivityTimestamp(
+  enrichment: Pick<ChannelSummary["enrichment"], "completedAt" | "updatedAt">,
+): string | null {
+  return formatCatalogTimestamp(enrichment.completedAt ?? enrichment.updatedAt);
+}
+
+export function getCatalogEnrichmentDetailCopy(
+  enrichment: ChannelSummary["enrichment"],
+): string {
+  switch (enrichment.status) {
+    case "missing":
+      return "No enrichment requested yet.";
+    case "queued":
+      return "Queued and auto-refreshing.";
+    case "running":
+      return "Running and auto-refreshing.";
+    case "completed": {
+      const timestamp = getCatalogEnrichmentActivityTimestamp(enrichment);
+      return timestamp ? `Completed ${timestamp}.` : "Completed and ready for review.";
+    }
+    case "failed":
+      return enrichment.lastError
+        ? `Last attempt failed: ${enrichment.lastError}`
+        : "Last attempt failed before the worker completed.";
+    case "stale": {
+      const timestamp = getCatalogEnrichmentActivityTimestamp(enrichment);
+      return timestamp ? `Stale since ${timestamp}.` : "Stale and should be refreshed.";
+    }
+    default:
+      return enrichment.status;
+  }
+}
+
+export function shouldPollCatalogEnrichmentRows(
+  data: Pick<ListChannelsResponse, "items">,
+): boolean {
+  return data.items.some(
+    (channel) =>
+      channel.enrichment.status === "queued" || channel.enrichment.status === "running",
+  );
 }
 
 export function formatChannelCountSummary(data: ListChannelsResponse): string {
@@ -939,11 +996,18 @@ function CatalogTableResults({
                       <code className="catalog-table__code">{channel.youtubeChannelId}</code>
                     </td>
                     <td>
-                      <span
-                        className={`catalog-table__status catalog-table__status--${channel.enrichment.status}`}
-                      >
-                        {getEnrichmentLabel(channel)}
-                      </span>
+                      <div className="catalog-table__enrichment">
+                        <span
+                          className={`catalog-table__status catalog-table__status--${channel.enrichment.status}`}
+                        >
+                          {getEnrichmentLabel(channel)}
+                        </span>
+                        <p
+                          className={`catalog-table__enrichment-copy${channel.enrichment.status === "failed" ? " catalog-table__enrichment-copy--error" : ""}`}
+                        >
+                          {getCatalogEnrichmentDetailCopy(channel.enrichment)}
+                        </p>
+                      </div>
                     </td>
                     <td>
                       <Link className="catalog-table__link" href={`/catalog/${channel.id}`}>
@@ -991,30 +1055,38 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
   }, [appliedStateKey]);
 
   useEffect(() => {
-    const abortController = new AbortController();
+    let didCancel = false;
+    let activeAbortController: AbortController | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    setRequestState({
-      status: "loading",
-      data: null,
-      error: null,
-    });
+    const requestInput = {
+      page: appliedState.page,
+      pageSize,
+      ...(appliedState.filters.query ? { query: appliedState.filters.query } : {}),
+      ...(appliedState.filters.enrichmentStatus.length > 0
+        ? { enrichmentStatus: appliedState.filters.enrichmentStatus }
+        : {}),
+      ...(appliedState.filters.advancedReportStatus.length > 0
+        ? { advancedReportStatus: appliedState.filters.advancedReportStatus }
+        : {}),
+    };
 
-    void fetchChannels(
-      {
-        page: appliedState.page,
-        pageSize,
-        ...(appliedState.filters.query ? { query: appliedState.filters.query } : {}),
-        ...(appliedState.filters.enrichmentStatus.length > 0
-          ? { enrichmentStatus: appliedState.filters.enrichmentStatus }
-          : {}),
-        ...(appliedState.filters.advancedReportStatus.length > 0
-          ? { advancedReportStatus: appliedState.filters.advancedReportStatus }
-          : {}),
-      },
-      abortController.signal,
-    )
-      .then((data) => {
-        if (abortController.signal.aborted) {
+    async function loadChannels(polling = false): Promise<void> {
+      const abortController = new AbortController();
+      activeAbortController = abortController;
+
+      if (!polling) {
+        setRequestState({
+          status: "loading",
+          data: null,
+          error: null,
+        });
+      }
+
+      try {
+        const data = await fetchChannels(requestInput, abortController.signal);
+
+        if (didCancel || abortController.signal.aborted) {
           return;
         }
 
@@ -1023,21 +1095,37 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
           data,
           error: null,
         });
-      })
-      .catch((error: unknown) => {
-        if (abortController.signal.aborted) {
+
+        if (shouldPollCatalogEnrichmentRows(data)) {
+          timeoutId = setTimeout(() => {
+            void loadChannels(true);
+          }, CATALOG_ENRICHMENT_POLL_INTERVAL_MS);
+        }
+      } catch (error) {
+        if (didCancel || abortController.signal.aborted) {
           return;
         }
 
         setRequestState({
           status: "error",
           data: null,
-          error: error instanceof Error && error.message ? error.message : "Unable to load channels. Please try again.",
+          error:
+            error instanceof Error && error.message
+              ? error.message
+              : "Unable to load channels. Please try again.",
         });
-      });
+      }
+    }
+
+    void loadChannels();
 
     return () => {
-      abortController.abort();
+      didCancel = true;
+      activeAbortController?.abort();
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [appliedStateKey, pageSize, reloadToken]);
 

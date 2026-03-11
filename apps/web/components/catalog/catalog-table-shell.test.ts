@@ -55,12 +55,14 @@ import {
   formatSavedSegmentSummary,
   formatChannelCountSummary,
   getCatalogFiltersFromSavedSegment,
+  getCatalogEnrichmentDetailCopy,
   getEmptyCatalogMessage,
   getNextCatalogPage,
   getPreviousCatalogPage,
   hasNextCatalogPage,
   hasPreviousCatalogPage,
   parseCatalogUrlState,
+  shouldPollCatalogEnrichmentRows,
   toggleCatalogChannelSelection,
   toggleCatalogPageSelection,
   toggleCatalogStatusFilter,
@@ -311,6 +313,58 @@ describe("catalog table shell view", () => {
     expect(formatCatalogSelectionSummary(1, 0)).toBe("1 channel selected · none on this page");
   });
 
+  it("formats per-row enrichment copy and polling eligibility", () => {
+    expect(
+      getCatalogEnrichmentDetailCopy({
+        status: "completed",
+        updatedAt: "2026-03-08T10:00:00.000Z",
+        completedAt: "2026-03-09T11:15:00.000Z",
+        lastError: null,
+      }),
+    ).toBe("Completed 2026-03-09 11:15 UTC.");
+    expect(
+      getCatalogEnrichmentDetailCopy({
+        status: "completed",
+        updatedAt: "2026-03-08T10:00:00.000Z",
+        completedAt: null,
+        lastError: null,
+      }),
+    ).toBe("Completed 2026-03-08 10:00 UTC.");
+    expect(
+      getCatalogEnrichmentDetailCopy({
+        status: "stale",
+        updatedAt: "2026-03-07T09:30:00.000Z",
+        completedAt: null,
+        lastError: null,
+      }),
+    ).toBe("Stale since 2026-03-07 09:30 UTC.");
+    expect(
+      getCatalogEnrichmentDetailCopy({
+        status: "failed",
+        updatedAt: null,
+        completedAt: null,
+        lastError: null,
+      }),
+    ).toBe("Last attempt failed before the worker completed.");
+
+    expect(shouldPollCatalogEnrichmentRows(pagedChannels)).toBe(true);
+    expect(
+      shouldPollCatalogEnrichmentRows({
+        items: [
+          {
+            ...pagedChannels.items[0]!,
+            enrichment: {
+              status: "completed",
+              updatedAt: "2026-03-08T10:00:00.000Z",
+              completedAt: "2026-03-08T10:00:00.000Z",
+              lastError: null,
+            },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it("round-trips saved segment filters into catalog filter state", () => {
     const filters = buildSavedSegmentFilters({
       query: "  space  ",
@@ -453,19 +507,68 @@ describe("catalog table shell view", () => {
   });
 
   it("renders populated rows, detail links, and all enrichment labels", () => {
-    const statuses: Array<[ChannelEnrichmentStatus, string]> = [
-      ["completed", "Ready"],
-      ["failed", "Failed"],
-      ["missing", "Missing"],
-      ["queued", "Queued"],
-      ["running", "Running"],
-      ["stale", "Stale"],
+    const statuses: Array<{
+      status: ChannelEnrichmentStatus;
+      label: string;
+      copy: string;
+      updatedAt: string | null;
+      completedAt: string | null;
+      lastError: string | null;
+    }> = [
+      {
+        status: "completed",
+        label: "Ready",
+        copy: "Completed 2026-03-08 10:00 UTC.",
+        updatedAt: "2026-03-08T10:00:00.000Z",
+        completedAt: null,
+        lastError: null,
+      },
+      {
+        status: "failed",
+        label: "Failed",
+        copy: "Last attempt failed: Provider error",
+        updatedAt: null,
+        completedAt: null,
+        lastError: "Provider error",
+      },
+      {
+        status: "missing",
+        label: "Missing",
+        copy: "No enrichment requested yet.",
+        updatedAt: null,
+        completedAt: null,
+        lastError: null,
+      },
+      {
+        status: "queued",
+        label: "Queued",
+        copy: "Queued and auto-refreshing.",
+        updatedAt: null,
+        completedAt: null,
+        lastError: null,
+      },
+      {
+        status: "running",
+        label: "Running",
+        copy: "Running and auto-refreshing.",
+        updatedAt: null,
+        completedAt: null,
+        lastError: null,
+      },
+      {
+        status: "stale",
+        label: "Stale",
+        copy: "Stale since 2026-03-07 09:30 UTC.",
+        updatedAt: "2026-03-07T09:30:00.000Z",
+        completedAt: null,
+        lastError: null,
+      },
     ];
 
     const html = renderView({
       status: "ready",
       data: {
-        items: statuses.map(([status], index) => ({
+        items: statuses.map(({ status, updatedAt, completedAt, lastError }, index) => ({
           id: `00000000-0000-0000-0000-${(index + 1).toString().padStart(12, "0")}`,
           youtubeChannelId: `UC_STATUS_${index + 1}`,
           title: `Channel ${index + 1}`,
@@ -473,9 +576,9 @@ describe("catalog table shell view", () => {
           thumbnailUrl: index === 0 ? "https://example.com/thumb.jpg" : null,
           enrichment: {
             status,
-            updatedAt: null,
-            completedAt: null,
-            lastError: status === "failed" ? "Provider error" : null,
+            updatedAt,
+            completedAt,
+            lastError,
           },
           advancedReport: createAdvancedReportSummary(),
         })),
@@ -486,8 +589,9 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    for (const [, label] of statuses) {
+    for (const { label, copy } of statuses) {
       expect(html).toContain(label);
+      expect(html).toContain(copy);
     }
 
     expect(html).toContain("value=\"space\"");

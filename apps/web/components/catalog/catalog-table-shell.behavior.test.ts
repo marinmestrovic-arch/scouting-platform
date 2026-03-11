@@ -52,7 +52,10 @@ vi.mock("../../lib/segments-api", () => ({
   fetchSavedSegments: fetchSavedSegmentsMock,
 }));
 
-import { CatalogTableShell } from "./catalog-table-shell";
+import {
+  CATALOG_ENRICHMENT_POLL_INTERVAL_MS,
+  CatalogTableShell,
+} from "./catalog-table-shell";
 
 type CatalogShellElement = ReactElement<{
   onApplyFilters: () => void;
@@ -155,7 +158,16 @@ function createSavedSegment(overrides?: Partial<SegmentResponse>): SegmentRespon
   };
 }
 
-function createChannel(id: string, title: string) {
+function createChannel(
+  id: string,
+  title: string,
+  enrichmentOverrides?: Partial<{
+    status: "missing" | "queued" | "running" | "completed" | "failed" | "stale";
+    updatedAt: string | null;
+    completedAt: string | null;
+    lastError: string | null;
+  }>,
+) {
   return {
     id,
     youtubeChannelId: `UC_${title.toUpperCase().replace(/\s+/g, "_")}`,
@@ -167,6 +179,7 @@ function createChannel(id: string, title: string) {
       updatedAt: null,
       completedAt: null,
       lastError: null,
+      ...enrichmentOverrides,
     },
     advancedReport: {
       requestId: null,
@@ -375,6 +388,156 @@ describe("catalog table shell behavior", () => {
 
     expect(channelSignal?.aborted).toBe(true);
     expect(segmentSignal?.aborted).toBe(true);
+  });
+
+  it("polls quietly while visible enrichment jobs are active", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler) => {
+      void handler();
+      return 321 as unknown as ReturnType<typeof setTimeout>;
+    });
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+    const runningResponse: ListChannelsResponse = {
+      items: [
+        createChannel("00000000-0000-0000-0000-000000000301", "Orbit Lab", {
+          status: "running",
+          updatedAt: "2026-03-08T10:00:00.000Z",
+          completedAt: null,
+          lastError: null,
+        }),
+      ],
+      total: 1,
+      page: 2,
+      pageSize: 20,
+    };
+    const completedResponse: ListChannelsResponse = {
+      items: [
+        createChannel("00000000-0000-0000-0000-000000000301", "Orbit Lab", {
+          status: "completed",
+          updatedAt: "2026-03-08T10:00:00.000Z",
+          completedAt: "2026-03-08T10:05:00.000Z",
+          lastError: null,
+        }),
+      ],
+      total: 1,
+      page: 2,
+      pageSize: 20,
+    };
+
+    try {
+      fetchChannelsMock.mockResolvedValueOnce(runningResponse);
+      fetchChannelsMock.mockResolvedValueOnce(completedResponse);
+
+      const { cleanups, setRequestState } = renderShell();
+
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(fetchChannelsMock).toHaveBeenCalledTimes(2);
+      expect(setRequestState).toHaveBeenNthCalledWith(1, {
+        status: "loading",
+        data: null,
+        error: null,
+      });
+      expect(setRequestState).toHaveBeenNthCalledWith(2, {
+        status: "ready",
+        data: runningResponse,
+        error: null,
+      });
+      expect(setRequestState).toHaveBeenNthCalledWith(3, {
+        status: "ready",
+        data: completedResponse,
+        error: null,
+      });
+      expect(setRequestState).toHaveBeenCalledTimes(3);
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        CATALOG_ENRICHMENT_POLL_INTERVAL_MS,
+      );
+
+      cleanups.forEach((cleanup) => {
+        cleanup();
+      });
+
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(321);
+    } finally {
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("does not start polling when visible rows are already in terminal enrichment states", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    try {
+      fetchChannelsMock.mockResolvedValueOnce({
+        items: [
+          createChannel("00000000-0000-0000-0000-000000000302", "Terminal Orbit", {
+            status: "completed",
+            updatedAt: "2026-03-08T10:00:00.000Z",
+            completedAt: "2026-03-08T10:05:00.000Z",
+            lastError: null,
+          }),
+        ],
+        total: 1,
+        page: 2,
+        pageSize: 20,
+      });
+
+      renderShell();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("clears pending enrichment polling and aborts the latest catalog request on cleanup", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(() => {
+      return 654 as unknown as ReturnType<typeof setTimeout>;
+    });
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => undefined);
+
+    try {
+      fetchChannelsMock.mockResolvedValueOnce({
+        items: [
+          createChannel("00000000-0000-0000-0000-000000000303", "Queued Orbit", {
+            status: "queued",
+            updatedAt: "2026-03-08T10:00:00.000Z",
+            completedAt: null,
+            lastError: null,
+          }),
+        ],
+        total: 1,
+        page: 2,
+        pageSize: 20,
+      });
+
+      const { cleanups } = renderShell();
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const channelSignal = fetchChannelsMock.mock.calls[0]?.[1] as AbortSignal | undefined;
+
+      cleanups.forEach((cleanup) => {
+        cleanup();
+      });
+
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        CATALOG_ENRICHMENT_POLL_INTERVAL_MS,
+      );
+      expect(channelSignal?.aborted).toBe(true);
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(654);
+    } finally {
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   it("applies draft filters by replacing the URL and resetting to page 1", () => {
