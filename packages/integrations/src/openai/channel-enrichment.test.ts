@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   OpenAiChannelEnrichmentError,
@@ -35,6 +35,141 @@ const TEST_INPUT = {
 };
 
 describe("enrichChannelWithOpenAi", () => {
+  it("uses gpt-5-nano by default and omits temperature", async () => {
+    const create = vi.fn<(input: Record<string, unknown>) => Promise<{ id: string; choices: Array<{ message: { content: string } }> }>>(
+      async () => ({
+        id: "resp-default-model",
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary: "Creator focused on gaming commentary.",
+                topics: ["gaming", "commentary"],
+                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+                confidence: 0.82,
+              }),
+            },
+          },
+        ],
+      }),
+    );
+
+    await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create,
+          },
+        },
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5-nano",
+      }),
+    );
+    const request = create.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(request).toBeDefined();
+    expect(request).not.toHaveProperty("temperature");
+  });
+
+  it("uses OPENAI_MODEL when no explicit model override is passed", async () => {
+    const originalModel = process.env.OPENAI_MODEL;
+    process.env.OPENAI_MODEL = "gpt-5";
+
+    const create = vi.fn<(input: Record<string, unknown>) => Promise<{ choices: Array<{ message: { content: string } }> }>>(
+      async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary: "Creator focused on gaming commentary.",
+                topics: ["gaming", "commentary"],
+                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+                confidence: 0.82,
+              }),
+            },
+          },
+        ],
+      }),
+    );
+
+    try {
+      await enrichChannelWithOpenAi({
+        ...TEST_INPUT,
+        client: {
+          chat: {
+            completions: {
+              create,
+            },
+          },
+        },
+      });
+    } finally {
+      if (originalModel === undefined) {
+        delete process.env.OPENAI_MODEL;
+      } else {
+        process.env.OPENAI_MODEL = originalModel;
+      }
+    }
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5",
+      }),
+    );
+  });
+
+  it("prefers the explicit model override over OPENAI_MODEL", async () => {
+    const originalModel = process.env.OPENAI_MODEL;
+    process.env.OPENAI_MODEL = "gpt-5-nano";
+
+    const create = vi.fn<(input: Record<string, unknown>) => Promise<{ choices: Array<{ message: { content: string } }> }>>(
+      async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary: "Creator focused on gaming commentary.",
+                topics: ["gaming", "commentary"],
+                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+                confidence: 0.82,
+              }),
+            },
+          },
+        ],
+      }),
+    );
+
+    try {
+      await enrichChannelWithOpenAi({
+        ...TEST_INPUT,
+        model: "gpt-5",
+        client: {
+          chat: {
+            completions: {
+              create,
+            },
+          },
+        },
+      });
+    } finally {
+      if (originalModel === undefined) {
+        delete process.env.OPENAI_MODEL;
+      } else {
+        process.env.OPENAI_MODEL = originalModel;
+      }
+    }
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5",
+      }),
+    );
+  });
+
   it("parses structured profile output", async () => {
     const result = await enrichChannelWithOpenAi({
       ...TEST_INPUT,

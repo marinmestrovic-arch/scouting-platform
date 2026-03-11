@@ -1,14 +1,88 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
   csvImportBatchDetailSchema,
   csvImportBatchSummarySchema,
+  csvImportUploadFileSchema,
   getCsvImportBatchDetailQuerySchema,
 } from "./index";
 
 const TEST_UUID = "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b";
 
 describe("csv import contracts", () => {
+  it("parses valid csv upload metadata", () => {
+    const payload = csvImportUploadFileSchema.parse({
+      fileName: "contacts.CSV",
+      fileSize: 1024,
+      mimeType: "text/csv",
+    });
+
+    expect(payload.fileName).toBe("contacts.CSV");
+    expect(payload.fileSize).toBe(1024);
+    expect(payload.mimeType).toBe("text/csv");
+  });
+
+  it("accepts blank or legacy browser csv mime types", () => {
+    const blankMime = csvImportUploadFileSchema.parse({
+      fileName: "contacts.csv",
+      fileSize: 32,
+      mimeType: "",
+    });
+    const applicationCsvMime = csvImportUploadFileSchema.parse({
+      fileName: "contacts.csv",
+      fileSize: 32,
+      mimeType: "application/csv",
+    });
+    const legacyMime = csvImportUploadFileSchema.parse({
+      fileName: "contacts.csv",
+      fileSize: 32,
+      mimeType: "application/vnd.ms-excel",
+    });
+
+    expect(blankMime.mimeType).toBe("");
+    expect(applicationCsvMime.mimeType).toBe("application/csv");
+    expect(legacyMime.mimeType).toBe("application/vnd.ms-excel");
+  });
+
+  it("rejects invalid csv upload metadata", () => {
+    expect(
+      csvImportUploadFileSchema.safeParse({
+        fileName: "   ",
+        fileSize: 1024,
+        mimeType: "text/csv",
+      }).success,
+    ).toBe(false);
+    expect(
+      csvImportUploadFileSchema.safeParse({
+        fileName: "contacts.txt",
+        fileSize: 1024,
+        mimeType: "text/csv",
+      }).success,
+    ).toBe(false);
+    expect(
+      csvImportUploadFileSchema.safeParse({
+        fileName: "contacts.csv",
+        fileSize: 0,
+        mimeType: "text/csv",
+      }).success,
+    ).toBe(false);
+    expect(
+      csvImportUploadFileSchema.safeParse({
+        fileName: "contacts.csv",
+        fileSize: CSV_IMPORT_FILE_SIZE_LIMIT_BYTES + 1,
+        mimeType: "text/csv",
+      }).success,
+    ).toBe(false);
+    expect(
+      csvImportUploadFileSchema.safeParse({
+        fileName: "contacts.csv",
+        fileSize: 1024,
+        mimeType: "application/json",
+      }).success,
+    ).toBe(false);
+  });
+
   it("parses a batch summary payload", () => {
     const payload = csvImportBatchSummarySchema.parse({
       id: TEST_UUID,

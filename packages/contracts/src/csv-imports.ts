@@ -2,6 +2,14 @@ import { z } from "zod";
 
 const isoDatetimeSchema = z.string().datetime();
 
+export const CSV_IMPORT_FILE_SIZE_LIMIT_BYTES = 5 * 1024 * 1024;
+export const CSV_IMPORT_ALLOWED_MIME_TYPES = [
+  "",
+  "text/csv",
+  "application/csv",
+  "application/vnd.ms-excel",
+] as const;
+
 export const csvImportBatchStatusSchema = z.enum([
   "queued",
   "running",
@@ -19,6 +27,24 @@ export const csvImportBatchActorSchema = z.object({
   id: z.uuid(),
   email: z.string().email(),
   name: z.string().nullable(),
+});
+
+export const csvImportUploadFileSchema = z.object({
+  fileName: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((value) => value.toLowerCase().endsWith(".csv"), {
+      message: "File name must end with .csv",
+    }),
+  fileSize: z.number().int().positive().max(CSV_IMPORT_FILE_SIZE_LIMIT_BYTES),
+  mimeType: z
+    .string()
+    .trim()
+    .transform((value) => value.toLowerCase())
+    .refine((value) => CSV_IMPORT_ALLOWED_MIME_TYPES.includes(value as "" | "text/csv" | "application/csv" | "application/vnd.ms-excel"), {
+      message: "File must be a CSV upload",
+    }),
 });
 
 export const csvImportBatchSummarySchema = z.object({
@@ -71,6 +97,7 @@ export const csvImportBatchDetailSchema = csvImportBatchSummarySchema.extend({
 export type CsvImportBatchStatus = z.infer<typeof csvImportBatchStatusSchema>;
 export type CsvImportRowStatus = z.infer<typeof csvImportRowStatusSchema>;
 export type CsvImportBatchActor = z.infer<typeof csvImportBatchActorSchema>;
+export type CsvImportUploadFile = z.infer<typeof csvImportUploadFileSchema>;
 export type CsvImportBatchSummary = z.infer<typeof csvImportBatchSummarySchema>;
 export type ListCsvImportBatchesResponse = z.infer<typeof listCsvImportBatchesResponseSchema>;
 export type CsvImportRow = z.infer<typeof csvImportRowSchema>;

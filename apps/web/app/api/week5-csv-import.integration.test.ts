@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from "@prisma/client";
+import { CSV_IMPORT_FILE_SIZE_LIMIT_BYTES } from "@scouting-platform/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -89,9 +90,18 @@ integration("week 5 csv import API integration", () => {
     });
   }
 
-  function makeFormData(csvText: string, name = "contacts.csv"): FormData {
+  function makeCsvFile(
+    csvText: string,
+    options?: { name?: string; type?: string },
+  ): File {
+    return new File([csvText], options?.name ?? "contacts.csv", {
+      type: options?.type ?? "text/csv",
+    });
+  }
+
+  function makeFormData(file: File | string): FormData {
     const formData = new FormData();
-    formData.append("file", new File([csvText], name, { type: "text/csv" }));
+    formData.append("file", file);
     return formData;
   }
 
@@ -102,11 +112,11 @@ integration("week 5 csv import API integration", () => {
     const uploadResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
-        body: makeFormData([
+        body: makeFormData(makeCsvFile([
           "youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel",
           "UC-CSV-1,Creator One,creator@example.com,1000,20000,50,Top creator,ops",
           "UC-CSV-2,Creator Two,invalid-email,2000,30000,60,,ops",
-        ].join("\n")),
+        ].join("\n"))),
       }),
     );
 
@@ -164,12 +174,80 @@ integration("week 5 csv import API integration", () => {
     const invalidHeaderResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
-        body: makeFormData([
+        body: makeFormData(makeCsvFile([
           "youtubeChannelId,channelTitle,contactEmail",
           "UC-CSV-1,Creator One,creator@example.com",
-        ].join("\n"), "invalid.csv"),
+        ].join("\n"), { name: "invalid.csv" })),
       }),
     );
     expect(invalidHeaderResponse.status).toBe(400);
+  });
+
+  it("returns 400 for non-file multipart values and invalid file metadata", async () => {
+    const admin = await createUser("admin@example.com");
+    currentSessionUser = { id: admin.id, role: "admin" };
+
+    const nonFileResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData("not-a-file"),
+      }),
+    );
+    expect(nonFileResponse.status).toBe(400);
+    expect(await nonFileResponse.json()).toEqual({
+      error: "CSV file is required",
+    });
+
+    const invalidExtensionResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(
+          makeCsvFile("youtubeChannelId,channelTitle\nUC-CSV-1,Creator One", {
+            name: "contacts.txt",
+          }),
+        ),
+      }),
+    );
+    expect(invalidExtensionResponse.status).toBe(400);
+    const invalidExtensionPayload = await invalidExtensionResponse.json();
+    expect(invalidExtensionPayload.error).toBe("Invalid request payload");
+    expect(invalidExtensionPayload.details.fieldErrors.fileName).toContain(
+      "File name must end with .csv",
+    );
+
+    const invalidMimeResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(
+          makeCsvFile("youtubeChannelId,channelTitle\nUC-CSV-1,Creator One", {
+            type: "application/json",
+          }),
+        ),
+      }),
+    );
+    expect(invalidMimeResponse.status).toBe(400);
+    const invalidMimePayload = await invalidMimeResponse.json();
+    expect(invalidMimePayload.error).toBe("Invalid request payload");
+    expect(invalidMimePayload.details.fieldErrors.mimeType).toContain(
+      "File must be a CSV upload",
+    );
+
+    const oversizedFileResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(
+          new File([new Uint8Array(CSV_IMPORT_FILE_SIZE_LIMIT_BYTES + 1)], "contacts.csv", {
+            type: "text/csv",
+          }),
+        ),
+      }),
+    );
+    expect(oversizedFileResponse.status).toBe(400);
+    const oversizedFilePayload = await oversizedFileResponse.json();
+    expect(oversizedFilePayload.error).toBe("Invalid request payload");
+    expect(oversizedFilePayload.details.fieldErrors.fileSize).toBeDefined();
+
+    const batchCount = await prisma.csvImportBatch.count();
+    expect(batchCount).toBe(0);
   });
 });

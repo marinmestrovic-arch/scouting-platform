@@ -4,6 +4,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import {
+  CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
   type CsvImportBatchDetail,
   type CsvImportBatchStatus,
   type CsvImportBatchSummary,
@@ -18,7 +19,6 @@ import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
 
 export const CSV_IMPORT_TEMPLATE_VERSION = "v1";
-export const CSV_IMPORT_FILE_SIZE_LIMIT_BYTES = 5 * 1024 * 1024;
 export const CSV_IMPORT_MAX_DATA_ROWS = 10_000;
 export const CSV_IMPORT_HEADER = [
   "youtubeChannelId",
