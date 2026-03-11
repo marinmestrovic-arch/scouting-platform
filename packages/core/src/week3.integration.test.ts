@@ -1,5 +1,5 @@
 import { PrismaClient, Role, RunRequestStatus, RunResultSource } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
 const integration = databaseUrl ? describe.sequential : describe.skip;
@@ -17,7 +17,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 integration("week 3 core integration", () => {
   let prisma: PrismaClient;
-  let core: CoreModule;
+  let core: CoreModule | null = null;
+
+  function getCore(): CoreModule {
+    if (!core) {
+      throw new Error("Expected core module to be loaded");
+    }
+
+    return core;
+  }
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -32,11 +40,13 @@ integration("week 3 core integration", () => {
     });
 
     await prisma.$connect();
-    core = await import("./index");
   });
 
   beforeEach(async () => {
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     vi.restoreAllMocks();
+    vi.resetModules();
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -56,10 +66,25 @@ integration("week 3 core integration", () => {
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'runs.discover'
     `);
+
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
+    core = await import("./index");
+  });
+
+  afterEach(async () => {
+    await core?.stopRunsQueue();
+    core = null;
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterAll(async () => {
-    await core.stopRunsQueue();
+    await core?.stopRunsQueue();
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
     await prisma.$disconnect();
   });
 
@@ -74,13 +99,13 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId: user.id,
       rawKey: "yt-key-1",
       actorUserId: user.id,
     });
 
-    const created = await core.createRunRequest({
+    const created = await getCore().createRunRequest({
       userId: user.id,
       name: "Gaming Run",
       query: "gaming creators",
@@ -115,7 +140,7 @@ integration("week 3 core integration", () => {
     });
 
     await expect(
-      core.createRunRequest({
+      getCore().createRunRequest({
         userId: user.id,
         name: "Gaming Run",
         query: "gaming creators",
@@ -231,7 +256,7 @@ integration("week 3 core integration", () => {
       },
     });
 
-    const recentRuns = await core.listRecentRuns({
+    const recentRuns = await getCore().listRecentRuns({
       userId: owner.id,
     });
 
@@ -257,7 +282,7 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId: user.id,
       rawKey: "yt-key-1",
       actorUserId: user.id,
@@ -333,13 +358,13 @@ integration("week 3 core integration", () => {
         ),
     );
 
-    const created = await core.createRunRequest({
+    const created = await getCore().createRunRequest({
       userId: user.id,
       name: "Gaming Run",
       query: "gaming",
     });
 
-    await core.executeRunDiscover({
+    await getCore().executeRunDiscover({
       runRequestId: created.runId,
       requestedByUserId: user.id,
     });
@@ -406,7 +431,7 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId: user.id,
       rawKey: "yt-key-1",
       actorUserId: user.id,
@@ -461,13 +486,13 @@ integration("week 3 core integration", () => {
         ),
     );
 
-    const created = await core.createRunRequest({
+    const created = await getCore().createRunRequest({
       userId: user.id,
       name: "Second Run",
       query: "gaming",
     });
 
-    await core.executeRunDiscover({
+    await getCore().executeRunDiscover({
       runRequestId: created.runId,
       requestedByUserId: user.id,
     });
@@ -519,7 +544,7 @@ integration("week 3 core integration", () => {
     });
 
     await expect(
-      core.executeRunDiscover({
+      getCore().executeRunDiscover({
         runRequestId: runRequest.id,
         requestedByUserId: user.id,
       }),
@@ -548,7 +573,7 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId: user.id,
       rawKey: "yt-key-1",
       actorUserId: user.id,
@@ -577,7 +602,7 @@ integration("week 3 core integration", () => {
     });
 
     await expect(
-      core.executeRunDiscover({
+      getCore().executeRunDiscover({
         runRequestId: runRequest.id,
         requestedByUserId: user.id,
       }),
@@ -606,7 +631,7 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId: user.id,
       rawKey: "yt-key-1",
       actorUserId: user.id,
@@ -648,11 +673,11 @@ integration("week 3 core integration", () => {
       },
     });
 
-    await core.executeRunDiscover({
+    await getCore().executeRunDiscover({
       runRequestId: runRequest.id,
       requestedByUserId: user.id,
     });
-    await core.executeRunDiscover({
+    await getCore().executeRunDiscover({
       runRequestId: runRequest.id,
       requestedByUserId: user.id,
     });

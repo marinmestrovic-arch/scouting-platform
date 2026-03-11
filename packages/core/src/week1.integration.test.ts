@@ -1,5 +1,5 @@
 import { CredentialProvider, PrismaClient, Role } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
 const integration = databaseUrl ? describe.sequential : describe.skip;
@@ -24,10 +24,14 @@ integration("week 1 core integration", () => {
     });
 
     await prisma.$connect();
-    core = await import("./index");
   });
 
   beforeEach(async () => {
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.APP_ENCRYPTION_KEY = encryptionKey;
+
+    vi.resetModules();
+
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
         run_results,
@@ -41,9 +45,22 @@ integration("week 1 core integration", () => {
         users
       RESTART IDENTITY CASCADE
     `);
+
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
+    core = await import("./index");
+  });
+
+  afterEach(async () => {
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterAll(async () => {
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
     await prisma.$disconnect();
   });
 

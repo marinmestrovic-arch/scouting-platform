@@ -35,3 +35,12 @@ export async function withDbTransaction<T>(
 export async function disconnectPrisma(): Promise<void> {
   await prisma.$disconnect();
 }
+
+export async function resetPrismaClientForTests(): Promise<void> {
+  const cachedPrisma = globalForPrisma.__scoutingPrisma;
+
+  if (cachedPrisma) {
+    await cachedPrisma.$disconnect();
+    delete globalForPrisma.__scoutingPrisma;
+  }
+}

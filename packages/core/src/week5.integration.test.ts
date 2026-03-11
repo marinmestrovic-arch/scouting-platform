@@ -4,7 +4,7 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADVANCED_REPORT_FRESH_WINDOW_DAYS } from "./approvals/status";
 
@@ -61,7 +61,15 @@ const COMPLETED_INSIGHTS = {
 
 integration("week 5 core integration", () => {
   let prisma: PrismaClient;
-  let core: CoreModule;
+  let core: CoreModule | null = null;
+
+  function getCore(): CoreModule {
+    if (!core) {
+      throw new Error("Expected core module to be loaded");
+    }
+
+    return core;
+  }
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -76,11 +84,13 @@ integration("week 5 core integration", () => {
     });
 
     await prisma.$connect();
-    core = await import("./index");
   });
 
   beforeEach(async () => {
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.HYPEAUDITOR_API_KEY = "auth-id:auth-token";
     fetchHypeAuditorChannelInsightsMock.mockReset();
+    vi.resetModules();
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -106,10 +116,25 @@ integration("week 5 core integration", () => {
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'channels.enrich.hypeauditor'
     `);
+
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
+    core = await import("./index");
+  });
+
+  afterEach(async () => {
+    await core?.stopAdvancedReportsQueue();
+    core = null;
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterAll(async () => {
-    await core.stopAdvancedReportsQueue();
+    await core?.stopAdvancedReportsQueue();
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
     await prisma.$disconnect();
   });
 
@@ -147,11 +172,11 @@ integration("week 5 core integration", () => {
     const user = await createUser("manager@example.com");
     const channel = await createChannel();
 
-    const first = await core.requestAdvancedReport({
+    const first = await getCore().requestAdvancedReport({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
-    const second = await core.requestAdvancedReport({
+    const second = await getCore().requestAdvancedReport({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -195,7 +220,7 @@ integration("week 5 core integration", () => {
       },
     });
 
-    const requested = await core.requestAdvancedReport({
+    const requested = await getCore().requestAdvancedReport({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -218,7 +243,7 @@ integration("week 5 core integration", () => {
     const admin = await createUser("admin@example.com", Role.ADMIN);
     const channel = await createChannel();
 
-    const created = await core.requestAdvancedReport({
+    const created = await getCore().requestAdvancedReport({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -227,7 +252,7 @@ integration("week 5 core integration", () => {
       throw new Error("Expected request id");
     }
 
-    const approved = await core.approveAdvancedReportRequest({
+    const approved = await getCore().approveAdvancedReportRequest({
       advancedReportRequestId: created.advancedReport.requestId,
       actorUserId: admin.id,
       decisionNote: "Approved for paid lookup.",
@@ -259,7 +284,7 @@ integration("week 5 core integration", () => {
     const admin = await createUser("admin@example.com", Role.ADMIN);
     const channel = await createChannel();
 
-    const created = await core.requestAdvancedReport({
+    const created = await getCore().requestAdvancedReport({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -268,7 +293,7 @@ integration("week 5 core integration", () => {
       throw new Error("Expected request id");
     }
 
-    const rejected = await core.rejectAdvancedReportRequest({
+    const rejected = await getCore().rejectAdvancedReportRequest({
       advancedReportRequestId: created.advancedReport.requestId,
       actorUserId: admin.id,
       decisionNote: "Out of budget this week.",
@@ -312,7 +337,7 @@ integration("week 5 core integration", () => {
       },
     });
 
-    await core.executeAdvancedReportRequest({
+    await getCore().executeAdvancedReportRequest({
       advancedReportRequestId: request.id,
       requestedByUserId: user.id,
     });
@@ -342,7 +367,7 @@ integration("week 5 core integration", () => {
     expect(insightRow.estimatedPriceCurrencyCode).toBe("USD");
     expect(insightRow.brandMentions).toEqual(COMPLETED_INSIGHTS.brandMentions);
 
-    const detail = await core.getChannelById(channel.id);
+    const detail = await getCore().getChannelById(channel.id);
     expect(detail?.advancedReport.status).toBe("completed");
     expect(detail?.advancedReport.lastCompletedReport).toMatchObject({
       requestId: request.id,
@@ -401,7 +426,7 @@ integration("week 5 core integration", () => {
       },
     });
 
-    await core.executeAdvancedReportRequest({
+    await getCore().executeAdvancedReportRequest({
       advancedReportRequestId: request.id,
       requestedByUserId: user.id,
     });
@@ -439,7 +464,7 @@ integration("week 5 core integration", () => {
     fetchHypeAuditorChannelInsightsMock.mockRejectedValue(new Error("provider boom"));
 
     await expect(
-      core.executeAdvancedReportRequest({
+      getCore().executeAdvancedReportRequest({
         advancedReportRequestId: request.id,
         requestedByUserId: user.id,
       }),
@@ -470,7 +495,7 @@ integration("week 5 core integration", () => {
       },
     });
 
-    const detail = await core.getChannelById(channel.id);
+    const detail = await getCore().getChannelById(channel.id);
     expect(detail?.advancedReport.status).toBe("stale");
     expect(detail?.advancedReport.lastCompletedReport).toMatchObject({
       completedAt: staleCompletedAt.toISOString(),

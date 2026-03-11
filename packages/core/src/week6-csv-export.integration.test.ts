@@ -30,6 +30,7 @@ integration("week 6 csv export core integration", () => {
   });
 
   beforeEach(async () => {
+    process.env.DATABASE_URL = databaseUrl;
     vi.resetModules();
     vi.doUnmock("./exports/queue");
 
@@ -62,6 +63,9 @@ integration("week 6 csv export core integration", () => {
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'exports.csv.generate'
     `);
+
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterEach(async () => {
@@ -69,11 +73,16 @@ integration("week 6 csv export core integration", () => {
     await queue.stopCsvExportsQueue();
     vi.resetModules();
     vi.doUnmock("./exports/queue");
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterAll(async () => {
     const queue = (await import("./exports/queue")) as ExportsQueueModule;
     await queue.stopCsvExportsQueue();
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
     await prisma.$disconnect();
   });
 

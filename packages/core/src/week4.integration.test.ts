@@ -3,7 +3,7 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchYoutubeChannelContextMock = vi.fn();
 const enrichChannelWithOpenAiMock = vi.fn();
@@ -24,7 +24,6 @@ const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
 const integration = databaseUrl ? describe.sequential : describe.skip;
 
 type CoreModule = typeof import("./index");
-type IntegrationsModule = typeof import("@scouting-platform/integrations");
 
 const CACHED_CONTEXT = {
   youtubeChannelId: "UC-ENRICH-1",
@@ -60,8 +59,15 @@ const ENRICHMENT_RESULT = {
 
 integration("week 4 core integration", () => {
   let prisma: PrismaClient;
-  let core: CoreModule;
-  let integrations: IntegrationsModule;
+  let core: CoreModule | null = null;
+
+  function getCore(): CoreModule {
+    if (!core) {
+      throw new Error("Expected core module to be loaded");
+    }
+
+    return core;
+  }
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -77,13 +83,15 @@ integration("week 4 core integration", () => {
     });
 
     await prisma.$connect();
-    core = await import("./index");
-    integrations = await import("@scouting-platform/integrations");
   });
 
   beforeEach(async () => {
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
+    process.env.OPENAI_API_KEY = "test-openai-key";
     fetchYoutubeChannelContextMock.mockReset();
     enrichChannelWithOpenAiMock.mockReset();
+    vi.resetModules();
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -106,10 +114,25 @@ integration("week 4 core integration", () => {
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'channels.enrich.llm'
     `);
+
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
+    core = await import("./index");
+  });
+
+  afterEach(async () => {
+    await core?.stopRunsQueue();
+    core = null;
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
   });
 
   afterAll(async () => {
-    await core.stopRunsQueue();
+    await core?.stopRunsQueue();
+    vi.resetModules();
+    const db = await import("@scouting-platform/db");
+    await db.resetPrismaClientForTests();
     await prisma.$disconnect();
   });
 
@@ -144,7 +167,7 @@ integration("week 4 core integration", () => {
   }
 
   async function assignYoutubeKey(userId: string): Promise<void> {
-    await core.setUserYoutubeApiKey({
+    await getCore().setUserYoutubeApiKey({
       userId,
       rawKey: "yt-key-1",
       actorUserId: userId,
@@ -156,7 +179,7 @@ integration("week 4 core integration", () => {
     const channel = await createChannel();
     await assignYoutubeKey(user.id);
 
-    const created = await core.requestChannelLlmEnrichment({
+    const created = await getCore().requestChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -192,12 +215,12 @@ integration("week 4 core integration", () => {
     const channel = await createChannel();
     await assignYoutubeKey(user.id);
 
-    await core.requestChannelLlmEnrichment({
+    await getCore().requestChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
 
-    const queuedAgain = await core.requestChannelLlmEnrichment({
+    const queuedAgain = await getCore().requestChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -223,7 +246,7 @@ integration("week 4 core integration", () => {
       },
     });
 
-    const runningAgain = await core.requestChannelLlmEnrichment({
+    const runningAgain = await getCore().requestChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -261,7 +284,7 @@ integration("week 4 core integration", () => {
 
     enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
 
-    await core.executeChannelLlmEnrichment({
+    await getCore().executeChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -291,7 +314,7 @@ integration("week 4 core integration", () => {
     fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
     enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
 
-    await core.executeChannelLlmEnrichment({
+    await getCore().executeChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -342,7 +365,7 @@ integration("week 4 core integration", () => {
     });
     enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
 
-    await core.executeChannelLlmEnrichment({
+    await getCore().executeChannelLlmEnrichment({
       channelId: channel.id,
       requestedByUserId: user.id,
     });
@@ -375,7 +398,7 @@ integration("week 4 core integration", () => {
 
     fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
     enrichChannelWithOpenAiMock.mockRejectedValue(
-      new integrations.OpenAiChannelEnrichmentError(
+      new (await import("@scouting-platform/integrations")).OpenAiChannelEnrichmentError(
         "OPENAI_RATE_LIMITED",
         429,
         "OpenAI rate limit exceeded",
@@ -383,7 +406,7 @@ integration("week 4 core integration", () => {
     );
 
     await expect(
-      core.executeChannelLlmEnrichment({
+      getCore().executeChannelLlmEnrichment({
         channelId: channel.id,
         requestedByUserId: user.id,
       }),
@@ -433,8 +456,8 @@ integration("week 4 core integration", () => {
       },
     });
 
-    const staleByAge = await core.getChannelById(channelByAge.id);
-    const staleByUpdate = await core.getChannelById(channelByUpdate.id);
+    const staleByAge = await getCore().getChannelById(channelByAge.id);
+    const staleByUpdate = await getCore().getChannelById(channelByUpdate.id);
 
     expect(staleByAge?.enrichment.status).toBe("stale");
     expect(staleByUpdate?.enrichment.status).toBe("stale");
