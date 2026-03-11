@@ -324,8 +324,10 @@ integration("week 6 hubspot push core integration", () => {
       },
     });
 
-    const originalFindMany = prisma.channel.findMany.bind(prisma.channel);
-    const spy = vi.spyOn(prisma.channel, "findMany").mockRejectedValueOnce(new Error("DB load failed"));
+    const db = await import("@scouting-platform/db");
+    const spy = vi
+      .spyOn(db.prisma.channel, "findMany")
+      .mockRejectedValueOnce(new Error("DB load failed"));
 
     await expect(
       hubspotModule.executeHubspotPushBatch({
@@ -334,7 +336,7 @@ integration("week 6 hubspot push core integration", () => {
       }),
     ).rejects.toThrow("DB load failed");
 
-    spy.mockImplementation(originalFindMany);
+    spy.mockRestore();
 
     const failedBatch = await prisma.hubspotPushBatch.findUniqueOrThrow({
       where: { id: batch.id },
