@@ -1,6 +1,6 @@
 import { auth } from "../../../auth";
+import { AdminAdvancedReportQueue } from "../../../components/admin/admin-advanced-report-queue";
 import { PageSection } from "../../../components/layout/page-section";
-import { RouteScaffoldList } from "../../../components/layout/route-scaffold-list";
 import {
   canAccessNavigationKey,
   FORBIDDEN_ROUTE,
@@ -25,12 +25,9 @@ export default async function AdminPage() {
   return (
     <PageSection
       title="Admin"
-      description="Admin user management shells start in Week 1. Dashboard and import workflows land in Week 5."
+      description="Review HypeAuditor approval requests, keep freshness context visible, and route into the existing admin tools."
     >
-      <RouteScaffoldList
-        heading="Week 1 shell paths"
-        paths={["/admin", "/admin/users", "/admin/users/[userId]"]}
-      />
+      <AdminAdvancedReportQueue />
     </PageSection>
   );
 }
