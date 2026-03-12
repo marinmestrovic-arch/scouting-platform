@@ -70,7 +70,7 @@ describe("admin page", () => {
     expect(result).toBeNull();
   });
 
-  it("renders admin placeholder for admin role", async () => {
+  it("renders admin approval queue for admin role", async () => {
     authMock.mockResolvedValueOnce({
       user: {
         role: "admin"
@@ -82,11 +82,10 @@ describe("admin page", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Admin");
     expect(html).toContain(
-      "Admin user management shells start in Week 1. Dashboard and import workflows land in Week 5."
+      "Review HypeAuditor approval requests, keep freshness context visible, and route into the existing admin tools."
     );
-    expect(html).toContain("Week 1 shell paths");
-    expect(html).toMatch(/<code[^>]*>\/admin<\/code>/);
+    expect(html).toContain("Approval queue");
+    expect(html).toContain("Loading advanced report requests...");
     expect(html).toContain("/admin/users");
-    expect(html).toContain("/admin/users/[userId]");
   });
 });
