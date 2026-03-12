@@ -1,7 +1,6 @@
 import type {
   AdminAdvancedReportRequestDetail,
   AdminAdvancedReportRequestSummary,
-  AdvancedReportRequestStatus,
 } from "@scouting-platform/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
