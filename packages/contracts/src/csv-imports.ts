@@ -2,6 +2,19 @@ import { z } from "zod";
 
 const isoDatetimeSchema = z.string().datetime();
 
+export const CSV_IMPORT_TEMPLATE_VERSION = "v1" as const;
+export const CSV_IMPORT_MAX_DATA_ROWS = 10_000;
+export const CSV_IMPORT_HEADER = [
+  "youtubeChannelId",
+  "channelTitle",
+  "contactEmail",
+  "subscriberCount",
+  "viewCount",
+  "videoCount",
+  "notes",
+  "sourceLabel",
+] as const;
+
 export const CSV_IMPORT_FILE_SIZE_LIMIT_BYTES = 5 * 1024 * 1024;
 export const CSV_IMPORT_ALLOWED_MIME_TYPES = [
   "",

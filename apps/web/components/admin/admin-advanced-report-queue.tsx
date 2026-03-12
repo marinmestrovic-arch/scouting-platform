@@ -476,8 +476,11 @@ export function AdminAdvancedReportQueueView(
         </div>
 
         <div className="admin-advanced-report-queue__toolbar-copy">
+          <Link className="admin-advanced-report-queue__link" href="/admin/imports">
+            CSV imports
+          </Link>
           <Link className="admin-advanced-report-queue__link" href="/admin/users">
-            Admin tools
+            User management
           </Link>
           {isRefreshingList ? (
             <p className="admin-advanced-report-queue__inline-note" role="status">

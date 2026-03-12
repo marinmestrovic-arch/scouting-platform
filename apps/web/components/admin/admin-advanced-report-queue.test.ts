@@ -95,6 +95,7 @@ describe("admin advanced report queue view", () => {
     expect(html).toContain("Approval queue");
     expect(html).toContain("Loading advanced report requests...");
     expect(html).toContain("Select a request");
+    expect(html).toContain('href="/admin/imports"');
     expect(html).toContain('href="/admin/users"');
   });
 

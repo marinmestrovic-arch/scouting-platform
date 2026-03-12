@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CSV_IMPORT_HEADER,
   CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
+  CSV_IMPORT_MAX_DATA_ROWS,
+  CSV_IMPORT_TEMPLATE_VERSION,
   csvImportBatchDetailSchema,
   csvImportBatchSummarySchema,
   csvImportUploadFileSchema,
@@ -11,6 +14,21 @@ import {
 const TEST_UUID = "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b";
 
 describe("csv import contracts", () => {
+  it("exports the strict-template metadata used by backend and UI", () => {
+    expect(CSV_IMPORT_TEMPLATE_VERSION).toBe("v1");
+    expect(CSV_IMPORT_MAX_DATA_ROWS).toBe(10_000);
+    expect(CSV_IMPORT_HEADER).toEqual([
+      "youtubeChannelId",
+      "channelTitle",
+      "contactEmail",
+      "subscriberCount",
+      "viewCount",
+      "videoCount",
+      "notes",
+      "sourceLabel",
+    ]);
+  });
+
   it("parses valid csv upload metadata", () => {
     const payload = csvImportUploadFileSchema.parse({
       fileName: "contacts.CSV",

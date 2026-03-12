@@ -4,7 +4,10 @@ import {
   type Prisma,
 } from "@prisma/client";
 import {
+  CSV_IMPORT_HEADER,
   CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
+  CSV_IMPORT_MAX_DATA_ROWS,
+  CSV_IMPORT_TEMPLATE_VERSION,
   type CsvImportBatchDetail,
   type CsvImportBatchStatus,
   type CsvImportBatchSummary,
@@ -17,19 +20,6 @@ import { parse } from "csv-parse/sync";
 import { ServiceError } from "../errors";
 import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
-
-export const CSV_IMPORT_TEMPLATE_VERSION = "v1";
-export const CSV_IMPORT_MAX_DATA_ROWS = 10_000;
-export const CSV_IMPORT_HEADER = [
-  "youtubeChannelId",
-  "channelTitle",
-  "contactEmail",
-  "subscriberCount",
-  "viewCount",
-  "videoCount",
-  "notes",
-  "sourceLabel",
-] as const;
 
 const csvImportBatchActorSelect = {
   id: true,
