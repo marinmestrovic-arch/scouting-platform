@@ -14,6 +14,14 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }));
 
+vi.mock("../../../components/admin/admin-dashboard-shell", () => ({
+  AdminDashboardShell: () => "Admin dashboard shell"
+}));
+
+vi.mock("../../../components/admin/admin-advanced-report-queue", () => ({
+  AdminAdvancedReportQueue: () => "Admin approval queue"
+}));
+
 import AdminPage from "./page";
 
 describe("admin page", () => {
@@ -70,7 +78,7 @@ describe("admin page", () => {
     expect(result).toBeNull();
   });
 
-  it("renders admin approval queue for admin role", async () => {
+  it("renders admin dashboard overview and approval queue for admin role", async () => {
     authMock.mockResolvedValueOnce({
       user: {
         role: "admin"
@@ -82,11 +90,11 @@ describe("admin page", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Admin");
     expect(html).toContain(
-      "Review HypeAuditor approval requests, keep freshness context visible, and route into the existing admin tools."
+      "Track current admin workload, catch setup gaps early, and work the full HypeAuditor approval queue from one workspace."
     );
-    expect(html).toContain("/admin/imports");
-    expect(html).toContain("Approval queue");
-    expect(html).toContain("Loading advanced report requests...");
-    expect(html).toContain("/admin/users");
+    expect(html).toContain("Admin dashboard shell");
+    expect(html).toContain("Admin approval queue");
+    expect(html).toContain("admin-approval-queue");
+    expect(html.indexOf("Admin dashboard shell")).toBeLessThan(html.indexOf("Admin approval queue"));
   });
 });
