@@ -353,4 +353,42 @@ integration("week 6 hubspot push core integration", () => {
     });
     expect(failedAudit).not.toBeNull();
   });
+
+  it("returns existing detail when another worker wins the running claim", async () => {
+    const hubspotModule = await loadHubspot();
+    const manager = await createUser("manager@example.com");
+    const channel = await createChannel({
+      youtubeChannelId: "UC-HUB-CLAIM",
+      title: "Hub Claim",
+      requestedByUserId: manager.id,
+      contactEmails: ["claim@example.com"],
+    });
+
+    const batch = await hubspotModule.createHubspotPushBatch({
+      requestedByUserId: manager.id,
+      channelIds: [channel.id],
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'hubspot.push.batch'
+    `);
+
+    const db = await import("@scouting-platform/db");
+    const claimSpy = vi
+      .spyOn(db.prisma.hubspotPushBatch, "updateMany")
+      .mockResolvedValueOnce({ count: 0 });
+    const rowResetSpy = vi.spyOn(db.prisma.hubspotPushBatchRow, "updateMany");
+
+    const detail = await hubspotModule.executeHubspotPushBatch({
+      pushBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    expect(detail.status).toBe("queued");
+    expect(upsertHubspotContactMock).not.toHaveBeenCalled();
+    expect(rowResetSpy).not.toHaveBeenCalled();
+
+    claimSpy.mockRestore();
+    rowResetSpy.mockRestore();
+  });
 });

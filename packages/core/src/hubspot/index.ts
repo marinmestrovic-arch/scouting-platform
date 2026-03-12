@@ -461,9 +461,12 @@ export async function executeHubspotPushBatch(input: {
 
   const scope = toScope(batch.scopePayload);
 
-  await prisma.hubspotPushBatch.update({
+  const claimed = await prisma.hubspotPushBatch.updateMany({
     where: {
       id: batch.id,
+      status: {
+        in: [PrismaHubspotPushBatchStatus.QUEUED, PrismaHubspotPushBatchStatus.FAILED],
+      },
     },
     data: {
       status: PrismaHubspotPushBatchStatus.RUNNING,
@@ -472,16 +475,24 @@ export async function executeHubspotPushBatch(input: {
       lastError: null,
       pushedRowCount: 0,
       failedRowCount: 0,
-      rows: {
-        updateMany: {
-          where: {},
-          data: {
-            status: PrismaHubspotPushBatchRowStatus.PENDING,
-            hubspotObjectId: null,
-            errorMessage: null,
-          },
-        },
-      },
+    },
+  });
+
+  if (claimed.count === 0) {
+    return getHubspotPushBatchById({
+      pushBatchId: input.pushBatchId,
+      requestedByUserId: input.requestedByUserId,
+    });
+  }
+
+  await prisma.hubspotPushBatchRow.updateMany({
+    where: {
+      batchId: batch.id,
+    },
+    data: {
+      status: PrismaHubspotPushBatchRowStatus.PENDING,
+      hubspotObjectId: null,
+      errorMessage: null,
     },
   });
 
