@@ -15,7 +15,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:ci": "turbo run test --concurrency=1",
-    "verify:week3:backend": "sh -ac 'ORIG_DATABASE_URL_TEST=\"$DATABASE_URL_TEST\"; set -a; [ -f .env ] && . ./.env; set +a; [ -n \"$ORIG_DATABASE_URL_TEST\" ] && DATABASE_URL_TEST=\"$ORIG_DATABASE_URL_TEST\"; [ -n \"$DATABASE_URL_TEST\" ] || { echo \"DATABASE_URL_TEST is required\"; exit 1; }; pnpm -w vitest packages/core/src/week3.integration.test.ts --run && pnpm -w vitest apps/web/app/api/week3.integration.test.ts --run'",
+    "verify:week3:backend": "node scripts/verify-week3-backend.mjs",
     "typecheck": "turbo run typecheck",
     "infra:up": "docker compose up -d --build",
     "infra:db:up": "docker compose up -d postgres",
@@ -31,7 +31,7 @@
     "db:generate": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:generate",
     "db:migrate": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:migrate",
     "db:migrate:deploy": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:migrate:deploy",
-    "db:migrate:test": "sh -ac 'ORIG_DATABASE_URL_TEST=\"$DATABASE_URL_TEST\"; set -a; [ -f .env ] && . ./.env; set +a; [ -n \"$ORIG_DATABASE_URL_TEST\" ] && DATABASE_URL_TEST=\"$ORIG_DATABASE_URL_TEST\"; [ -n \"$DATABASE_URL_TEST\" ] || { echo \"DATABASE_URL_TEST is required\"; exit 1; }; DATABASE_URL=\"$DATABASE_URL_TEST\" pnpm --filter @scouting-platform/db db:migrate:deploy'",
+    "db:migrate:test": "node scripts/db-migrate-test.mjs",
     "db:studio": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:studio",
     "db:seed:admin": "sh scripts/with-local-env.sh tsx scripts/seed-admin.ts"
   },

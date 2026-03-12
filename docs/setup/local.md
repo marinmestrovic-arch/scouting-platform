@@ -213,6 +213,20 @@ Fix:
 - set `APP_ENCRYPTION_KEY` in `.env` to a real 32-character value
 - rerun `pnpm infra:up`
 
+### Bootstrap fails with `parameter not set`
+
+Symptoms:
+- bootstrap exits during `pnpm db:generate`
+- logs show `scripts/with-local-env.sh: ... ./.env: ... parameter not set`
+
+Cause:
+- an older checkout is shell-sourcing `.env`, so a quoted secret containing `$...` is treated as shell expansion instead of a literal string
+
+Fix:
+- update to the latest `dev`
+- keep quoted secrets in `.env` as plain literal values; the current local env loader reads them without shell expansion
+- rerun `docker compose up --build`
+
 ### Docker login fails with native `argon2` error
 
 Symptoms:
