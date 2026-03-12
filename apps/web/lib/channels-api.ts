@@ -2,12 +2,14 @@ import {
   channelDetailSchema,
   listChannelsQuerySchema,
   listChannelsResponseSchema,
+  requestAdvancedReportResponseSchema,
   requestChannelEnrichmentResponseSchema,
   type CatalogChannelFilters,
   type ChannelEnrichmentDetail,
   type ChannelDetail,
   type ListChannelsQuery,
   type ListChannelsResponse,
+  type RequestAdvancedReportResponse,
   type RequestChannelEnrichmentResponse,
 } from "@scouting-platform/contracts";
 
@@ -16,11 +18,15 @@ const GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE =
   "Unable to load channel details. Please try again.";
 const GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE =
   "Unable to request channel enrichment. Please try again.";
+const GENERIC_CHANNEL_ADVANCED_REPORT_REQUEST_ERROR_MESSAGE =
+  "Unable to request channel advanced report. Please try again.";
 const INVALID_CHANNELS_RESPONSE_ERROR_MESSAGE = "Received an invalid response from the server.";
 const INVALID_CHANNEL_DETAIL_RESPONSE_ERROR_MESSAGE =
   "Received an invalid channel detail response from the server.";
 const INVALID_CHANNEL_ENRICHMENT_RESPONSE_ERROR_MESSAGE =
   "Received an invalid channel enrichment response from the server.";
+const INVALID_CHANNEL_ADVANCED_REPORT_RESPONSE_ERROR_MESSAGE =
+  "Received an invalid channel advanced report response from the server.";
 
 type ApiErrorBody = {
   error?: string;
@@ -218,6 +224,42 @@ export async function requestChannelEnrichment(
     return parsed.data;
   } catch (error) {
     throw normalizeRequestError(error, GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE);
+  }
+}
+
+export async function requestChannelAdvancedReport(
+  channelId: string,
+): Promise<RequestAdvancedReportResponse> {
+  try {
+    const response = await fetch(`/api/channels/${channelId}/advanced-report-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getApiErrorMessage(response, payload, {
+          authorizationErrorMessage:
+            "You are not authorized to request an advanced report for this channel.",
+          notFoundErrorMessage: "Channel not found.",
+          fallbackMessage: GENERIC_CHANNEL_ADVANCED_REPORT_REQUEST_ERROR_MESSAGE,
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = requestAdvancedReportResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_CHANNEL_ADVANCED_REPORT_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error, GENERIC_CHANNEL_ADVANCED_REPORT_REQUEST_ERROR_MESSAGE);
   }
 }
 

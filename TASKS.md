@@ -194,7 +194,7 @@ Done when:
 
 #### Marin:
 
-- request HypeAuditor UI
+- [done] request HypeAuditor UI
 - approval queue UI
 - admin import screen
 - import result/error UI
@@ -207,6 +207,7 @@ Done when:
 - admins can import CSV and see row-level failures
 - phased delivery note: Week 5 backend is delivered end-to-end via `POST /api/channels/:id/advanced-report-requests`, `GET /api/admin/advanced-report-requests`, `GET /api/admin/advanced-report-requests/:id`, `POST /api/admin/advanced-report-requests/:id/approve`, `POST /api/admin/advanced-report-requests/:id/reject`, `POST /api/admin/csv-import-batches`, `GET /api/admin/csv-import-batches`, `GET /api/admin/csv-import-batches/:id`, queue/worker execution for approved HypeAuditor requests and CSV imports, persisted `pending_approval/approved/rejected/queued/running/completed/failed` and `queued/running/completed/failed` lifecycles with visible `last_error`, normalized audience/commercial insights on `GET /api/channels/:id`, admin-only raw payload inspection, strict-template CSV validation, and row-level CSV import result persistence.
 - evidence note: backend coverage lives in `packages/core/src/week5.integration.test.ts`, `packages/core/src/week5-csv-import.integration.test.ts`, `apps/web/app/api/week5.integration.test.ts`, `apps/web/app/api/week5-csv-import.integration.test.ts`, `apps/worker/src/channels-enrich-hypeauditor-worker.test.ts`, `apps/worker/src/imports-csv-process-worker.test.ts`, `packages/integrations/src/hypeauditor/report.test.ts`, `packages/core/src/approvals/status.test.ts`, and `packages/contracts/src/csv-imports.test.ts`.
+- [done] evidence note: HypeAuditor request UI now ships on `/catalog/[channelId]` with status-specific request and re-request actions backed by `POST /api/channels/:id/advanced-report-requests`, automatic polling for `pending_approval/approved/queued/running`, preserved visible audience insights while newer approval and worker steps complete, and focused coverage in `apps/web/lib/channels-api.test.ts`, `apps/web/components/catalog/channel-detail-shell.test.ts`, and `apps/web/components/catalog/channel-detail-shell.behavior.test.ts`.
 
 ### Week 6: Export and HubSpot
 

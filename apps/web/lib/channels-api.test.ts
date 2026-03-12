@@ -4,6 +4,7 @@ import {
   ApiRequestError,
   fetchChannelDetail,
   fetchChannels,
+  requestChannelAdvancedReport,
   requestChannelEnrichment,
   requestChannelEnrichmentBatch,
 } from "./channels-api";
@@ -305,6 +306,42 @@ describe("channels api helpers", () => {
     expect(response.enrichment.summary).toBe("Creator focused on launches and industry analysis.");
   });
 
+  it("requests an advanced report from POST /api/channels/:id/advanced-report-requests", async () => {
+    const channelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        channelId,
+        advancedReport: {
+          ...buildChannelDetailPayload().advancedReport,
+          status: "pending_approval",
+          updatedAt: "2026-03-09T10:00:00.000Z",
+          completedAt: null,
+          requestedAt: "2026-03-09T10:00:00.000Z",
+          reviewedAt: null,
+          decisionNote: null,
+          lastError: null,
+        },
+      }),
+    );
+
+    const response = await requestChannelAdvancedReport(channelId);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `/api/channels/${channelId}/advanced-report-requests`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+    );
+    expect(response.channelId).toBe(channelId);
+    expect(response.advancedReport.status).toBe("pending_approval");
+    expect(response.advancedReport.lastCompletedReport).toEqual(
+      buildChannelDetailPayload().advancedReport.lastCompletedReport,
+    );
+  });
+
   it("aggregates batch enrichment requests without aborting on individual failures", async () => {
     const firstChannelId = "53adac17-f39d-4731-a61f-194150fbc431";
     const secondChannelId = "c539c987-dc34-4ef7-9843-b5dba7320e19";
@@ -365,6 +402,24 @@ describe("channels api helpers", () => {
     } satisfies Partial<ApiRequestError>);
   });
 
+  it("surfaces actionable advanced report request errors from the API", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: "Advanced report request already exists for this channel",
+        },
+        409,
+      ),
+    );
+
+    await expect(
+      requestChannelAdvancedReport("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toMatchObject({
+      message: "Advanced report request already exists for this channel",
+      status: 409,
+    } satisfies Partial<ApiRequestError>);
+  });
+
   it("throws when the enrichment response shape is invalid", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({
@@ -378,6 +433,21 @@ describe("channels api helpers", () => {
     await expect(
       requestChannelEnrichment("53adac17-f39d-4731-a61f-194150fbc431"),
     ).rejects.toThrow("Received an invalid channel enrichment response from the server.");
+  });
+
+  it("throws when the advanced report response shape is invalid", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        channelId: "53adac17-f39d-4731-a61f-194150fbc431",
+        advancedReport: {
+          status: "pending_approval",
+        },
+      }),
+    );
+
+    await expect(
+      requestChannelAdvancedReport("53adac17-f39d-4731-a61f-194150fbc431"),
+    ).rejects.toThrow("Received an invalid channel advanced report response from the server.");
   });
 
   it("surfaces not found responses for the detail page", async () => {

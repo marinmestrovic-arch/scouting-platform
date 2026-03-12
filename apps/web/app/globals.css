@@ -1898,7 +1898,14 @@ a {
   background: linear-gradient(180deg, rgba(255, 245, 243, 0.98) 0%, rgba(252, 231, 229, 0.9) 100%);
 }
 
+.channel-detail-shell__job-feedback--rejected {
+  border-color: rgba(179, 69, 69, 0.2);
+  background: linear-gradient(180deg, rgba(255, 245, 243, 0.98) 0%, rgba(252, 231, 229, 0.9) 100%);
+}
+
 .channel-detail-shell__job-feedback--missing,
+.channel-detail-shell__job-feedback--pending_approval,
+.channel-detail-shell__job-feedback--approved,
 .channel-detail-shell__job-feedback--queued,
 .channel-detail-shell__job-feedback--running,
 .channel-detail-shell__job-feedback--stale {

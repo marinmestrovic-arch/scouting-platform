@@ -1,4 +1,8 @@
-import type { ChannelDetail, ChannelEnrichmentStatus } from "@scouting-platform/contracts";
+import type {
+  ChannelAdvancedReportStatus,
+  ChannelDetail,
+  ChannelEnrichmentStatus,
+} from "@scouting-platform/contracts";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -115,14 +119,23 @@ function renderReadyView(options?: {
     type: "idle" | "submitting" | "success" | "error";
     message: string;
   };
+  advancedReportActionState?: {
+    type: "idle" | "submitting" | "success" | "error";
+    message: string;
+  };
 }): string {
   return renderToStaticMarkup(
     createElement(ChannelDetailShellView, {
+      advancedReportActionState: options?.advancedReportActionState ?? {
+        type: "idle",
+        message: "",
+      },
       channelId: "53adac17-f39d-4731-a61f-194150fbc431",
       enrichmentActionState: options?.enrichmentActionState ?? {
         type: "idle",
         message: "",
       },
+      onRequestAdvancedReport: vi.fn(),
       onRequestEnrichment: vi.fn(),
       onRetry: vi.fn(),
       requestState: {
@@ -153,6 +166,50 @@ function createEnrichmentScenario(status: ChannelEnrichmentStatus): ChannelDetai
   });
 }
 
+function createAdvancedReportScenario(status: ChannelAdvancedReportStatus): ChannelDetail {
+  return createChannelDetail({
+    advancedReport: {
+      requestId: status === "missing" ? null : "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+      status,
+      updatedAt: status === "missing" ? null : "2026-03-08T10:00:00.000Z",
+      completedAt:
+        status === "completed" || status === "stale" ? "2026-03-08T10:00:00.000Z" : null,
+      lastError: status === "failed" ? "HypeAuditor request failed" : null,
+      requestedAt: status === "missing" ? null : "2026-03-07T08:00:00.000Z",
+      reviewedAt:
+        status === "approved" ||
+        status === "queued" ||
+        status === "running" ||
+        status === "completed" ||
+        status === "failed" ||
+        status === "rejected"
+          ? "2026-03-07T09:00:00.000Z"
+          : null,
+      decisionNote:
+        status === "rejected" ? "Budget denied." : status === "missing" ? null : "Approved.",
+      lastCompletedReport:
+        status === "missing"
+          ? null
+          : {
+              requestId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              completedAt: "2026-03-08T10:00:00.000Z",
+              ageDays: status === "stale" ? 145 : 12,
+              withinFreshWindow: status !== "stale",
+            },
+    },
+    insights:
+      status === "missing"
+        ? {
+            audienceCountries: [],
+            audienceGenderAge: [],
+            audienceInterests: [],
+            estimatedPrice: null,
+            brandMentions: [],
+          }
+        : createChannelDetail().insights,
+  });
+}
+
 describe("channel detail shell view", () => {
   it("renders the live channel detail layout for a resolved channel", () => {
     const html = renderReadyView();
@@ -166,6 +223,8 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Refresh enrichment");
     expect(html).toContain("Enrichment is ready. The latest stored result is visible below.");
     expect(html).toContain("Advanced report: Completed");
+    expect(html).toContain("Latest report ready");
+    expect(html).toContain("Request another report");
     expect(html).toContain("Weekly coverage of launch systems and creator strategy.");
     expect(html).toContain("Creator focused on launches and industry analysis.");
     expect(html).toContain("Last completed report is fresh (12 days old).");
@@ -255,9 +314,105 @@ describe("channel detail shell view", () => {
     expect(busyHtml).toContain("disabled=\"\"");
   });
 
+  it("renders status-specific advanced report actions for requestable states", () => {
+    const scenarios: Array<{
+      status: ChannelAdvancedReportStatus;
+      actionLabel: string;
+      statusCopy: string;
+    }> = [
+      {
+        status: "missing",
+        actionLabel: "Request advanced report",
+        statusCopy:
+          "No HypeAuditor report has been requested yet. Queue one when you need audience and commercial insights beyond the catalog profile.",
+      },
+      {
+        status: "failed",
+        actionLabel: "Retry request",
+        statusCopy:
+          "Last advanced report attempt failed: HypeAuditor request failed. The last stored audience insights stay visible below while you decide whether to request another report.",
+      },
+      {
+        status: "rejected",
+        actionLabel: "Request again",
+        statusCopy:
+          "The last request was rejected during admin review. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.",
+      },
+      {
+        status: "completed",
+        actionLabel: "Request another report",
+        statusCopy:
+          "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
+      },
+      {
+        status: "stale",
+        actionLabel: "Request fresh report",
+        statusCopy:
+          "The last completed advanced report is outside the 120-day review window. Request a fresh report when you need updated audience and commercial insights, and the last stored insights remain visible below until a newer report completes.",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const html = renderReadyView({
+        channel: createAdvancedReportScenario(scenario.status),
+      });
+
+      expect(html).toContain(scenario.actionLabel);
+      expect(html).toContain(scenario.statusCopy);
+    }
+  });
+
+  it("renders disabled busy actions for pending and active advanced report states", () => {
+    const pendingApprovalHtml = renderReadyView({
+      channel: createAdvancedReportScenario("pending_approval"),
+    });
+    const runningHtml = renderReadyView({
+      channel: createAdvancedReportScenario("running"),
+    });
+
+    expect(pendingApprovalHtml).toContain("Pending approval");
+    expect(pendingApprovalHtml).toContain(
+      "This request is waiting for admin approval. This page refreshes automatically while approval status changes, and the last stored audience insights stay visible below.",
+    );
+    expect(pendingApprovalHtml).toContain("disabled=\"\"");
+
+    expect(runningHtml).toContain("Report running");
+    expect(runningHtml).toContain(
+      "The advanced report is running in the background. This page refreshes automatically while processing continues, and the last stored audience insights stay visible below until a newer report completes.",
+    );
+    expect(runningHtml).toContain("disabled=\"\"");
+  });
+
+  it("renders advanced report action feedback messages", () => {
+    const successHtml = renderReadyView({
+      advancedReportActionState: {
+        type: "success",
+        message:
+          "Advanced report request recorded. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes.",
+      },
+    });
+    const busyHtml = renderReadyView({
+      advancedReportActionState: {
+        type: "submitting",
+        message: "",
+      },
+    });
+
+    expect(successHtml).toContain(
+      "Advanced report request recorded. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes.",
+    );
+    expect(successHtml).toContain("role=\"status\"");
+    expect(busyHtml).toContain("Requesting...");
+    expect(busyHtml).toContain("disabled=\"\"");
+  });
+
   it("renders the admin manual edit panel when manual edit controls are enabled", () => {
     const html = renderToStaticMarkup(
       createElement(ChannelDetailShellView, {
+        advancedReportActionState: {
+          type: "idle",
+          message: "",
+        },
         channelId: "53adac17-f39d-4731-a61f-194150fbc431",
         canManageManualEdits: true,
         enrichmentActionState: {
@@ -265,6 +420,7 @@ describe("channel detail shell view", () => {
           message: "",
         },
         onChannelUpdated: vi.fn(),
+        onRequestAdvancedReport: vi.fn(),
         onRequestEnrichment: vi.fn(),
         onRetry: vi.fn(),
         requestState: {
@@ -283,11 +439,16 @@ describe("channel detail shell view", () => {
   it("renders retryable error feedback when the request fails", () => {
     const html = renderToStaticMarkup(
       createElement(ChannelDetailShellView, {
+        advancedReportActionState: {
+          type: "idle",
+          message: "",
+        },
         channelId: "53adac17-f39d-4731-a61f-194150fbc431",
         enrichmentActionState: {
           type: "idle",
           message: "",
         },
+        onRequestAdvancedReport: vi.fn(),
         onRequestEnrichment: vi.fn(),
         onRetry: vi.fn(),
         requestState: {
@@ -306,11 +467,16 @@ describe("channel detail shell view", () => {
   it("renders an explicit not-found state for missing catalog records", () => {
     const html = renderToStaticMarkup(
       createElement(ChannelDetailShellView, {
+        advancedReportActionState: {
+          type: "idle",
+          message: "",
+        },
         channelId: "missing-channel-id",
         enrichmentActionState: {
           type: "idle",
           message: "",
         },
+        onRequestAdvancedReport: vi.fn(),
         onRequestEnrichment: vi.fn(),
         onRetry: vi.fn(),
         requestState: {

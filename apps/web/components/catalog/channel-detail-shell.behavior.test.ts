@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   fetchChannelDetailMock,
+  requestChannelAdvancedReportMock,
   requestChannelEnrichmentMock,
   useEffectMock,
   useStateMock,
 } = vi.hoisted(() => ({
   fetchChannelDetailMock: vi.fn(),
+  requestChannelAdvancedReportMock: vi.fn(),
   requestChannelEnrichmentMock: vi.fn(),
   useEffectMock: vi.fn(),
   useStateMock: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock("../../lib/channels-api", () => ({
     }
   },
   fetchChannelDetail: fetchChannelDetailMock,
+  requestChannelAdvancedReport: requestChannelAdvancedReportMock,
   requestChannelEnrichment: requestChannelEnrichmentMock,
 }));
 
@@ -53,6 +56,7 @@ import {
 } from "./channel-detail-shell";
 
 type ChannelDetailShellElement = ReactElement<{
+  onRequestAdvancedReport: () => void | Promise<void>;
   onRetry: () => void;
   onRequestEnrichment: () => void | Promise<void>;
 }>;
@@ -116,11 +120,16 @@ function renderShell(options?: {
     type: "idle" | "submitting" | "success" | "error";
     message: string;
   };
+  advancedReportActionState?: {
+    type: "idle" | "submitting" | "success" | "error";
+    message: string;
+  };
   runEffects?: boolean;
 }) {
   const setRequestState = vi.fn();
   const setReloadToken = vi.fn();
   const setEnrichmentActionState = vi.fn();
+  const setAdvancedReportActionState = vi.fn();
   const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
@@ -141,6 +150,13 @@ function renderShell(options?: {
         message: "",
       },
       setEnrichmentActionState,
+    ])
+    .mockReturnValueOnce([
+      options?.advancedReportActionState ?? {
+        type: "idle",
+        message: "",
+      },
+      setAdvancedReportActionState,
     ]);
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
     if (options?.runEffects === false) {
@@ -161,6 +177,7 @@ function renderShell(options?: {
   return {
     cleanups,
     element,
+    setAdvancedReportActionState,
     setEnrichmentActionState,
     setReloadToken,
     setRequestState,
@@ -171,13 +188,26 @@ describe("channel detail shell behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchChannelDetailMock.mockResolvedValue(createChannelDetail());
+    requestChannelAdvancedReportMock.mockResolvedValue({
+      channelId: "53adac17-f39d-4731-a61f-194150fbc431",
+      advancedReport: {
+        ...createChannelDetail().advancedReport,
+        status: "pending_approval",
+        updatedAt: "2026-03-09T10:00:00.000Z",
+        completedAt: null,
+        requestedAt: "2026-03-09T10:00:00.000Z",
+        reviewedAt: null,
+        decisionNote: null,
+        lastError: null,
+      },
+    });
     requestChannelEnrichmentMock.mockResolvedValue({
       channelId: "53adac17-f39d-4731-a61f-194150fbc431",
       enrichment: createChannelDetail().enrichment,
     });
   });
 
-  it("loads channel detail on mount, polls while enrichment is active, and aborts on cleanup", async () => {
+  it("loads channel detail on mount, polls while advanced report work is active, and aborts on cleanup", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler) => {
       void handler();
       return 321 as unknown as ReturnType<typeof setTimeout>;
@@ -186,16 +216,19 @@ describe("channel detail shell behavior", () => {
 
     fetchChannelDetailMock.mockResolvedValueOnce(
       createChannelDetail({
-        enrichment: {
-          ...createChannelDetail().enrichment,
-          status: "running",
+        advancedReport: {
+          ...createChannelDetail().advancedReport,
+          status: "pending_approval",
           completedAt: null,
+          reviewedAt: null,
+          decisionNote: null,
         },
       }),
     );
     fetchChannelDetailMock.mockResolvedValueOnce(createChannelDetail());
 
-    const { cleanups, setEnrichmentActionState, setRequestState } = renderShell();
+    const { cleanups, setAdvancedReportActionState, setEnrichmentActionState, setRequestState } =
+      renderShell();
 
     expect(setRequestState).toHaveBeenNthCalledWith(1, {
       status: "loading",
@@ -203,6 +236,10 @@ describe("channel detail shell behavior", () => {
       error: null,
     });
     expect(setEnrichmentActionState).toHaveBeenCalledWith({
+      type: "idle",
+      message: "",
+    });
+    expect(setAdvancedReportActionState).toHaveBeenCalledWith({
       type: "idle",
       message: "",
     });
@@ -217,10 +254,12 @@ describe("channel detail shell behavior", () => {
     expect(setRequestState).toHaveBeenNthCalledWith(2, {
       status: "ready",
       data: createChannelDetail({
-        enrichment: {
-          ...createChannelDetail().enrichment,
-          status: "running",
+        advancedReport: {
+          ...createChannelDetail().advancedReport,
+          status: "pending_approval",
           completedAt: null,
+          reviewedAt: null,
+          decisionNote: null,
         },
       }),
       error: null,
@@ -363,6 +402,125 @@ describe("channel detail shell behavior", () => {
     expect(setEnrichmentActionState).toHaveBeenNthCalledWith(2, {
       type: "error",
       message: "Assigned YouTube API key is required before requesting enrichment",
+    });
+    expect(setRequestState).not.toHaveBeenCalled();
+  });
+
+  it("requests an advanced report, merges the returned state, and triggers a refresh cycle", async () => {
+    const currentChannel = createChannelDetail({
+      insights: {
+        audienceCountries: [
+          {
+            countryCode: "US",
+            countryName: "United States",
+            percentage: 32.5,
+          },
+        ],
+        audienceGenderAge: [],
+        audienceInterests: [],
+        estimatedPrice: null,
+        brandMentions: [],
+      },
+    });
+    requestChannelAdvancedReportMock.mockResolvedValueOnce({
+      channelId: currentChannel.id,
+      advancedReport: {
+        ...currentChannel.advancedReport,
+        status: "pending_approval",
+        updatedAt: "2026-03-09T10:00:00.000Z",
+        completedAt: null,
+        requestedAt: "2026-03-09T10:00:00.000Z",
+        reviewedAt: null,
+        decisionNote: null,
+        lastError: null,
+      },
+    });
+
+    const { element, setAdvancedReportActionState, setReloadToken, setRequestState } = renderShell({
+      requestState: {
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      },
+      runEffects: false,
+    });
+
+    await element.props.onRequestAdvancedReport();
+
+    expect(requestChannelAdvancedReportMock).toHaveBeenCalledWith(currentChannel.id);
+    expect(setAdvancedReportActionState).toHaveBeenNthCalledWith(1, {
+      type: "submitting",
+      message: "",
+    });
+    expect(setAdvancedReportActionState).toHaveBeenNthCalledWith(2, {
+      type: "success",
+      message:
+        "Advanced report request recorded. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes.",
+    });
+    expect(setRequestState).toHaveBeenCalledWith(expect.any(Function));
+    expect(setReloadToken).toHaveBeenCalledWith(expect.any(Function));
+
+    const requestStateUpdater = setRequestState.mock.calls[0]?.[0] as
+      | ((current: {
+          status: "ready";
+          data: ChannelDetail;
+          error: null;
+        }) => unknown)
+      | undefined;
+    expect(requestStateUpdater).toBeTypeOf("function");
+    expect(
+      requestStateUpdater?.({
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      }),
+    ).toEqual({
+      status: "ready",
+      data: {
+        ...currentChannel,
+        advancedReport: {
+          ...currentChannel.advancedReport,
+          status: "pending_approval",
+          updatedAt: "2026-03-09T10:00:00.000Z",
+          completedAt: null,
+          requestedAt: "2026-03-09T10:00:00.000Z",
+          reviewedAt: null,
+          decisionNote: null,
+          lastError: null,
+        },
+      },
+      error: null,
+    });
+
+    const reloadTokenUpdater = setReloadToken.mock.calls[0]?.[0] as
+      | ((value: number) => number)
+      | undefined;
+    expect(reloadTokenUpdater?.(4)).toBe(5);
+  });
+
+  it("shows advanced report request errors without clearing the loaded detail state", async () => {
+    requestChannelAdvancedReportMock.mockRejectedValueOnce(
+      new ApiRequestError("Channel not found.", 404),
+    );
+
+    const { element, setAdvancedReportActionState, setRequestState } = renderShell({
+      requestState: {
+        status: "ready",
+        data: createChannelDetail(),
+        error: null,
+      },
+      runEffects: false,
+    });
+
+    await element.props.onRequestAdvancedReport();
+
+    expect(setAdvancedReportActionState).toHaveBeenNthCalledWith(1, {
+      type: "submitting",
+      message: "",
+    });
+    expect(setAdvancedReportActionState).toHaveBeenNthCalledWith(2, {
+      type: "error",
+      message: "Channel not found.",
     });
     expect(setRequestState).not.toHaveBeenCalled();
   });

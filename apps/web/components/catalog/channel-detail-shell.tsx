@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ChannelAdvancedReportDetail,
   ChannelAdvancedReportStatus,
   ChannelDetail,
   ChannelEnrichmentDetail,
@@ -14,6 +15,7 @@ import React, { useEffect, useState } from "react";
 import {
   ApiRequestError,
   fetchChannelDetail,
+  requestChannelAdvancedReport,
   requestChannelEnrichment,
 } from "../../lib/channels-api";
 import { AdminChannelManualEditPanel } from "./admin-channel-manual-edit-panel";
@@ -45,16 +47,21 @@ type ChannelDetailRequestState =
       error: null;
     };
 
-type ChannelEnrichmentActionState = {
+type ChannelRequestActionState = {
   type: "idle" | "submitting" | "success" | "error";
   message: string;
 };
 
+type ChannelEnrichmentActionState = ChannelRequestActionState;
+type ChannelAdvancedReportActionState = ChannelRequestActionState;
+
 type ChannelDetailShellViewProps = ChannelDetailShellProps & {
   requestState: ChannelDetailRequestState;
   enrichmentActionState: ChannelEnrichmentActionState;
+  advancedReportActionState: ChannelAdvancedReportActionState;
   onRetry: () => void;
   onRequestEnrichment: () => void | Promise<void>;
+  onRequestAdvancedReport: () => void | Promise<void>;
   onChannelUpdated?: (channel: ChannelDetail) => void;
 };
 
@@ -70,10 +77,14 @@ const NOT_FOUND_REQUEST_STATE: ChannelDetailRequestState = {
   error: null,
 };
 
-const IDLE_ENRICHMENT_ACTION_STATE: ChannelEnrichmentActionState = {
+const IDLE_REQUEST_ACTION_STATE: ChannelRequestActionState = {
   type: "idle",
   message: "",
 };
+
+const IDLE_ENRICHMENT_ACTION_STATE: ChannelEnrichmentActionState = IDLE_REQUEST_ACTION_STATE;
+const IDLE_ADVANCED_REPORT_ACTION_STATE: ChannelAdvancedReportActionState =
+  IDLE_REQUEST_ACTION_STATE;
 
 const EMPTY_VALUE = "Not available";
 
@@ -187,7 +198,7 @@ function getLastCompletedReportSummary(channel: ChannelDetail): string {
   return `Last completed report is outside the 120-day review window (${lastCompletedReport.ageDays} days old).`;
 }
 
-function hasAudienceInsights(channel: ChannelDetail): boolean {
+function hasAudienceInsights(channel: Pick<ChannelDetail, "insights">): boolean {
   return (
     channel.insights.audienceCountries.length > 0 ||
     channel.insights.audienceGenderAge.length > 0 ||
@@ -199,6 +210,24 @@ function hasAudienceInsights(channel: ChannelDetail): boolean {
 
 export function shouldPollEnrichmentStatus(status: ChannelEnrichmentStatus): boolean {
   return status === "queued" || status === "running";
+}
+
+export function shouldPollAdvancedReportStatus(status: ChannelAdvancedReportStatus): boolean {
+  return (
+    status === "pending_approval" ||
+    status === "approved" ||
+    status === "queued" ||
+    status === "running"
+  );
+}
+
+function shouldPollChannelDetailStatus(
+  channel: Pick<ChannelDetail, "advancedReport" | "enrichment">,
+): boolean {
+  return (
+    shouldPollEnrichmentStatus(channel.enrichment.status) ||
+    shouldPollAdvancedReportStatus(channel.advancedReport.status)
+  );
 }
 
 function hasVisibleEnrichmentResult(
@@ -235,6 +264,42 @@ export function getEnrichmentActionLabel(status: ChannelEnrichmentStatus): strin
   return "Refresh enrichment";
 }
 
+export function getAdvancedReportActionLabel(status: ChannelAdvancedReportStatus): string {
+  if (status === "missing") {
+    return "Request advanced report";
+  }
+
+  if (status === "failed") {
+    return "Retry request";
+  }
+
+  if (status === "rejected") {
+    return "Request again";
+  }
+
+  if (status === "pending_approval") {
+    return "Pending approval";
+  }
+
+  if (status === "approved") {
+    return "Approved";
+  }
+
+  if (status === "queued") {
+    return "Report queued";
+  }
+
+  if (status === "running") {
+    return "Report running";
+  }
+
+  if (status === "completed") {
+    return "Request another report";
+  }
+
+  return "Request fresh report";
+}
+
 function getEnrichmentFeedbackTitle(status: ChannelEnrichmentStatus): string {
   if (status === "missing") {
     return "No enrichment requested";
@@ -257,6 +322,42 @@ function getEnrichmentFeedbackTitle(status: ChannelEnrichmentStatus): string {
   }
 
   return "Latest enrichment ready";
+}
+
+function getAdvancedReportFeedbackTitle(status: ChannelAdvancedReportStatus): string {
+  if (status === "missing") {
+    return "No report requested";
+  }
+
+  if (status === "pending_approval") {
+    return "Awaiting approval";
+  }
+
+  if (status === "approved") {
+    return "Approval recorded";
+  }
+
+  if (status === "queued") {
+    return "Report queued";
+  }
+
+  if (status === "running") {
+    return "Report running";
+  }
+
+  if (status === "failed") {
+    return "Last report failed";
+  }
+
+  if (status === "rejected") {
+    return "Request rejected";
+  }
+
+  if (status === "stale") {
+    return "Refresh recommended";
+  }
+
+  return "Latest report ready";
 }
 
 export function getEnrichmentStatusMessage(
@@ -306,6 +407,69 @@ export function getEnrichmentStatusMessage(
     : "Enrichment is ready. Refresh it when the channel changes or you need a newer result.";
 }
 
+export function getAdvancedReportStatusMessage(
+  channel: Pick<ChannelDetail, "advancedReport" | "insights">,
+): string {
+  const hasRetainedInsights = hasAudienceInsights(channel);
+  const { advancedReport } = channel;
+
+  if (advancedReport.status === "missing") {
+    return "No HypeAuditor report has been requested yet. Queue one when you need audience and commercial insights beyond the catalog profile.";
+  }
+
+  if (advancedReport.status === "pending_approval") {
+    return hasRetainedInsights
+      ? "This request is waiting for admin approval. This page refreshes automatically while approval status changes, and the last stored audience insights stay visible below."
+      : "This request is waiting for admin approval. This page refreshes automatically while approval status changes.";
+  }
+
+  if (advancedReport.status === "approved") {
+    return hasRetainedInsights
+      ? "This request was approved and is moving into the worker queue. This page refreshes automatically while execution status changes, and the last stored audience insights stay visible below."
+      : "This request was approved and is moving into the worker queue. This page refreshes automatically while execution status changes.";
+  }
+
+  if (advancedReport.status === "queued") {
+    return hasRetainedInsights
+      ? "The advanced report is queued. This page refreshes automatically while the worker waits to start, and the last stored audience insights stay visible below until a newer report completes."
+      : "The advanced report is queued. This page refreshes automatically while the worker waits to start.";
+  }
+
+  if (advancedReport.status === "running") {
+    return hasRetainedInsights
+      ? "The advanced report is running in the background. This page refreshes automatically while processing continues, and the last stored audience insights stay visible below until a newer report completes."
+      : "The advanced report is running in the background. This page refreshes automatically while processing continues.";
+  }
+
+  if (advancedReport.status === "failed") {
+    if (advancedReport.lastError) {
+      return hasRetainedInsights
+        ? `Last advanced report attempt failed: ${advancedReport.lastError}. The last stored audience insights stay visible below while you decide whether to request another report.`
+        : `Last advanced report attempt failed: ${advancedReport.lastError}`;
+    }
+
+    return hasRetainedInsights
+      ? "The last advanced report attempt failed before the worker could complete it. The last stored audience insights stay visible below while you decide whether to request another report."
+      : "The last advanced report attempt failed before the worker could complete it.";
+  }
+
+  if (advancedReport.status === "rejected") {
+    return hasRetainedInsights
+      ? "The last request was rejected during admin review. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below."
+      : "The last request was rejected during admin review. Submit a new request when you still need refreshed audience and commercial insights.";
+  }
+
+  if (advancedReport.status === "stale") {
+    return hasRetainedInsights
+      ? "The last completed advanced report is outside the 120-day review window. Request a fresh report when you need updated audience and commercial insights, and the last stored insights remain visible below until a newer report completes."
+      : "The last completed advanced report is outside the 120-day review window. Request a fresh report when you need updated audience and commercial insights.";
+  }
+
+  return hasRetainedInsights
+    ? "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot."
+    : "The latest HypeAuditor report is ready. Request another report whenever you need a fresh snapshot.";
+}
+
 function getChannelDetailRequestErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.status === 401 || error.status === 403) {
@@ -338,6 +502,22 @@ function getEnrichmentRequestErrorMessage(error: unknown): string {
   return "Unable to request channel enrichment. Please try again.";
 }
 
+function getAdvancedReportRequestErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401 || error.status === 403) {
+      return "Your session does not allow advanced report requests anymore. Sign in again and retry.";
+    }
+
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to request channel advanced report. Please try again.";
+}
+
 function getEnrichmentRequestSuccessMessage(
   status: ChannelEnrichmentStatus,
   hasRetainedResult: boolean,
@@ -359,6 +539,33 @@ function getEnrichmentRequestSuccessMessage(
     : "Enrichment request recorded. This page refreshes automatically while the worker runs.";
 }
 
+function getAdvancedReportRequestSuccessMessage(
+  status: ChannelAdvancedReportStatus,
+  hasRetainedInsights: boolean,
+): string {
+  if (status === "running") {
+    return hasRetainedInsights
+      ? "Advanced report is already running. This page refreshes automatically while processing continues, and the current audience insights stay visible below until a newer report completes."
+      : "Advanced report is already running. This page refreshes automatically while processing continues.";
+  }
+
+  if (status === "queued" || status === "approved") {
+    return hasRetainedInsights
+      ? "Advanced report is already on the way. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes."
+      : "Advanced report is already on the way. This page refreshes automatically while approval and worker status change.";
+  }
+
+  if (status === "completed") {
+    return hasRetainedInsights
+      ? "Advanced report is already ready. The current audience insights remain visible below."
+      : "Advanced report is already ready.";
+  }
+
+  return hasRetainedInsights
+    ? "Advanced report request recorded. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes."
+    : "Advanced report request recorded. This page refreshes automatically while approval and worker status change.";
+}
+
 export function mergeChannelEnrichment(
   channel: ChannelDetail,
   enrichment: ChannelEnrichmentDetail,
@@ -375,19 +582,35 @@ export function mergeChannelEnrichment(
   };
 }
 
+export function mergeChannelAdvancedReport(
+  channel: ChannelDetail,
+  advancedReport: ChannelAdvancedReportDetail,
+): ChannelDetail {
+  return {
+    ...channel,
+    advancedReport,
+  };
+}
+
 function renderReadyState(
   channel: ChannelDetail,
   options: {
     canManageManualEdits: boolean;
     enrichmentActionState: ChannelEnrichmentActionState;
+    advancedReportActionState: ChannelAdvancedReportActionState;
     onRequestEnrichment: () => void | Promise<void>;
+    onRequestAdvancedReport: () => void | Promise<void>;
     onChannelUpdated?: (channel: ChannelDetail) => void;
   },
 ) {
-  const isBusy =
+  const isEnrichmentBusy =
     options.enrichmentActionState.type === "submitting" ||
     shouldPollEnrichmentStatus(channel.enrichment.status);
-  const actionStatus = options.enrichmentActionState;
+  const enrichmentActionStatus = options.enrichmentActionState;
+  const isAdvancedReportBusy =
+    options.advancedReportActionState.type === "submitting" ||
+    shouldPollAdvancedReportStatus(channel.advancedReport.status);
+  const advancedReportActionStatus = options.advancedReportActionState;
 
   return (
     <>
@@ -500,7 +723,7 @@ function renderReadyState(
           <div className="channel-detail-shell__actions">
             <button
               className="channel-detail-shell__button"
-              disabled={isBusy}
+              disabled={isEnrichmentBusy}
               onClick={() => {
                 void options.onRequestEnrichment();
               }}
@@ -512,13 +735,13 @@ function renderReadyState(
             </button>
           </div>
 
-          {actionStatus.message ? (
+          {enrichmentActionStatus.message ? (
             <div className="channel-detail-shell__request-feedback">
               <p
-                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionStatus.type}`}
-                role={actionStatus.type === "error" ? "alert" : "status"}
+                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${enrichmentActionStatus.type}`}
+                role={enrichmentActionStatus.type === "error" ? "alert" : "status"}
               >
-                {actionStatus.message}
+                {enrichmentActionStatus.message}
               </p>
             </div>
           ) : null}
@@ -584,8 +807,48 @@ function renderReadyState(
         >
           <header>
             <h2 id="channel-detail-shell-advanced-report-heading">Advanced report</h2>
-            <p>Status and freshness are visible now so later approval work has the right baseline.</p>
+            <p>
+              Request or refresh HypeAuditor data here and keep the current audience insights
+              visible while approval and worker steps finish.
+            </p>
           </header>
+
+          <div
+            className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.advancedReport.status}`}
+          >
+            <h3 className="channel-detail-shell__subheading">
+              {getAdvancedReportFeedbackTitle(channel.advancedReport.status)}
+            </h3>
+            <p className="channel-detail-shell__body-copy">
+              {getAdvancedReportStatusMessage(channel)}
+            </p>
+          </div>
+
+          <div className="channel-detail-shell__actions">
+            <button
+              className="channel-detail-shell__button"
+              disabled={isAdvancedReportBusy}
+              onClick={() => {
+                void options.onRequestAdvancedReport();
+              }}
+              type="button"
+            >
+              {options.advancedReportActionState.type === "submitting"
+                ? "Requesting..."
+                : getAdvancedReportActionLabel(channel.advancedReport.status)}
+            </button>
+          </div>
+
+          {advancedReportActionStatus.message ? (
+            <div className="channel-detail-shell__request-feedback">
+              <p
+                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${advancedReportActionStatus.type}`}
+                role={advancedReportActionStatus.type === "error" ? "alert" : "status"}
+              >
+                {advancedReportActionStatus.message}
+              </p>
+            </div>
+          ) : null}
 
           <dl className="channel-detail-shell__details">
             <div>
@@ -725,10 +988,12 @@ function renderReadyState(
 }
 
 export function ChannelDetailShellView({
+  advancedReportActionState,
   canManageManualEdits,
   channelId,
   enrichmentActionState,
   onChannelUpdated,
+  onRequestAdvancedReport,
   onRequestEnrichment,
   onRetry,
   requestState,
@@ -765,8 +1030,10 @@ export function ChannelDetailShellView({
 
       {requestState.status === "ready"
         ? renderReadyState(requestState.data, {
+            advancedReportActionState,
             canManageManualEdits: canManageManualEdits ?? false,
             enrichmentActionState,
+            onRequestAdvancedReport,
             onRequestEnrichment,
             ...(onChannelUpdated ? { onChannelUpdated } : {}),
           })
@@ -782,6 +1049,8 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
   const [enrichmentActionState, setEnrichmentActionState] = useState<ChannelEnrichmentActionState>(
     IDLE_ENRICHMENT_ACTION_STATE,
   );
+  const [advancedReportActionState, setAdvancedReportActionState] =
+    useState<ChannelAdvancedReportActionState>(IDLE_ADVANCED_REPORT_ACTION_STATE);
 
   useEffect(() => {
     let didCancel = false;
@@ -806,7 +1075,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
           error: null,
         });
 
-        if (shouldPollEnrichmentStatus(channel.enrichment.status)) {
+        if (shouldPollChannelDetailStatus(channel)) {
           timeoutId = setTimeout(() => {
             void loadChannel(true);
           }, ENRICHMENT_STATUS_POLL_INTERVAL_MS);
@@ -847,6 +1116,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
 
   useEffect(() => {
     setEnrichmentActionState(IDLE_ENRICHMENT_ACTION_STATE);
+    setAdvancedReportActionState(IDLE_ADVANCED_REPORT_ACTION_STATE);
   }, [channelId]);
 
   async function handleRequestEnrichment(): Promise<void> {
@@ -895,8 +1165,55 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
     }
   }
 
+  async function handleRequestAdvancedReport(): Promise<void> {
+    if (requestState.status !== "ready") {
+      return;
+    }
+
+    if (shouldPollAdvancedReportStatus(requestState.data.advancedReport.status)) {
+      return;
+    }
+
+    const hadVisibleInsights = hasAudienceInsights(requestState.data);
+
+    setAdvancedReportActionState({
+      type: "submitting",
+      message: "",
+    });
+
+    try {
+      const response = await requestChannelAdvancedReport(channelId);
+
+      setRequestState((current) => {
+        if (current.status !== "ready") {
+          return current;
+        }
+
+        return {
+          status: "ready",
+          data: mergeChannelAdvancedReport(current.data, response.advancedReport),
+          error: null,
+        };
+      });
+      setAdvancedReportActionState({
+        type: "success",
+        message: getAdvancedReportRequestSuccessMessage(
+          response.advancedReport.status,
+          hadVisibleInsights,
+        ),
+      });
+      setReloadToken((currentValue) => currentValue + 1);
+    } catch (error) {
+      setAdvancedReportActionState({
+        type: "error",
+        message: getAdvancedReportRequestErrorMessage(error),
+      });
+    }
+  }
+
   return (
     <ChannelDetailShellView
+      advancedReportActionState={advancedReportActionState}
       canManageManualEdits={isManualEditEnabled}
       channelId={channelId}
       enrichmentActionState={enrichmentActionState}
@@ -913,6 +1230,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
           };
         });
       }}
+      onRequestAdvancedReport={handleRequestAdvancedReport}
       onRequestEnrichment={handleRequestEnrichment}
       onRetry={() => {
         setReloadToken((currentValue) => currentValue + 1);
