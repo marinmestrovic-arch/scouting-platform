@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminDashboardResponseSchema,
   adminAdvancedReportRequestDetailSchema,
   channelDetailSchema,
   requestAdvancedReportResponseSchema,
@@ -152,5 +153,152 @@ describe("week 5 contracts", () => {
         report_state: "finished",
       },
     });
+  });
+
+  it("parses admin dashboard summary payload", () => {
+    const payload = adminDashboardResponseSchema.parse({
+      generatedAt: new Date().toISOString(),
+      approvals: {
+        counts: {
+          pendingApproval: 3,
+          approved: 1,
+          queued: 1,
+          running: 0,
+          failed: 2,
+        },
+        pendingPreview: [
+          {
+            id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+            channel: {
+              id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              youtubeChannelId: "UC-WEEK5-DASH-1",
+              title: "Queue Channel",
+            },
+            requestedBy: {
+              id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              email: "manager@example.com",
+              name: "Manager",
+            },
+            reviewedBy: null,
+            status: "pending_approval",
+            decisionNote: null,
+            lastError: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            reviewedAt: null,
+            startedAt: null,
+            completedAt: null,
+            lastCompletedReport: null,
+          },
+        ],
+      },
+      imports: {
+        counts: {
+          queued: 1,
+          running: 1,
+          failed: 2,
+        },
+        attentionPreview: [
+          {
+            id: "4ba0de9b-52c6-4ff9-b86e-52cfc2dc71ec",
+            fileName: "contacts.csv",
+            templateVersion: "v1",
+            status: "failed",
+            totalRowCount: 12,
+            importedRowCount: 10,
+            failedRowCount: 2,
+            lastError: "Batch failed",
+            requestedBy: {
+              id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              email: "admin@example.com",
+              name: "Admin",
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+          },
+        ],
+      },
+      users: {
+        totalCount: 12,
+        activeCount: 11,
+        adminCount: 2,
+        missingYoutubeKeyCount: 4,
+        missingYoutubeKeyPreview: [
+          {
+            id: "b19c5329-9872-45d4-b552-1dc4f2cb9cbf",
+            email: "manager-without-key@example.com",
+            name: "Missing Key",
+            role: "user",
+            isActive: true,
+            youtubeKeyAssigned: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+
+    expect(payload.approvals.counts.pendingApproval).toBe(3);
+    expect(payload.imports.attentionPreview[0]?.status).toBe("failed");
+    expect(payload.users.missingYoutubeKeyPreview[0]?.youtubeKeyAssigned).toBe(false);
+  });
+
+  it("rejects malformed admin dashboard preview items and counts", () => {
+    const malformed = adminDashboardResponseSchema.safeParse({
+      generatedAt: new Date().toISOString(),
+      approvals: {
+        counts: {
+          pendingApproval: -1,
+          approved: 0,
+          queued: 0,
+          running: 0,
+          failed: 0,
+        },
+        pendingPreview: [
+          {
+            id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+            channel: {
+              id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              youtubeChannelId: "UC-WEEK5-DASH-1",
+              title: "Queue Channel",
+            },
+            requestedBy: {
+              id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+              email: "manager@example.com",
+              name: "Manager",
+            },
+            reviewedBy: null,
+            status: "stale",
+            decisionNote: null,
+            lastError: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            reviewedAt: null,
+            startedAt: null,
+            completedAt: null,
+            lastCompletedReport: null,
+          },
+        ],
+      },
+      imports: {
+        counts: {
+          queued: 0,
+          running: 0,
+          failed: 0,
+        },
+        attentionPreview: [],
+      },
+      users: {
+        totalCount: 0,
+        activeCount: 0,
+        adminCount: 0,
+        missingYoutubeKeyCount: 0,
+        missingYoutubeKeyPreview: [],
+      },
+    });
+
+    expect(malformed.success).toBe(false);
   });
 });

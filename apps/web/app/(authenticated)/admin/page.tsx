@@ -1,4 +1,6 @@
+import React from "react";
 import { auth } from "../../../auth";
+import { AdminDashboardShell } from "../../../components/admin/admin-dashboard-shell";
 import { AdminAdvancedReportQueue } from "../../../components/admin/admin-advanced-report-queue";
 import { PageSection } from "../../../components/layout/page-section";
 import {
@@ -25,9 +27,14 @@ export default async function AdminPage() {
   return (
     <PageSection
       title="Admin"
-      description="Review HypeAuditor approval requests, keep freshness context visible, and route into the existing admin tools."
+      description="Track current admin workload, catch setup gaps early, and work the full HypeAuditor approval queue from one workspace."
     >
-      <AdminAdvancedReportQueue />
+      <div className="admin-page__stack">
+        <AdminDashboardShell />
+        <div className="admin-page__queue" id="admin-approval-queue">
+          <AdminAdvancedReportQueue />
+        </div>
+      </div>
     </PageSection>
   );
 }
