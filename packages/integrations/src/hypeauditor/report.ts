@@ -14,6 +14,10 @@ const reportResponseSchema = z.object({
   report: z.record(z.string(), z.unknown()),
 });
 
+const wrappedReportResponseSchema = z.object({
+  result: reportResponseSchema,
+});
+
 const reportFeaturesEntrySchema = z.object({
   data: z.unknown().optional(),
 });
@@ -206,7 +210,56 @@ function getObject(value: unknown): JsonRecord | null {
   return value as JsonRecord;
 }
 
+function unwrapResult<T>(value: T): T | unknown {
+  const container = getObject(value);
+
+  if (!container || !("result" in container)) {
+    return value;
+  }
+
+  return container.result;
+}
+
 function normalizeAudienceCountries(report: JsonRecord): HypeAuditorAudienceCountry[] {
+  const featureData = getFeatureData(report, "audience_geo");
+
+  if (Array.isArray(featureData)) {
+    return featureData
+      .map((item) => {
+        const row = getObject(item);
+
+        if (!row) {
+          return null;
+        }
+
+        const rawCode =
+          (typeof row.country_code === "string" && row.country_code.trim()) ||
+          (typeof row.code === "string" && row.code.trim()) ||
+          (typeof row.title === "string" && row.title.trim()) ||
+          null;
+        const percentage =
+          toNumber(row.prc) ??
+          toNumber(row.percentage) ??
+          toNumber(row.value) ??
+          toNumber(row.score);
+
+        if (!rawCode || percentage === null || percentage <= 0) {
+          return null;
+        }
+
+        const normalizedCode = normalizeCountryCode(rawCode);
+
+        return {
+          countryCode: normalizedCode,
+          countryName: resolveCountryName(normalizedCode),
+          percentage,
+        } satisfies HypeAuditorAudienceCountry;
+      })
+      .filter((item): item is HypeAuditorAudienceCountry => Boolean(item))
+      .sort((left, right) => right.percentage - left.percentage)
+      .slice(0, 10);
+  }
+
   const audienceGeo = getObject(report.audience_geo);
 
   if (!audienceGeo) {
@@ -235,6 +288,87 @@ function normalizeAudienceCountries(report: JsonRecord): HypeAuditorAudienceCoun
 }
 
 function normalizeAudienceGenderAge(report: JsonRecord): HypeAuditorAudienceGenderAge[] {
+  const featureData = getFeatureData(report, "audience_age_gender");
+  const nestedFeatureMap = getObject(featureData);
+
+  if (nestedFeatureMap) {
+    const rows: HypeAuditorAudienceGenderAge[] = [];
+
+    for (const [ageRange, rawValue] of Object.entries(nestedFeatureMap)) {
+      const value = getObject(rawValue);
+
+      if (!value) {
+        continue;
+      }
+
+      for (const gender of ["male", "female"] as const) {
+        const percentage = toNumber(value[gender]);
+
+        if (percentage === null || percentage <= 0) {
+          continue;
+        }
+
+        rows.push({
+          gender,
+          ageRange: ageRange.trim(),
+          percentage,
+        });
+      }
+    }
+
+    if (rows.length > 0) {
+      return rows.sort((left, right) => right.percentage - left.percentage);
+    }
+  }
+
+  if (Array.isArray(featureData)) {
+    const rows = featureData
+      .flatMap((item) => {
+        const row = getObject(item);
+
+        if (!row) {
+          return [];
+        }
+
+        const ageRange =
+          (typeof row.age_range === "string" && row.age_range.trim()) ||
+          (typeof row.title === "string" && row.title.trim()) ||
+          null;
+
+        if (!ageRange) {
+          return [];
+        }
+
+        return (["male", "female"] as const)
+          .map((gender) => {
+            const percentage =
+              toNumber(row[gender]) ??
+              toNumber(row[`${gender}_percentage`]) ??
+              toNumber(row[`${gender}_prc`]);
+
+            if (percentage === null || percentage <= 0) {
+              return null;
+            }
+
+            return {
+              gender,
+              ageRange,
+              percentage,
+            };
+          })
+          .filter(
+            (
+              value,
+            ): value is { gender: "male" | "female"; ageRange: string; percentage: number } =>
+              value !== null,
+          );
+      });
+
+    if (rows.length > 0) {
+      return rows.sort((left, right) => right.percentage - left.percentage);
+    }
+  }
+
   const genderMaps = [
     {
       gender: "male",
@@ -375,13 +509,18 @@ function normalizeEstimatedPrice(report: JsonRecord): HypeAuditorEstimatedPrice 
 }
 
 function normalizeBrandMentions(payload: unknown): HypeAuditorBrandMention[] {
-  const container = getObject(payload);
+  const unwrappedPayload = unwrapResult(payload);
+  const container = getObject(unwrappedPayload);
   const candidates = Array.isArray(container?.items)
     ? container.items
     : Array.isArray(container?.results)
       ? container.results
-      : Array.isArray(payload)
-        ? payload
+      : Array.isArray(container?.mentions)
+        ? container.mentions
+      : Array.isArray(unwrappedPayload)
+        ? unwrappedPayload
+        : Array.isArray(payload)
+          ? payload
         : [];
   const seen = new Set<string>();
   const normalized: HypeAuditorBrandMention[] = [];
@@ -394,9 +533,11 @@ function normalizeBrandMentions(payload: unknown): HypeAuditorBrandMention[] {
     }
 
     const nestedBrand = getObject(row.brand);
+    const nestedBasic = getObject(row.basic);
     const brandName =
       (typeof row.title === "string" && row.title.trim()) ||
       (typeof row.brand_name === "string" && row.brand_name.trim()) ||
+      (typeof nestedBasic?.title === "string" && nestedBasic.title.trim()) ||
       (typeof nestedBrand?.title === "string" && nestedBrand.title.trim()) ||
       null;
 
@@ -439,6 +580,14 @@ function assertReportReady(response: z.output<typeof reportResponseSchema>): voi
       "HypeAuditor report is still processing",
     );
   }
+
+  if (state === "not_ready") {
+    throw new HypeAuditorError(
+      "HYPEAUDITOR_REPORT_NOT_READY",
+      503,
+      "HypeAuditor report is still processing",
+    );
+  }
 }
 
 async function fetchReport(input: {
@@ -448,38 +597,59 @@ async function fetchReport(input: {
   authToken: string;
   fetchFn: FetchLike;
 }): Promise<z.output<typeof reportResponseSchema>> {
-  const response = await input.fetchFn(
-    `${input.baseUrl.replace(/\/$/, "")}/api/method/auditor.report/`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        "x-auth-id": input.authId,
-        "x-auth-token": input.authToken,
+  const endpoints = [
+    "/api/method/auditor.youtube/",
+    "/api/method/auditor.report/",
+  ] as const;
+
+  for (const endpoint of endpoints) {
+    const response = await input.fetchFn(
+      `${input.baseUrl.replace(/\/$/, "")}${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-auth-id": input.authId,
+          "x-auth-token": input.authToken,
+        },
+        body: new URLSearchParams({
+          channel: input.youtubeChannelId,
+        }),
       },
-      body: new URLSearchParams({
-        channel: input.youtubeChannelId,
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    throw toProviderError(response);
-  }
-
-  const parsed = reportResponseSchema.safeParse(await parseJsonResponse(response));
-
-  if (!parsed.success) {
-    throw new HypeAuditorError(
-      "HYPEAUDITOR_INVALID_RESPONSE",
-      502,
-      "HypeAuditor returned an invalid report response",
     );
+
+    if (response.status === 404 && endpoint !== endpoints.at(-1)) {
+      continue;
+    }
+
+    if (!response.ok) {
+      throw toProviderError(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    const wrapped = wrappedReportResponseSchema.safeParse(payload);
+    const parsed = wrapped.success
+      ? reportResponseSchema.safeParse(wrapped.data.result)
+      : reportResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new HypeAuditorError(
+        "HYPEAUDITOR_INVALID_RESPONSE",
+        502,
+        "HypeAuditor returned an invalid report response",
+      );
+    }
+
+    assertReportReady(parsed.data);
+
+    return parsed.data;
   }
 
-  assertReportReady(parsed.data);
-
-  return parsed.data;
+  throw new HypeAuditorError(
+    "HYPEAUDITOR_REQUEST_FAILED",
+    502,
+    "HypeAuditor request failed",
+  );
 }
 
 async function fetchBrandMentions(input: {
@@ -489,25 +659,53 @@ async function fetchBrandMentions(input: {
   authToken: string;
   fetchFn: FetchLike;
 }): Promise<unknown> {
-  const url = new URL(
-    `${input.baseUrl.replace(/\/$/, "")}/api/v1/brands/brand_mentions`,
-  );
-  url.searchParams.set("channel_id", input.youtubeChannelId);
-  url.searchParams.set("page", "1");
-
-  const response = await input.fetchFn(url, {
-    method: "GET",
-    headers: {
-      "x-auth-id": input.authId,
-      "x-auth-token": input.authToken,
+  const requests = [
+    {
+      url: `${input.baseUrl.replace(/\/$/, "")}/api/method/auditor.youtubeBrandMentions/`,
+      init: {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-auth-id": input.authId,
+          "x-auth-token": input.authToken,
+        },
+        body: new URLSearchParams({
+          channel: input.youtubeChannelId,
+          page: "1",
+        }),
+      } satisfies RequestInit,
     },
-  });
+    {
+      url: `${input.baseUrl.replace(/\/$/, "")}/api/v1/brands/brand_mentions?channel_id=${encodeURIComponent(input.youtubeChannelId)}&page=1`,
+      init: {
+        method: "GET",
+        headers: {
+          "x-auth-id": input.authId,
+          "x-auth-token": input.authToken,
+        },
+      } satisfies RequestInit,
+    },
+  ] as const;
 
-  if (!response.ok) {
-    throw toProviderError(response);
+  for (const request of requests) {
+    const response = await input.fetchFn(request.url, request.init);
+
+    if (response.status === 404 && request !== requests.at(-1)) {
+      continue;
+    }
+
+    if (!response.ok) {
+      throw toProviderError(response);
+    }
+
+    return parseJsonResponse(response);
   }
 
-  return parseJsonResponse(response);
+  throw new HypeAuditorError(
+    "HYPEAUDITOR_REQUEST_FAILED",
+    502,
+    "HypeAuditor request failed",
+  );
 }
 
 export async function fetchHypeAuditorChannelInsights(

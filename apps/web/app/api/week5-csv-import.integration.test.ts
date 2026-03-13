@@ -142,6 +142,41 @@ integration("week 5 csv import API integration", () => {
     expect(detailPayload.rows[0]?.rowNumber).toBe(2);
   });
 
+  it("returns failed rows in batch detail without collapsing to a 500", async () => {
+    const admin = await createUser("admin@example.com");
+    currentSessionUser = { id: admin.id, role: "admin" };
+
+    const uploadResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(makeCsvFile([
+          "youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel",
+          "UC-CSV-1,Creator One,creator@example.com,1000,20000,50,Top creator,ops",
+          "UC-CSV-2,,invalid-email,20x,30000,60,,ops",
+        ].join("\n"))),
+      }),
+    );
+
+    expect(uploadResponse.status).toBe(202);
+    const uploadPayload = await uploadResponse.json();
+
+    const detailResponse = await batchDetailRoute.GET(
+      new Request(`http://localhost/api/admin/csv-import-batches/${uploadPayload.id}?page=1&pageSize=10`),
+      { params: Promise.resolve({ id: uploadPayload.id }) },
+    );
+
+    expect(detailResponse.status).toBe(200);
+    const detailPayload = await detailResponse.json();
+    expect(detailPayload.rows).toHaveLength(2);
+    expect(detailPayload.rows[1]?.status).toBe("failed");
+    expect(detailPayload.rows[1]?.channelTitle).toBe("");
+    expect(detailPayload.rows[1]?.contactEmail).toBe("invalid-email");
+    expect(detailPayload.rows[1]?.subscriberCount).toBe("20x");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("channelTitle is required");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("contactEmail is invalid");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("subscriberCount is invalid");
+  });
+
   it("enforces admin-only access on csv import routes", async () => {
     const admin = await createUser("admin@example.com");
     const user = await createUser("user@example.com", Role.USER);

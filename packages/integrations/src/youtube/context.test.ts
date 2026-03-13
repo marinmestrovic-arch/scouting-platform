@@ -135,6 +135,101 @@ describe("fetchYoutubeChannelContext", () => {
     expect(context.recentVideos).toEqual([]);
   });
 
+  it("returns an empty recent video list when the uploads response omits items", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "UC-CONTEXT-3",
+              snippet: {
+                title: "Channel Name",
+              },
+              contentDetails: {
+                relatedPlaylists: {
+                  uploads: "UU-CONTEXT-3",
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ pageInfo: { totalResults: 0, resultsPerPage: 10 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await fetchYoutubeChannelContext({
+      apiKey: "yt-key",
+      channelId: "UC-CONTEXT-3",
+    });
+
+    expect(context.recentVideos).toEqual([]);
+  });
+
+  it("treats a successful channel response without items as not found", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ pageInfo: {} })));
+
+    await expect(
+      fetchYoutubeChannelContext({
+        apiKey: "yt-key",
+        channelId: "UC-CONTEXT-4",
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "YOUTUBE_CONTEXT_FAILED",
+        status: 404,
+        message: "YouTube channel context not found",
+      } satisfies Partial<YoutubeChannelContextProviderError>),
+    );
+  });
+
+  it("throws a provider error when a 2xx playlist payload is malformed", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "UC-CONTEXT-5",
+              snippet: {
+                title: "Channel Name",
+              },
+              contentDetails: {
+                relatedPlaylists: {
+                  uploads: "UU-CONTEXT-5",
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              snippet: {
+                publishedAt: "2024-01-10T12:00:00Z",
+              },
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchYoutubeChannelContext({
+        apiKey: "yt-key",
+        channelId: "UC-CONTEXT-5",
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "YOUTUBE_CONTEXT_FAILED",
+        status: 502,
+        message: "YouTube returned an invalid uploads response",
+      } satisfies Partial<YoutubeChannelContextProviderError>),
+    );
+  });
+
   it("throws quota-specific provider errors", async () => {
     vi.stubGlobal(
       "fetch",

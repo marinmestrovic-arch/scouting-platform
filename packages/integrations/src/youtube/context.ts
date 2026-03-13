@@ -7,57 +7,63 @@ const contextInputSchema = z.object({
 });
 
 const channelResponseSchema = z.object({
-  items: z.array(
-    z.object({
-      id: z.string().trim().min(1),
-      snippet: z.object({
-        title: z.string(),
-        description: z.string().optional(),
-        customUrl: z.string().optional(),
-        publishedAt: z.string().optional(),
-        thumbnails: z
+  items: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1),
+        snippet: z.object({
+          title: z.string(),
+          description: z.string().optional(),
+          customUrl: z.string().optional(),
+          publishedAt: z.string().optional(),
+          thumbnails: z
+            .object({
+              high: z.object({ url: z.string().optional() }).optional(),
+              medium: z.object({ url: z.string().optional() }).optional(),
+              default: z.object({ url: z.string().optional() }).optional(),
+            })
+            .optional(),
+        }),
+        statistics: z
           .object({
-            high: z.object({ url: z.string().optional() }).optional(),
-            medium: z.object({ url: z.string().optional() }).optional(),
-            default: z.object({ url: z.string().optional() }).optional(),
+            subscriberCount: z.string().optional(),
+            viewCount: z.string().optional(),
+            videoCount: z.string().optional(),
+          })
+          .optional(),
+        contentDetails: z
+          .object({
+            relatedPlaylists: z
+              .object({
+                uploads: z.string().optional(),
+              })
+              .optional(),
           })
           .optional(),
       }),
-      statistics: z
-        .object({
-          subscriberCount: z.string().optional(),
-          viewCount: z.string().optional(),
-          videoCount: z.string().optional(),
-        })
-        .optional(),
-      contentDetails: z
-        .object({
-          relatedPlaylists: z
-            .object({
-              uploads: z.string().optional(),
-            })
-            .optional(),
-        })
-        .optional(),
-    }),
-  ),
+    )
+    .optional()
+    .default([]),
 });
 
 const playlistItemsResponseSchema = z.object({
-  items: z.array(
-    z.object({
-      contentDetails: z
-        .object({
-          videoId: z.string().optional(),
-        })
-        .optional(),
-      snippet: z.object({
-        title: z.string(),
-        description: z.string().optional(),
-        publishedAt: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        contentDetails: z
+          .object({
+            videoId: z.string().optional(),
+          })
+          .optional(),
+        snippet: z.object({
+          title: z.string(),
+          description: z.string().optional(),
+          publishedAt: z.string().optional(),
+        }),
       }),
-    }),
-  ),
+    )
+    .optional()
+    .default([]),
 });
 
 const errorResponseSchema = z.object({
@@ -194,6 +200,34 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
+function parseChannelResponse(payload: unknown): z.output<typeof channelResponseSchema> {
+  const parsed = channelResponseSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new YoutubeChannelContextProviderError(
+      "YOUTUBE_CONTEXT_FAILED",
+      502,
+      "YouTube returned an invalid channel response",
+    );
+  }
+
+  return parsed.data;
+}
+
+function parsePlaylistItemsResponse(payload: unknown): z.output<typeof playlistItemsResponseSchema> {
+  const parsed = playlistItemsResponseSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new YoutubeChannelContextProviderError(
+      "YOUTUBE_CONTEXT_FAILED",
+      502,
+      "YouTube returned an invalid uploads response",
+    );
+  }
+
+  return parsed.data;
+}
+
 async function assertSuccessResponseOrThrow(response: Response): Promise<void> {
   if (response.ok) {
     return;
@@ -263,7 +297,7 @@ export async function fetchYoutubeChannelContext(
   });
   await assertSuccessResponseOrThrow(channelResponse);
 
-  const parsedChannels = channelResponseSchema.parse(await parseJsonResponse(channelResponse));
+  const parsedChannels = parseChannelResponse(await parseJsonResponse(channelResponse));
   const channel = parsedChannels.items[0];
 
   if (!channel) {
@@ -289,9 +323,7 @@ export async function fetchYoutubeChannelContext(
           );
           await assertSuccessResponseOrThrow(playlistResponse);
 
-          const parsedPlaylist = playlistItemsResponseSchema.parse(
-            await parseJsonResponse(playlistResponse),
-          );
+          const parsedPlaylist = parsePlaylistItemsResponse(await parseJsonResponse(playlistResponse));
 
           return parsedPlaylist.items.map((item) => ({
             youtubeVideoId: toNullableTrimmed(item.contentDetails?.videoId),

@@ -336,7 +336,7 @@ describe("channel detail shell view", () => {
         status: "rejected",
         actionLabel: "Request again",
         statusCopy:
-          "The last request was rejected during admin review. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.",
+          "The last request was rejected during admin review: Budget denied. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.",
       },
       {
         status: "completed",

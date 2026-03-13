@@ -454,9 +454,17 @@ export function getAdvancedReportStatusMessage(
   }
 
   if (advancedReport.status === "rejected") {
+    const decisionNote = advancedReport.decisionNote?.trim();
+    const normalizedDecisionNote =
+      decisionNote && /[.!?]$/.test(decisionNote) ? decisionNote : decisionNote ? `${decisionNote}.` : null;
+
     return hasRetainedInsights
-      ? "The last request was rejected during admin review. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below."
-      : "The last request was rejected during admin review. Submit a new request when you still need refreshed audience and commercial insights.";
+      ? normalizedDecisionNote
+        ? `The last request was rejected during admin review: ${normalizedDecisionNote} You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.`
+        : "The last request was rejected during admin review. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below."
+      : normalizedDecisionNote
+        ? `The last request was rejected during admin review: ${normalizedDecisionNote} Submit a new request when you still need refreshed audience and commercial insights.`
+        : "The last request was rejected during admin review. Submit a new request when you still need refreshed audience and commercial insights.";
   }
 
   if (advancedReport.status === "stale") {

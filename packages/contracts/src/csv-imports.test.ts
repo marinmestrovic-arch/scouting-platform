@@ -178,4 +178,51 @@ describe("csv import contracts", () => {
     expect(payload.rows[0]?.status).toBe("imported");
     expect(payload.rows[0]?.subscriberCount).toBe("1000");
   });
+
+  it("parses failed detail rows with raw invalid values preserved", () => {
+    const payload = csvImportBatchDetailSchema.parse({
+      id: TEST_UUID,
+      fileName: "contacts.csv",
+      templateVersion: "v1",
+      status: "completed",
+      totalRowCount: 2,
+      importedRowCount: 1,
+      failedRowCount: 1,
+      lastError: null,
+      requestedBy: {
+        id: TEST_UUID,
+        email: "admin@example.com",
+        name: "Admin",
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      page: 1,
+      pageSize: 100,
+      rows: [
+        {
+          id: TEST_UUID,
+          rowNumber: 2,
+          status: "failed",
+          youtubeChannelId: "",
+          channelTitle: "",
+          contactEmail: "not-an-email",
+          subscriberCount: "10x",
+          viewCount: null,
+          videoCount: "",
+          notes: "Missing required fields",
+          sourceLabel: "ops-list",
+          channelId: null,
+          errorMessage:
+            "youtubeChannelId is required; channelTitle is required; contactEmail is invalid; subscriberCount is invalid",
+        },
+      ],
+    });
+
+    expect(payload.rows[0]?.status).toBe("failed");
+    expect(payload.rows[0]?.youtubeChannelId).toBe("");
+    expect(payload.rows[0]?.contactEmail).toBe("not-an-email");
+    expect(payload.rows[0]?.subscriberCount).toBe("10x");
+  });
 });

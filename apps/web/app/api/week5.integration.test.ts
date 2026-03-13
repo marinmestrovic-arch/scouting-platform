@@ -252,6 +252,56 @@ integration("week 5 API integration", () => {
     });
   });
 
+  it("returns rejected decision notes on manager channel detail", async () => {
+    const user = await createUser("manager@example.com");
+    const admin = await createUser("admin@example.com", Role.ADMIN);
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-WEEK5-REJECTED-DETAIL",
+        title: "Week 5 Rejected Detail",
+      },
+      select: {
+        id: true,
+      },
+    });
+    const request = await prisma.advancedReportRequest.create({
+      data: {
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        status: PrismaAdvancedReportRequestStatus.PENDING_APPROVAL,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    currentSessionUser = { id: admin.id, role: "admin" };
+
+    const rejectResponse = await adminRejectRoute.POST(
+      new Request(`http://localhost/api/admin/advanced-report-requests/${request.id}/reject`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          decisionNote: "Out of budget this week.",
+        }),
+      }),
+      { params: Promise.resolve({ id: request.id }) },
+    );
+    expect(rejectResponse.status).toBe(200);
+
+    currentSessionUser = { id: user.id, role: "user" };
+
+    const detailResponse = await channelDetailRoute.GET(
+      new Request(`http://localhost/api/channels/${channel.id}`),
+      { params: Promise.resolve({ id: channel.id }) },
+    );
+
+    expect(detailResponse.status).toBe(200);
+    const detailPayload = await detailResponse.json();
+    expect(detailPayload.advancedReport.status).toBe("rejected");
+    expect(detailPayload.advancedReport.decisionNote).toBe("Out of budget this week.");
+  });
+
   it("returns normalized insights on channel detail without exposing raw payload", async () => {
     const user = await createUser("manager@example.com");
     const channel = await prisma.channel.create({

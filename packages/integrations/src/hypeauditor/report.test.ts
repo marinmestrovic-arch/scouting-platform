@@ -16,48 +16,56 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
 }
 
 describe("fetchHypeAuditorChannelInsights", () => {
-  it("normalizes report and brand mention payloads", async () => {
+  it("normalizes report and brand mention payloads from the youtube endpoints", async () => {
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse({
-          report_state: "finished",
-          report: {
-            audience_geo: {
-              us: 32.5,
-              hr: "18.4",
-              uk: 9.2,
-            },
-            audience_age_male: {
-              "18-24": 11.2,
-              "25-34": 18.1,
-            },
-            audience_age_female: {
-              "18-24": 21.5,
-            },
-            video_integration_price: {
-              data: {
-                currency_code: "usd",
-                min: 500,
-                max: 900,
+          result: {
+            report_state: "READY",
+            report: {
+              video_integration_price: {
+                data: {
+                  currency_code: "usd",
+                  min: 500,
+                  max: 900,
+                },
+              },
+              features: {
+                audience_geo: {
+                  data: [
+                    { title: "us", prc: 32.5 },
+                    { title: "hr", prc: "18.4" },
+                    { title: "uk", prc: 9.2 },
+                  ],
+                },
+                audience_age_gender: {
+                  data: {
+                    "18-24": {
+                      male: 11.2,
+                      female: 21.5,
+                    },
+                    "25-34": {
+                      male: 18.1,
+                    },
+                  },
+                },
+                audience_interests: {
+                  data: [
+                    { label: "Gaming", score: 0.88 },
+                    { title: "Tech", score: "0.63" },
+                  ],
+                },
               },
             },
-            features: {
-              audience_interests: {
-                data: [
-                  { label: "Gaming", score: 0.88 },
-                  { title: "Tech", score: "0.63" },
-                ],
-              },
-            },
-          },
+          }
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          items: [
-            { title: "Nike" },
-            { brand_name: "Apple" },
+          result: [
+            { basic: { title: "Nike" } },
+            { title: "Apple" },
             { brand: { title: "Nike" } },
           ],
         }),
@@ -70,6 +78,10 @@ describe("fetchHypeAuditorChannelInsights", () => {
     });
 
     expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fetchFn.mock.calls[0]?.[0]).toBe("https://hypeauditor.com/api/method/auditor.youtube/");
+    expect(fetchFn.mock.calls[1]?.[0]).toBe(
+      "https://hypeauditor.com/api/method/auditor.youtubeBrandMentions/",
+    );
     expect(result.insights.audienceCountries).toEqual([
       {
         countryCode: "US",
@@ -111,7 +123,42 @@ describe("fetchHypeAuditorChannelInsights", () => {
       { brandName: "Nike" },
       { brandName: "Apple" },
     ]);
-    expect(result.rawPayload.report.report_state).toBe("finished");
+    expect(result.rawPayload.report.report_state).toBe("READY");
+  });
+
+  it("falls back to the legacy endpoints when the youtube-specific endpoints are unavailable", async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("missing", { status: 404 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          report_state: "finished",
+          report: {
+            audience_geo: {
+              us: 32.5,
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("missing", { status: 404 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ title: "Nike" }],
+        }),
+      );
+
+    const result = await fetchHypeAuditorChannelInsights({
+      youtubeChannelId: "UC-HYPE-1",
+      apiKey: "auth-id:auth-token",
+      fetchFn,
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+    expect(fetchFn.mock.calls[1]?.[0]).toBe("https://hypeauditor.com/api/method/auditor.report/");
+    expect(fetchFn.mock.calls[3]?.[0]).toBe(
+      "https://hypeauditor.com/api/v1/brands/brand_mentions?channel_id=UC-HYPE-1&page=1",
+    );
+    expect(result.insights.brandMentions).toEqual([{ brandName: "Nike" }]);
   });
 
   it("requires a colon-delimited HYPEAUDITOR_API_KEY", async () => {
@@ -175,8 +222,10 @@ describe("fetchHypeAuditorChannelInsights", () => {
   it("fails when the report is not ready yet", async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
-        report_state: "processing",
-        report: {},
+        result: {
+          report_state: "NOT_READY",
+          report: {},
+        },
       }),
     );
 

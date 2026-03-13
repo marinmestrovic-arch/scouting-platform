@@ -72,6 +72,48 @@ describe("local env loader", () => {
     }
   });
 
+  it("can override selected inherited environment values for child commands", () => {
+    const tempDirectory = mkdtempSync(path.join(tmpdir(), "scouting-local-env-override-"));
+
+    try {
+      writeFileSync(
+        path.join(tempDirectory, ".env"),
+        'HYPEAUDITOR_API_KEY="auth-id:token$with$dollars"\nDATABASE_URL="postgresql://from-file"\n',
+        "utf8",
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(process.cwd(), "scripts/run-with-local-env.mjs"),
+          "--override-keys=HYPEAUDITOR_API_KEY",
+          process.execPath,
+          "-e",
+          "process.stdout.write(JSON.stringify({ hype: process.env.HYPEAUDITOR_API_KEY ?? '', databaseUrl: process.env.DATABASE_URL ?? '' }))",
+        ],
+        {
+          cwd: tempDirectory,
+          env: {
+            ...process.env,
+            HYPEAUDITOR_API_KEY: "broken-from-parent",
+            DATABASE_URL: "postgresql://from-parent",
+          },
+          encoding: "utf8",
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe(
+        JSON.stringify({
+          hype: "auth-id:token$with$dollars",
+          databaseUrl: "postgresql://from-parent",
+        }),
+      );
+    } finally {
+      rmSync(tempDirectory, { force: true, recursive: true });
+    }
+  });
+
   it("loads .env files into a provided target env object", () => {
     const tempDirectory = mkdtempSync(path.join(tmpdir(), "scouting-local-env-load-"));
 

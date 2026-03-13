@@ -35,7 +35,7 @@ services:
       - .:/workspace
       - node_modules:/workspace/node_modules
       - pnpm_store:/pnpm/store
-    command: ["sh", "scripts/dev-bootstrap.sh"]
+    command: ["node", "scripts/run-with-local-env.mjs", "--override-keys=AUTH_SECRET,APP_ENCRYPTION_KEY,NEXT_PUBLIC_APP_URL,OPENAI_API_KEY,HYPEAUDITOR_API_KEY,HUBSPOT_API_KEY,INITIAL_ADMIN_EMAIL,INITIAL_ADMIN_PASSWORD,INITIAL_ADMIN_NAME", "sh", "scripts/dev-bootstrap.sh"]
   web:
     build:
       context: .
@@ -59,7 +59,7 @@ services:
       - node_modules:/workspace/node_modules
       - pnpm_store:/pnpm/store
     working_dir: /workspace
-    command: ["sh", "-lc", "node scripts/validate-local-env.mjs && pnpm --filter @scouting-platform/web dev --hostname 0.0.0.0"]
+    command: ["node", "scripts/run-with-local-env.mjs", "--override-keys=AUTH_SECRET,APP_ENCRYPTION_KEY,NEXT_PUBLIC_APP_URL,OPENAI_API_KEY,HYPEAUDITOR_API_KEY,HUBSPOT_API_KEY", "sh", "-lc", "node scripts/validate-local-env.mjs && pnpm --filter @scouting-platform/web dev --hostname 0.0.0.0"]
   worker:
     build:
       context: .
@@ -79,7 +79,7 @@ services:
       - node_modules:/workspace/node_modules
       - pnpm_store:/pnpm/store
     working_dir: /workspace
-    command: ["sh", "-lc", "node scripts/validate-local-env.mjs && pnpm --filter @scouting-platform/worker dev"]
+    command: ["node", "scripts/run-with-local-env.mjs", "--override-keys=AUTH_SECRET,APP_ENCRYPTION_KEY,NEXT_PUBLIC_APP_URL,OPENAI_API_KEY,HYPEAUDITOR_API_KEY,HUBSPOT_API_KEY", "sh", "-lc", "node scripts/validate-local-env.mjs && pnpm --filter @scouting-platform/worker dev"]
 
 volumes:
   postgres_data:
