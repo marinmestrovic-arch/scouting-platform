@@ -10,9 +10,10 @@ describe("app navigation", () => {
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/exports"');
     expect(html).not.toContain('href="/admin"');
     expect(html).not.toContain(">Admin<");
-    expect(linkCount).toBe(2);
+    expect(linkCount).toBe(3);
   });
 
   it("renders admin link for admin role", () => {
@@ -21,8 +22,9 @@ describe("app navigation", () => {
 
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/exports"');
     expect(html).toContain('href="/admin"');
     expect(html).toContain(">Admin<");
-    expect(linkCount).toBe(3);
+    expect(linkCount).toBe(4);
   });
 });

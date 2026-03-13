@@ -9,8 +9,13 @@ import {
 } from "./navigation";
 
 describe("navigation config", () => {
-  it("defines catalog, runs, and admin entries", () => {
-    expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual(["catalog", "runs", "admin"]);
+  it("defines catalog, runs, exports, and admin entries", () => {
+    expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual([
+      "catalog",
+      "runs",
+      "exports",
+      "admin",
+    ]);
     expect(APP_ROLES).toEqual(["admin", "user"]);
   });
 
@@ -40,10 +45,15 @@ describe("navigation config", () => {
   });
 
   it("returns only entries visible to a role", () => {
-    expect(getNavigationForRole("user").map((item) => item.key)).toEqual(["catalog", "runs"]);
+    expect(getNavigationForRole("user").map((item) => item.key)).toEqual([
+      "catalog",
+      "runs",
+      "exports",
+    ]);
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual([
       "catalog",
       "runs",
+      "exports",
       "admin"
     ]);
   });

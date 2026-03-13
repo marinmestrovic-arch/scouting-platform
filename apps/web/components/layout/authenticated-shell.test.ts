@@ -14,6 +14,7 @@ describe("authenticated shell", () => {
     expect(html).toContain("Internal Workspace");
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/exports"');
     expect(html).not.toContain('href="/admin"');
     expect(html).toContain("Sign out");
     expect(html).toContain("catalog page");
@@ -28,6 +29,7 @@ describe("authenticated shell", () => {
     );
 
     expect(html).toContain('href="/admin"');
+    expect(html).toContain('href="/exports"');
     expect(html).toContain("admin page");
   });
 

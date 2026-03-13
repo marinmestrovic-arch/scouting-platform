@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CsvExportBatchesApiError,
   createCsvExportBatch,
+  fetchCsvExportBatches,
   fetchCsvExportBatchDetail,
   getCsvExportBatchDownloadUrl,
 } from "./csv-export-batches-api";
@@ -84,6 +85,63 @@ describe("csv export batches api helpers", () => {
     expect(batch.fileName).toBe("creator-export.csv");
   });
 
+  it("creates filtered export batches through POST /api/csv-export-batches", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(buildBatchSummaryPayload({ scopeType: "filtered" })),
+    );
+
+    await createCsvExportBatch({
+      type: "filtered",
+      filters: {
+        query: "space",
+        enrichmentStatus: ["completed"],
+      },
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/csv-export-batches",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          type: "filtered",
+          filters: {
+            query: "space",
+            enrichmentStatus: ["completed"],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("loads export batch history from GET /api/csv-export-batches", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          buildBatchSummaryPayload(),
+          buildBatchSummaryPayload({
+            id: "2e6ad364-f96d-4904-8407-f56f88bf2f3b",
+            scopeType: "filtered",
+            fileName: "space-creators.csv",
+            status: "completed",
+            rowCount: 12,
+          }),
+        ],
+      }),
+    );
+
+    const items = await fetchCsvExportBatches();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/csv-export-batches",
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+      }),
+    );
+    expect(items).toHaveLength(2);
+    expect(items[1]?.scopeType).toBe("filtered");
+  });
+
   it("loads export batch detail from GET /api/csv-export-batches/:id", async () => {
     const batchId = "99d39ccb-3cf5-4f09-a647-a0e1387d31cb";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -120,6 +178,14 @@ describe("csv export batches api helpers", () => {
         channelIds: ["14e40450-71c2-4e0e-a160-b787d21843fd"],
       }),
     ).rejects.toThrow("You are not authorized to manage CSV exports.");
+  });
+
+  it("normalizes authorization errors for history requests", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({}, 403));
+
+    await expect(fetchCsvExportBatches()).rejects.toThrow(
+      "You are not authorized to manage CSV exports.",
+    );
   });
 
   it("normalizes not found detail errors", async () => {
@@ -179,5 +245,21 @@ describe("csv export batches api helpers", () => {
     await expect(
       fetchCsvExportBatchDetail("99d39ccb-3cf5-4f09-a647-a0e1387d31cb"),
     ).rejects.toThrow("Received an invalid CSV export detail response.");
+  });
+
+  it("rejects invalid list responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            id: "99d39ccb-3cf5-4f09-a647-a0e1387d31cb",
+          },
+        ],
+      }),
+    );
+
+    await expect(fetchCsvExportBatches()).rejects.toThrow(
+      "Received an invalid CSV export list response.",
+    );
   });
 });

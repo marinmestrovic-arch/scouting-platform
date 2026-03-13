@@ -1,7 +1,7 @@
 export const APP_ROLES = ["admin", "user"] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
-export type AppNavigationKey = "catalog" | "runs" | "admin";
+export type AppNavigationKey = "catalog" | "runs" | "exports" | "admin";
 
 export type AppNavigationItem = Readonly<{
   key: AppNavigationKey;
@@ -21,6 +21,12 @@ export const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
     key: "runs",
     label: "Runs",
     href: "/runs",
+    visibleTo: ["user", "admin"]
+  },
+  {
+    key: "exports",
+    label: "Exports",
+    href: "/exports",
     visibleTo: ["user", "admin"]
   },
   {

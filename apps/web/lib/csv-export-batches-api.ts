@@ -1,10 +1,12 @@
 import {
+  createCsvExportBatchRequestSchema,
   csvExportBatchDetailSchema,
+  listCsvExportBatchesResponseSchema,
   csvExportBatchSummarySchema,
-  csvExportSelectedScopeSchema,
+  type CreateCsvExportBatchRequest,
   type CsvExportBatchDetail,
   type CsvExportBatchSummary,
-  type CsvExportSelectedScope,
+  type ListCsvExportBatchesResponse,
 } from "@scouting-platform/contracts";
 
 const GENERIC_REQUEST_ERROR_MESSAGE = "Unable to complete the request. Please try again.";
@@ -12,6 +14,8 @@ const INVALID_CREATE_RESPONSE_ERROR_MESSAGE =
   "Received an invalid CSV export creation response.";
 const INVALID_DETAIL_RESPONSE_ERROR_MESSAGE =
   "Received an invalid CSV export detail response.";
+const INVALID_LIST_RESPONSE_ERROR_MESSAGE =
+  "Received an invalid CSV export list response.";
 
 type ApiErrorBody = {
   error?: string;
@@ -85,9 +89,9 @@ function normalizeRequestError(
 }
 
 export async function createCsvExportBatch(
-  input: CsvExportSelectedScope,
+  input: CreateCsvExportBatchRequest,
 ): Promise<CsvExportBatchSummary> {
-  const requestPayload = csvExportSelectedScopeSchema.parse(input);
+  const requestPayload = createCsvExportBatchRequestSchema.parse(input);
 
   try {
     const response = await fetch("/api/csv-export-batches", {
@@ -110,6 +114,33 @@ export async function createCsvExportBatch(
     }
 
     return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error);
+  }
+}
+
+export async function fetchCsvExportBatches(
+  signal?: AbortSignal,
+): Promise<ListCsvExportBatchesResponse["items"]> {
+  try {
+    const response = await fetch("/api/csv-export-batches", {
+      method: "GET",
+      cache: "no-store",
+      signal: signal ?? null,
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new CsvExportBatchesApiError(getApiErrorMessage(response, payload), response.status);
+    }
+
+    const parsed = listCsvExportBatchesResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_LIST_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data.items;
   } catch (error) {
     throw normalizeRequestError(error);
   }

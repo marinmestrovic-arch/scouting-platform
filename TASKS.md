@@ -225,7 +225,7 @@ Done when:
 #### Marin:
 
 - [done] select creators for export/push
-- export UI
+- [done] export UI
 - HubSpot push UI
 - batch result screens
 - polish admin dashboard
@@ -238,6 +238,7 @@ Done when:
 - phased delivery note: Week 6 backend is now delivered end-to-end via `POST /api/csv-export-batches`, `GET /api/csv-export-batches`, `GET /api/csv-export-batches/:id`, `GET /api/csv-export-batches/:id/download`, `POST /api/hubspot-push-batches`, `GET /api/hubspot-push-batches`, and `GET /api/hubspot-push-batches/:id`, with user-owned CSV export and HubSpot push batches, selected-or-filtered export scope snapshots, selected-channel HubSpot scope snapshots, persisted `queued/running/completed/failed` batch lifecycles plus per-row HubSpot push results, visible `last_error`, DB-backed CSV artifact storage, audit events for export request/completion/failure/download and HubSpot push request/completion/failure, worker execution on `exports.csv.generate` and `hubspot.push.batch`, and contacts-only HubSpot upserts from resolved catalog data; Week 6 UI remains open.
 - evidence note: Week 6 backend coverage now lives in `packages/contracts/src/csv-exports.test.ts`, `packages/contracts/src/hubspot-pushes.test.ts`, `packages/integrations/src/hubspot/contacts.test.ts`, `packages/core/src/hubspot/index.test.ts`, `packages/core/src/week6-csv-export.integration.test.ts`, `packages/core/src/week6-hubspot-push.integration.test.ts`, `apps/worker/src/exports-csv-generate-worker.test.ts`, `apps/worker/src/hubspot-push-batch-worker.test.ts`, `apps/web/app/api/week6-csv-export.integration.test.ts`, and `apps/web/app/api/week6-hubspot-push.integration.test.ts`.
 - [done] evidence note: catalog selection for Week 6 now ships on `/catalog` with existing cross-page creator selection extended to `Export selected` and `Push selected to HubSpot`, selected-scope batch creation via `POST /api/csv-export-batches` and `POST /api/hubspot-push-batches`, inline latest-batch polling against `GET /api/csv-export-batches/:id` and `GET /api/hubspot-push-batches/:id`, completed CSV download via `GET /api/csv-export-batches/:id/download`, compact HubSpot row failure feedback, and focused coverage in `apps/web/lib/csv-export-batches-api.test.ts`, `apps/web/lib/hubspot-push-batches-api.test.ts`, `apps/web/components/catalog/catalog-table-shell.test.ts`, `apps/web/components/catalog/catalog-table-shell.behavior.test.ts`, and `apps/web/app/(authenticated)/catalog/page.test.ts`.
+- [done] evidence note: filtered CSV export UI now ships on `/exports` with URL-backed catalog query/status filters, filtered-scope batch creation via `POST /api/csv-export-batches`, newest-first export history via `GET /api/csv-export-batches`, automatic polling while export batches remain `queued` or `running`, and deep links back to `/catalog` for selected-export flow, with focused coverage in `apps/web/lib/csv-export-batches-api.test.ts`, `apps/web/components/exports/csv-export-manager.test.ts`, `apps/web/components/exports/csv-export-manager.behavior.test.ts`, `apps/web/app/(authenticated)/exports/page.test.ts`, `apps/web/lib/navigation.test.ts`, `apps/web/components/layout/app-navigation.test.ts`, and `apps/web/components/layout/authenticated-shell.test.ts`.
 
 ### Week 7: Stabilization
 
