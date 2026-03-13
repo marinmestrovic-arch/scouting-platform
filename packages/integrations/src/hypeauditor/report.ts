@@ -18,6 +18,13 @@ const wrappedReportResponseSchema = z.object({
   result: reportResponseSchema,
 });
 
+const providerErrorResponseSchema = z.object({
+  error: z.object({
+    code: z.number().int().optional().nullable(),
+    description: z.string().trim().min(1).optional().nullable(),
+  }),
+});
+
 const reportFeaturesEntrySchema = z.object({
   data: z.unknown().optional(),
 });
@@ -30,6 +37,7 @@ export type HypeAuditorErrorCode =
   | "HYPEAUDITOR_API_KEY_MISSING"
   | "HYPEAUDITOR_API_KEY_INVALID_FORMAT"
   | "HYPEAUDITOR_AUTH_FAILED"
+  | "HYPEAUDITOR_CHANNEL_NOT_ELIGIBLE"
   | "HYPEAUDITOR_RATE_LIMITED"
   | "HYPEAUDITOR_INVALID_RESPONSE"
   | "HYPEAUDITOR_REPORT_NOT_READY"
@@ -96,6 +104,12 @@ export function isHypeAuditorError(error: unknown): error is HypeAuditorError {
   return error instanceof HypeAuditorError;
 }
 
+const alternateEndpointRetryableErrorCodes = new Set<HypeAuditorErrorCode>([
+  "HYPEAUDITOR_AUTH_FAILED",
+  "HYPEAUDITOR_INVALID_RESPONSE",
+  "HYPEAUDITOR_REQUEST_FAILED",
+]);
+
 function toJsonRecord(value: unknown): JsonRecord {
   return JSON.parse(JSON.stringify(value)) as JsonRecord;
 }
@@ -136,8 +150,69 @@ function getFetch(fetchFn?: FetchLike): FetchLike {
   return fetchFn ?? fetch;
 }
 
-function toProviderError(response: Response): HypeAuditorError {
+function getProviderErrorDetail(payload: unknown): { code: number | null; description: string | null } | null {
+  const parsed = providerErrorResponseSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return null;
+  }
+
+  return {
+    code: parsed.data.error.code ?? null,
+    description: parsed.data.error.description?.trim() ?? null,
+  };
+}
+
+function isObjectNotFoundProviderError(payload: unknown): boolean {
+  const detail = getProviderErrorDetail(payload);
+  const description = detail?.description?.toLowerCase() ?? "";
+
+  return detail?.code === 16 || description === "object not found";
+}
+
+function isChannelNotEligibleProviderError(payload: unknown): boolean {
+  const detail = getProviderErrorDetail(payload);
+  const description = detail?.description?.toLowerCase() ?? "";
+
+  return (
+    detail?.code === 31 ||
+    description.includes("does not have enough followers") ||
+    description.includes("not enough followers")
+  );
+}
+
+function looksLikeAuthProviderError(payload: unknown): boolean {
+  const description = getProviderErrorDetail(payload)?.description?.toLowerCase() ?? "";
+
+  return (
+    description.includes("unauthor") ||
+    description.includes("invalid auth") ||
+    description.includes("invalid token") ||
+    description.includes("invalid credential") ||
+    description.includes("forbidden")
+  );
+}
+
+function toProviderError(response: Response, payload?: unknown): HypeAuditorError {
+  const providerDescription = getProviderErrorDetail(payload)?.description ?? null;
+
+  if (isChannelNotEligibleProviderError(payload)) {
+    return new HypeAuditorError(
+      "HYPEAUDITOR_CHANNEL_NOT_ELIGIBLE",
+      422,
+      "HypeAuditor report is unavailable because this channel does not have enough followers",
+    );
+  }
+
   if (response.status === 401 || response.status === 403) {
+    if (providerDescription && !looksLikeAuthProviderError(payload)) {
+      return new HypeAuditorError(
+        "HYPEAUDITOR_REQUEST_FAILED",
+        422,
+        `HypeAuditor request failed: ${providerDescription}`,
+      );
+    }
+
     return new HypeAuditorError(
       "HYPEAUDITOR_AUTH_FAILED",
       401,
@@ -150,6 +225,14 @@ function toProviderError(response: Response): HypeAuditorError {
       "HYPEAUDITOR_RATE_LIMITED",
       429,
       "HypeAuditor rate limit exceeded",
+    );
+  }
+
+  if (providerDescription) {
+    return new HypeAuditorError(
+      "HYPEAUDITOR_REQUEST_FAILED",
+      422,
+      `HypeAuditor request failed: ${providerDescription}`,
     );
   }
 
@@ -601,55 +684,70 @@ async function fetchReport(input: {
     "/api/method/auditor.youtube/",
     "/api/method/auditor.report/",
   ] as const;
+  let lastError: HypeAuditorError | null = null;
 
   for (const endpoint of endpoints) {
-    const response = await input.fetchFn(
-      `${input.baseUrl.replace(/\/$/, "")}${endpoint}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "x-auth-id": input.authId,
-          "x-auth-token": input.authToken,
+    try {
+      const response = await input.fetchFn(
+        `${input.baseUrl.replace(/\/$/, "")}${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "x-auth-id": input.authId,
+            "x-auth-token": input.authToken,
+          },
+          body: new URLSearchParams({
+            channel: input.youtubeChannelId,
+          }),
         },
-        body: new URLSearchParams({
-          channel: input.youtubeChannelId,
-        }),
-      },
-    );
-
-    if (response.status === 404 && endpoint !== endpoints.at(-1)) {
-      continue;
-    }
-
-    if (!response.ok) {
-      throw toProviderError(response);
-    }
-
-    const payload = await parseJsonResponse(response);
-    const wrapped = wrappedReportResponseSchema.safeParse(payload);
-    const parsed = wrapped.success
-      ? reportResponseSchema.safeParse(wrapped.data.result)
-      : reportResponseSchema.safeParse(payload);
-
-    if (!parsed.success) {
-      throw new HypeAuditorError(
-        "HYPEAUDITOR_INVALID_RESPONSE",
-        502,
-        "HypeAuditor returned an invalid report response",
       );
+      const payload = await parseJsonResponse(response);
+
+      if (response.status === 404 && endpoint !== endpoints.at(-1)) {
+        lastError = toProviderError(response, payload);
+        continue;
+      }
+
+      if (!response.ok) {
+        throw toProviderError(response, payload);
+      }
+
+      const wrapped = wrappedReportResponseSchema.safeParse(payload);
+      const parsed = wrapped.success
+        ? reportResponseSchema.safeParse(wrapped.data.result)
+        : reportResponseSchema.safeParse(payload);
+
+      if (!parsed.success) {
+        throw new HypeAuditorError(
+          "HYPEAUDITOR_INVALID_RESPONSE",
+          502,
+          "HypeAuditor returned an invalid report response",
+        );
+      }
+
+      assertReportReady(parsed.data);
+
+      return parsed.data;
+    } catch (error) {
+      if (
+        isHypeAuditorError(error) &&
+        endpoint !== endpoints.at(-1) &&
+        alternateEndpointRetryableErrorCodes.has(error.code)
+      ) {
+        lastError = error;
+        continue;
+      }
+
+      throw error;
     }
-
-    assertReportReady(parsed.data);
-
-    return parsed.data;
   }
 
-  throw new HypeAuditorError(
-    "HYPEAUDITOR_REQUEST_FAILED",
-    502,
-    "HypeAuditor request failed",
-  );
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new HypeAuditorError("HYPEAUDITOR_REQUEST_FAILED", 502, "HypeAuditor request failed");
 }
 
 async function fetchBrandMentions(input: {
@@ -686,26 +784,46 @@ async function fetchBrandMentions(input: {
       } satisfies RequestInit,
     },
   ] as const;
+  let lastError: HypeAuditorError | null = null;
 
   for (const request of requests) {
-    const response = await input.fetchFn(request.url, request.init);
+    try {
+      const response = await input.fetchFn(request.url, request.init);
+      const payload = await parseJsonResponse(response);
 
-    if (response.status === 404 && request !== requests.at(-1)) {
-      continue;
+      if (response.status === 404 && isObjectNotFoundProviderError(payload)) {
+        return payload;
+      }
+
+      if (response.status === 404 && request !== requests.at(-1)) {
+        lastError = toProviderError(response, payload);
+        continue;
+      }
+
+      if (!response.ok) {
+        throw toProviderError(response, payload);
+      }
+
+      return payload;
+    } catch (error) {
+      if (
+        isHypeAuditorError(error) &&
+        request !== requests.at(-1) &&
+        alternateEndpointRetryableErrorCodes.has(error.code)
+      ) {
+        lastError = error;
+        continue;
+      }
+
+      throw error;
     }
-
-    if (!response.ok) {
-      throw toProviderError(response);
-    }
-
-    return parseJsonResponse(response);
   }
 
-  throw new HypeAuditorError(
-    "HYPEAUDITOR_REQUEST_FAILED",
-    502,
-    "HypeAuditor request failed",
-  );
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new HypeAuditorError("HYPEAUDITOR_REQUEST_FAILED", 502, "HypeAuditor request failed");
 }
 
 export async function fetchHypeAuditorChannelInsights(
