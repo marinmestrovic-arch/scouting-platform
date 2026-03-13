@@ -161,6 +161,121 @@ describe("fetchHypeAuditorChannelInsights", () => {
     expect(result.insights.brandMentions).toEqual([{ brandName: "Nike" }]);
   });
 
+  it("falls back to the legacy endpoints when the youtube-specific endpoints reject the account", async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          report_state: "finished",
+          report: {
+            audience_geo: {
+              us: 32.5,
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [{ title: "Nike" }],
+        }),
+      );
+
+    const result = await fetchHypeAuditorChannelInsights({
+      youtubeChannelId: "UC-HYPE-1",
+      apiKey: "auth-id:auth-token",
+      fetchFn,
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+    expect(fetchFn.mock.calls[1]?.[0]).toBe("https://hypeauditor.com/api/method/auditor.report/");
+    expect(fetchFn.mock.calls[3]?.[0]).toBe(
+      "https://hypeauditor.com/api/v1/brands/brand_mentions?channel_id=UC-HYPE-1&page=1",
+    );
+    expect(result.insights.audienceCountries).toEqual([
+      {
+        countryCode: "US",
+        countryName: "United States",
+        percentage: 32.5,
+      },
+    ]);
+    expect(result.insights.brandMentions).toEqual([{ brandName: "Nike" }]);
+  });
+
+  it("maps provider channel eligibility errors without misclassifying them as auth failures", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: 31,
+            description: "Account does not have enough followers",
+          },
+        },
+        { status: 403 },
+      ),
+    );
+
+    await expect(
+      fetchHypeAuditorChannelInsights({
+        youtubeChannelId: "UC-HYPE-1",
+        apiKey: "auth-id:auth-token",
+        fetchFn,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "HYPEAUDITOR_CHANNEL_NOT_ELIGIBLE",
+        status: 422,
+        message:
+          "HypeAuditor report is unavailable because this channel does not have enough followers",
+      } satisfies Partial<HypeAuditorError>),
+    );
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats missing brand mentions as an empty result instead of failing the report", async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          result: {
+            report_state: "READY",
+            report: {
+              audience_geo: {
+                us: 32.5,
+              },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: 16,
+              description: "Object not found",
+            },
+          },
+          { status: 404 },
+        ),
+      );
+
+    const result = await fetchHypeAuditorChannelInsights({
+      youtubeChannelId: "UC-HYPE-1",
+      apiKey: "auth-id:auth-token",
+      fetchFn,
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(result.insights.brandMentions).toEqual([]);
+    expect(result.rawPayload.brandMentions).toEqual({
+      error: {
+        code: 16,
+        description: "Object not found",
+      },
+    });
+  });
+
   it("requires a colon-delimited HYPEAUDITOR_API_KEY", async () => {
     await expect(
       fetchHypeAuditorChannelInsights({
