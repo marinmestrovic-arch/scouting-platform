@@ -9,11 +9,12 @@ import {
 } from "./navigation";
 
 describe("navigation config", () => {
-  it("defines catalog, runs, exports, and admin entries", () => {
+  it("defines catalog, runs, exports, hubspot, and admin entries", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual([
       "catalog",
       "runs",
       "exports",
+      "hubspot",
       "admin",
     ]);
     expect(APP_ROLES).toEqual(["admin", "user"]);
@@ -49,11 +50,13 @@ describe("navigation config", () => {
       "catalog",
       "runs",
       "exports",
+      "hubspot",
     ]);
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual([
       "catalog",
       "runs",
       "exports",
+      "hubspot",
       "admin"
     ]);
   });

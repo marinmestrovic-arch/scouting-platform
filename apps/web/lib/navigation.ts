@@ -1,7 +1,7 @@
 export const APP_ROLES = ["admin", "user"] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
-export type AppNavigationKey = "catalog" | "runs" | "exports" | "admin";
+export type AppNavigationKey = "catalog" | "runs" | "exports" | "hubspot" | "admin";
 
 export type AppNavigationItem = Readonly<{
   key: AppNavigationKey;
@@ -27,6 +27,12 @@ export const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
     key: "exports",
     label: "Exports",
     href: "/exports",
+    visibleTo: ["user", "admin"]
+  },
+  {
+    key: "hubspot",
+    label: "HubSpot",
+    href: "/hubspot",
     visibleTo: ["user", "admin"]
   },
   {

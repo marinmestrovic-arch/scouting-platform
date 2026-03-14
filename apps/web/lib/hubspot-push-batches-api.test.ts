@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HubspotPushBatchesApiError,
   createHubspotPushBatch,
+  fetchHubspotPushBatches,
   fetchHubspotPushBatchDetail,
 } from "./hubspot-push-batches-api";
 
@@ -97,6 +98,34 @@ describe("hubspot push batches api helpers", () => {
     expect(batch.totalRowCount).toBe(2);
   });
 
+  it("loads push batch history from GET /api/hubspot-push-batches", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          buildBatchSummaryPayload(),
+          buildBatchSummaryPayload({
+            id: "5f4ced33-1238-4d17-a243-2305d2f12265",
+            status: "completed",
+            pushedRowCount: 2,
+            completedAt: "2026-03-13T09:02:00.000Z",
+          }),
+        ],
+      }),
+    );
+
+    const items = await fetchHubspotPushBatches();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/hubspot-push-batches",
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+      }),
+    );
+    expect(items).toHaveLength(2);
+    expect(items[1]?.status).toBe("completed");
+  });
+
   it("loads push batch detail from GET /api/hubspot-push-batches/:id", async () => {
     const batchId = "fdd240f2-ef31-43fe-b1d2-a584951654a8";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -118,11 +147,9 @@ describe("hubspot push batches api helpers", () => {
   it("normalizes authorization errors", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({}, 403));
 
-    await expect(
-      createHubspotPushBatch({
-        channelIds: ["14e40450-71c2-4e0e-a160-b787d21843fd"],
-      }),
-    ).rejects.toThrow("You are not authorized to manage HubSpot pushes.");
+    await expect(fetchHubspotPushBatches()).rejects.toThrow(
+      "You are not authorized to manage HubSpot pushes.",
+    );
   });
 
   it("normalizes not found detail errors", async () => {
@@ -180,5 +207,17 @@ describe("hubspot push batches api helpers", () => {
     await expect(
       fetchHubspotPushBatchDetail("fdd240f2-ef31-43fe-b1d2-a584951654a8"),
     ).rejects.toThrow("Received an invalid HubSpot push detail response.");
+  });
+
+  it("rejects invalid list responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        items: [{ id: "fdd240f2-ef31-43fe-b1d2-a584951654a8" }],
+      }),
+    );
+
+    await expect(fetchHubspotPushBatches()).rejects.toThrow(
+      "Received an invalid HubSpot push history response.",
+    );
   });
 });

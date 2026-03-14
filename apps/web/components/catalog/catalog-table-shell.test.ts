@@ -885,6 +885,10 @@ describe("catalog table shell view", () => {
     expect(html).toContain("HubSpot push");
     expect(html).toContain("1 pushed · 1 failed.");
     expect(html).toContain("Failed rows");
+    expect(html).toContain("Open HubSpot workspace");
+    expect(
+      html,
+    ).toContain('href="/hubspot?batchId=dc605f9b-0cd3-41f5-ad85-969255759293"');
     expect(html).toContain(
       "e11e5184-79a2-42bf-bceb-345f30611c39: Channel has no contact email.",
     );

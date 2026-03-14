@@ -11,9 +11,10 @@ describe("app navigation", () => {
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
     expect(html).toContain('href="/exports"');
+    expect(html).toContain('href="/hubspot"');
     expect(html).not.toContain('href="/admin"');
     expect(html).not.toContain(">Admin<");
-    expect(linkCount).toBe(3);
+    expect(linkCount).toBe(4);
   });
 
   it("renders admin link for admin role", () => {
@@ -23,8 +24,9 @@ describe("app navigation", () => {
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/runs"');
     expect(html).toContain('href="/exports"');
+    expect(html).toContain('href="/hubspot"');
     expect(html).toContain('href="/admin"');
     expect(html).toContain(">Admin<");
-    expect(linkCount).toBe(4);
+    expect(linkCount).toBe(5);
   });
 });

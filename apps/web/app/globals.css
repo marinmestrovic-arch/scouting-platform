@@ -3452,6 +3452,270 @@ a {
   margin: 0;
 }
 
+.hubspot-push__toolbar,
+.hubspot-push__toolbar-actions,
+.hubspot-push__list-item-header,
+.hubspot-push__detail-header {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.hubspot-push__toolbar,
+.hubspot-push__list-item-header,
+.hubspot-push__detail-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.hubspot-push__toolbar-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hubspot-push__toolbar-copy,
+.hubspot-push__history-stack,
+.hubspot-push__detail-stack,
+.hubspot-push__panel,
+.hubspot-push__feedback,
+.hubspot-push__empty-state {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.hubspot-push__layout {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+.hubspot-push__panel,
+.hubspot-push__feedback,
+.hubspot-push__empty-state,
+.hubspot-push__callout,
+.hubspot-push__table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-5);
+}
+
+.hubspot-push__panel:first-child {
+  background: linear-gradient(180deg, #fbfcfa 0%, #f2f6ef 100%);
+}
+
+.hubspot-push__panel-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.hubspot-push__panel-header h2,
+.hubspot-push__detail-header h2,
+.hubspot-push__empty-state h2,
+.hubspot-push__empty-state h3,
+.hubspot-push__list-item h3,
+.hubspot-push__callout h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: var(--line-height-tight);
+}
+
+.hubspot-push__panel-header p,
+.hubspot-push__panel-copy,
+.hubspot-push__list-copy,
+.hubspot-push__feedback p,
+.hubspot-push__empty-state p,
+.hubspot-push__detail-meta {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.hubspot-push__detail-meta code {
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.hubspot-push__eyebrow {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hubspot-push__link {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+}
+
+.hubspot-push__link:hover {
+  text-decoration: underline;
+}
+
+.hubspot-push__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: #f7fcfb;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+}
+
+.hubspot-push__button:hover:not(:disabled) {
+  cursor: pointer;
+  filter: brightness(0.97);
+}
+
+.hubspot-push__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.hubspot-push__button--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.hubspot-push__inline-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-medium);
+}
+
+.hubspot-push__history-error,
+.hubspot-push__feedback--error {
+  color: #8f2f2f;
+}
+
+.hubspot-push__feedback--loading {
+  color: var(--color-text-muted);
+}
+
+.hubspot-push__list {
+  display: grid;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hubspot-push__list-item {
+  width: 100%;
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--color-surface-muted);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(250, 251, 247, 0.96) 0%, rgba(237, 242, 231, 0.82) 100%);
+  color: var(--color-text);
+  font: inherit;
+  padding: var(--space-4);
+  text-align: left;
+}
+
+.hubspot-push__list-item:hover {
+  cursor: pointer;
+  transform: translateY(-1px);
+}
+
+.hubspot-push__list-item--selected {
+  border-color: rgba(15, 106, 104, 0.28);
+  box-shadow: 0 0 0 1px rgba(15, 106, 104, 0.08);
+}
+
+.hubspot-push__status {
+  border-radius: 999px;
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  padding: var(--space-1) var(--space-3);
+  text-transform: uppercase;
+}
+
+.hubspot-push__status--completed,
+.hubspot-push__status--pushed {
+  background: rgba(15, 106, 104, 0.12);
+  color: var(--color-accent);
+}
+
+.hubspot-push__status--failed {
+  background: rgba(143, 47, 47, 0.12);
+  color: #8f2f2f;
+}
+
+.hubspot-push__status--queued,
+.hubspot-push__status--running,
+.hubspot-push__status--pending {
+  background: rgba(65, 90, 119, 0.12);
+  color: #35516f;
+}
+
+.hubspot-push__callout {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.hubspot-push__details {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.hubspot-push__details div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.hubspot-push__details dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hubspot-push__details dd {
+  margin: 0;
+}
+
+.hubspot-push__table-wrap {
+  overflow-x: auto;
+}
+
+.hubspot-push__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.hubspot-push__table th,
+.hubspot-push__table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.hubspot-push__table th {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hubspot-push__table-row--failed {
+  background: rgba(143, 47, 47, 0.04);
+}
+
+.hubspot-push__cell-copy {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-100);
+  margin-top: var(--space-1);
+}
+
 @media (max-width: 900px) {
   .auth-shell {
     grid-template-columns: 1fr;
@@ -3529,6 +3793,7 @@ a {
   .admin-dashboard__button,
   .admin-csv-imports__button,
   .csv-export__button,
+  .hubspot-push__button,
   .admin-advanced-report-queue__button,
   .recent-runs__button {
     width: 100%;
@@ -3540,6 +3805,8 @@ a {
   .admin-csv-imports__details,
   .csv-export__layout,
   .csv-export__details,
+  .hubspot-push__layout,
+  .hubspot-push__details,
   .admin-advanced-report-queue__layout,
   .admin-advanced-report-queue__details,
   .admin-advanced-report-queue__list-details,
@@ -3561,6 +3828,10 @@ a {
   .csv-export__toolbar-actions,
   .csv-export__actions,
   .csv-export__list-item-header,
+  .hubspot-push__toolbar,
+  .hubspot-push__toolbar-actions,
+  .hubspot-push__list-item-header,
+  .hubspot-push__detail-header,
   .admin-advanced-report-queue__toolbar,
   .admin-advanced-report-queue__filters,
   .admin-advanced-report-queue__toolbar-copy,

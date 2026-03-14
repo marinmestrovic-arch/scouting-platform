@@ -595,6 +595,14 @@ function getFailedHubspotPushRows(state: CatalogHubspotPushBatchState): HubspotP
   return state.detail?.rows.filter((row) => row.status === "failed") ?? [];
 }
 
+function getHubspotWorkspaceHref(batch: Pick<HubspotPushBatchSummary, "id"> | null): string {
+  if (!batch) {
+    return "/hubspot";
+  }
+
+  return `/hubspot?batchId=${encodeURIComponent(batch.id)}`;
+}
+
 function getHubspotPushFailedRowLabel(row: HubspotPushBatchRow): string {
   const identity = row.contactEmail?.trim() ? row.contactEmail : row.channelId;
 
@@ -928,6 +936,15 @@ function CatalogSelectionBatchCards({
               ) : null}
             </>
           ) : null}
+
+          <div className="catalog-table__batch-actions">
+            <Link
+              className="catalog-table__button catalog-table__button--secondary"
+              href={getHubspotWorkspaceHref(hubspotPushBatch)}
+            >
+              Open HubSpot workspace
+            </Link>
+          </div>
         </article>
       ) : null}
     </div>
