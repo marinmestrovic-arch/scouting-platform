@@ -17,6 +17,7 @@ function buildRunStatusPayload() {
     requestedByUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
     name: "Gaming Run",
     query: "gaming creators",
+    target: 20,
     status: "running",
     lastError: null,
     createdAt: "2026-03-10T10:00:00.000Z",
@@ -49,6 +50,7 @@ function buildRecentRunsPayload() {
         id: "53adac17-f39d-4731-a61f-194150fbc431",
         name: "Gaming Run",
         query: "gaming creators",
+        target: 20,
         status: "running",
         lastError: null,
         createdAt: "2026-03-10T10:00:00.000Z",
@@ -77,6 +79,7 @@ describe("runs api helpers", () => {
     const response = await createRun({
       name: "  Gaming Run  ",
       query: "  gaming creators  ",
+      target: 20,
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -89,6 +92,7 @@ describe("runs api helpers", () => {
         body: JSON.stringify({
           name: "Gaming Run",
           query: "gaming creators",
+          target: 20,
         }),
       }),
     );
@@ -112,6 +116,7 @@ describe("runs api helpers", () => {
       createRun({
         name: "Gaming Run",
         query: "gaming creators",
+        target: 20,
       }),
     ).rejects.toMatchObject({
       message: "Assigned YouTube API key is required before creating a run",
@@ -124,8 +129,19 @@ describe("runs api helpers", () => {
       createRun({
         name: "",
         query: "gaming creators",
+        target: 20,
       }),
     ).rejects.toThrow("Too small: expected string to have >=1 characters");
+  });
+
+  it("throws validation errors for invalid run target", async () => {
+    await expect(
+      createRun({
+        name: "Gaming Run",
+        query: "gaming creators",
+        target: 0,
+      }),
+    ).rejects.toThrow("Too small");
   });
 
   it("loads run detail data from GET /api/runs/:id", async () => {

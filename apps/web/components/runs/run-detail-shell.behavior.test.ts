@@ -43,6 +43,7 @@ function buildRunStatusPayload(status: "queued" | "running" | "completed" | "fai
     requestedByUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
     name: "Gaming Run",
     query: "gaming creators",
+    target: 20,
     status,
     lastError: null,
     createdAt: "2026-03-10T10:00:00.000Z",

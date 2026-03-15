@@ -41,6 +41,7 @@ describe("dashboard workspace", () => {
                 id: "run-1",
                 name: "Gaming run",
                 query: "gaming creators",
+                target: 20,
                 status: "completed",
                 lastError: null,
                 createdAt: "2026-03-15T12:00:00.000Z",
@@ -81,8 +82,10 @@ describe("dashboard workspace", () => {
     expect(html).not.toContain("gaming creators");
     expect(html).not.toContain("Open Database");
     expect(html).not.toContain("New scouting");
+    expect(html).toContain(">20<");
+    expect(html).toContain("12 / 20");
     expect(html).toContain("Export");
     expect(html).toContain("HubSpot");
-    expect((html.match(/Pending backend/g) ?? []).length).toBe(4);
+    expect((html.match(/Pending backend/g) ?? []).length).toBe(2);
   });
 });

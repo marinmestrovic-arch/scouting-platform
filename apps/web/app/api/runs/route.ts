@@ -57,6 +57,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       userId: session.userId,
       name: body.data.name,
       query: body.data.query,
+      target: body.data.target,
     });
     const payload = createRunResponseSchema.parse(run);
 

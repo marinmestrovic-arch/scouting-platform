@@ -7,7 +7,7 @@ export default function NewScoutingPage() {
   return (
     <PageSection
       title="New scouting"
-      description="Start a scouting run with an exact run name and prompt while campaign planning controls stay visible as disabled scaffolds for future backend support."
+      description="Start a scouting run with an exact run name, target, and prompt while campaign planning controls stay visible as disabled scaffolds for future backend support."
     >
       <NewScoutingWorkspace />
     </PageSection>

@@ -65,6 +65,22 @@ function getDashboardBatchActionErrorMessage(action: "csv" | "hubspot", error: u
     : "Unable to create the HubSpot batch for this run.";
 }
 
+function formatRunTarget(target: number | null): string {
+  if (target === null) {
+    return "—";
+  }
+
+  return String(target);
+}
+
+function formatRunCoverage(resultCount: number, target: number | null): string {
+  if (target === null) {
+    return `${resultCount} / —`;
+  }
+
+  return `${resultCount} / ${target}`;
+}
+
 export function DashboardWorkspace() {
   const router = useRouter();
   const [requestState, setRequestState] =
@@ -219,7 +235,7 @@ export function DashboardWorkspace() {
                           <span className="dashboard-workspace__planned-cell">Pending backend</span>
                         </td>
                         <td>
-                          <span className="dashboard-workspace__planned-cell">Pending backend</span>
+                          <span>{formatRunTarget(run.target)}</span>
                         </td>
                         <td>
                           <Link className="dashboard-workspace__list-link" href={getDatabaseRunHref(run.id)}>
@@ -227,7 +243,7 @@ export function DashboardWorkspace() {
                           </Link>
                         </td>
                         <td>
-                          <span className="dashboard-workspace__planned-cell">Pending backend</span>
+                          <span>{formatRunCoverage(run.resultCount, run.target)}</span>
                         </td>
                         <td>
                           <div className="dashboard-workspace__row-actions">

@@ -88,7 +88,7 @@ integration("week 3 API integration", () => {
       new Request("http://localhost/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Run", query: "gaming creators" }),
+        body: JSON.stringify({ name: "Run", query: "gaming creators", target: 20 }),
       }),
     );
     expect(createResponse.status).toBe(401);
@@ -108,7 +108,7 @@ integration("week 3 API integration", () => {
       new Request("http://localhost/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "", query: "" }),
+        body: JSON.stringify({ name: "", query: "", target: 0 }),
       }),
     );
 
@@ -133,7 +133,7 @@ integration("week 3 API integration", () => {
       new Request("http://localhost/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Run 1", query: "gaming creators" }),
+        body: JSON.stringify({ name: "Run 1", query: "gaming creators", target: 20 }),
       }),
     );
 
@@ -164,6 +164,7 @@ integration("week 3 API integration", () => {
         requestedByUserId: owner.id,
         name: "Owner Run",
         query: "owner query",
+        target: 12,
         status: RunRequestStatus.COMPLETED,
         createdAt: new Date("2026-03-10T10:00:00.000Z"),
         updatedAt: completedAt,
@@ -200,6 +201,7 @@ integration("week 3 API integration", () => {
         id: ownerRun.id,
         name: "Owner Run",
         query: "owner query",
+        target: 12,
         status: "completed",
         lastError: null,
         createdAt: "2026-03-10T10:00:00.000Z",
@@ -219,6 +221,7 @@ integration("week 3 API integration", () => {
         requestedByUserId: owner.id,
         name: "Owner Run",
         query: "query",
+        target: 15,
         status: RunRequestStatus.QUEUED,
       },
       select: {
@@ -255,6 +258,7 @@ integration("week 3 API integration", () => {
         requestedByUserId: owner.id,
         name: "Owner Run",
         query: "query",
+        target: 15,
         status: RunRequestStatus.COMPLETED,
       },
     });
@@ -274,6 +278,7 @@ integration("week 3 API integration", () => {
     );
     expect(ownerResponse.status).toBe(200);
     const ownerPayload = await ownerResponse.json();
+    expect(ownerPayload.target).toBe(15);
     expect(ownerPayload.results).toHaveLength(1);
     expect(ownerPayload.results[0]?.source).toBe("catalog");
     expect(ownerPayload.results[0]?.channel).toEqual({

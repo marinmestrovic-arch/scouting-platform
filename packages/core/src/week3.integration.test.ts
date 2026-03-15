@@ -109,6 +109,7 @@ integration("week 3 core integration", () => {
       userId: user.id,
       name: "Gaming Run",
       query: "gaming creators",
+      target: 20,
     });
 
     expect(created.status).toBe("queued");
@@ -119,6 +120,7 @@ integration("week 3 core integration", () => {
       },
     });
     expect(runRequest?.status).toBe(RunRequestStatus.QUEUED);
+    expect(runRequest?.target).toBe(20);
 
     const jobs = await prisma.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS count
@@ -144,6 +146,7 @@ integration("week 3 core integration", () => {
         userId: user.id,
         name: "Gaming Run",
         query: "gaming creators",
+        target: 20,
       }),
     ).rejects.toMatchObject({
       code: "YOUTUBE_KEY_REQUIRED",
@@ -207,6 +210,7 @@ integration("week 3 core integration", () => {
           requestedByUserId: owner.id,
           name: `Owner Run ${index}`,
           query: `query ${index}`,
+          target: index + 10,
           status,
           lastError: index === 11 ? "YouTube API quota exceeded" : null,
           createdAt,
@@ -262,6 +266,7 @@ integration("week 3 core integration", () => {
 
     expect(recentRuns.items).toHaveLength(10);
     expect(recentRuns.items[0]?.name).toBe("Owner Run 12");
+    expect(recentRuns.items[0]?.target).toBe(22);
     expect(recentRuns.items[0]?.status).toBe("running");
     expect(recentRuns.items[0]?.resultCount).toBe(2);
     expect(recentRuns.items[1]?.name).toBe("Owner Run 11");
@@ -362,6 +367,7 @@ integration("week 3 core integration", () => {
       userId: user.id,
       name: "Gaming Run",
       query: "gaming",
+      target: 25,
     });
 
     await getCore().executeRunDiscover({
@@ -490,6 +496,7 @@ integration("week 3 core integration", () => {
       userId: user.id,
       name: "Second Run",
       query: "gaming",
+      target: 12,
     });
 
     await getCore().executeRunDiscover({

@@ -67,9 +67,11 @@ describe("week 1 and week 2 contracts", () => {
     const payload = createRunRequestSchema.parse({
       name: "Campaign run",
       query: "gaming creators",
+      target: 20,
     });
 
     expect(payload.name).toBe("Campaign run");
+    expect(payload.target).toBe(20);
   });
 
   it("parses run status response shape", () => {
@@ -78,6 +80,7 @@ describe("week 1 and week 2 contracts", () => {
       requestedByUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
       name: "Campaign run",
       query: "gaming creators",
+      target: 20,
       status: "queued",
       lastError: null,
       createdAt: new Date().toISOString(),
@@ -112,6 +115,7 @@ describe("week 1 and week 2 contracts", () => {
           id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
           name: "Campaign run",
           query: "gaming creators",
+          target: 20,
           status: "completed",
           lastError: null,
           createdAt: new Date().toISOString(),

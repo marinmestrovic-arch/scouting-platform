@@ -45,6 +45,7 @@ function buildRecentRunsPayload(status: "queued" | "running" | "completed" | "fa
         id: "53adac17-f39d-4731-a61f-194150fbc431",
         name: "Gaming Run",
         query: "gaming creators",
+        target: null,
         status,
         lastError: null,
         createdAt: "2026-03-10T10:00:00.000Z",

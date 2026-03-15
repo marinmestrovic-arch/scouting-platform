@@ -35,6 +35,7 @@ function buildRun(
     id: overrides?.id ?? `53adac17-f39d-4731-a61f-194150fbc43${status.length}`,
     name: overrides?.name ?? `${status} run`,
     query: overrides?.query ?? `${status} creators`,
+    target: null,
     status,
     lastError: overrides?.lastError ?? null,
     createdAt: "2026-03-10T10:00:00.000Z",

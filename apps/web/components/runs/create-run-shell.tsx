@@ -13,6 +13,7 @@ type CreateRunShellProps = Readonly<{
 type RunDraft = {
   name: string;
   query: string;
+  target: string;
 };
 
 type CreateRunRequestState = {
@@ -25,12 +26,14 @@ type CreateRunShellViewProps = CreateRunShellProps & {
   requestState: CreateRunRequestState;
   onNameChange: (value: string) => void;
   onQueryChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void | Promise<void>;
 };
 
 const DEFAULT_DRAFT: RunDraft = {
   name: "",
   query: "",
+  target: "",
 };
 
 const IDLE_REQUEST_STATE: CreateRunRequestState = {
@@ -48,7 +51,24 @@ export function normalizeRunDraft(draft: RunDraft): RunDraft {
   return {
     name: draft.name.trim(),
     query: draft.query.trim(),
+    target: draft.target.trim(),
   };
+}
+
+export function normalizeRunTarget(value: string): number | null {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+    return null;
+  }
+
+  return parsedValue;
 }
 
 export function getCreateRunErrorMessage(error: unknown): string {
@@ -64,7 +84,11 @@ export function getCreateRunErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  if (error instanceof Error && error.message.includes("Run name and search query are required")) {
+  if (
+    error instanceof Error &&
+    (error.message.includes("Run name and search query are required") ||
+      error.message.includes("Run name, target, and search query are required"))
+  ) {
     return error.message;
   }
 
@@ -80,6 +104,7 @@ export function CreateRunShellView({
   requestState,
   onNameChange,
   onQueryChange,
+  onTargetChange,
   onSubmit,
   showRunsIndexLink = false,
 }: CreateRunShellViewProps) {
@@ -100,7 +125,7 @@ export function CreateRunShellView({
         <dl className="run-create__highlights">
           <div>
             <dt>Input</dt>
-            <dd>Run name and a discovery query.</dd>
+            <dd>Run name, target, and a discovery query.</dd>
           </div>
           <div>
             <dt>Discovery source</dt>
@@ -145,6 +170,23 @@ export function CreateRunShellView({
             rows={5}
             suppressHydrationWarning
             value={draft.query}
+          />
+        </label>
+
+        <label className="run-create__field">
+          <span>Target</span>
+          <input
+            disabled={isBusy}
+            inputMode="numeric"
+            min={1}
+            name="target"
+            onChange={(event) => onTargetChange(event.currentTarget.value)}
+            placeholder="25"
+            required
+            step={1}
+            suppressHydrationWarning
+            type="number"
+            value={draft.target}
           />
         </label>
 
@@ -203,18 +245,35 @@ export function CreateRunShell({ showRunsIndexLink = false }: CreateRunShellProp
     }));
   }
 
+  function handleTargetChange(value: string) {
+    resetRequestStateIfNeeded();
+    setDraft((current) => ({
+      ...current,
+      target: value,
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setRequestState(SUBMITTING_REQUEST_STATE);
 
     try {
-      const normalizedDraft = normalizeRunDraft(draft);
+      const normalizedDraft = normalizeRunDraft({
+        name: draft.name,
+        query: draft.query,
+        target: draft.target,
+      });
+      const normalizedTarget = normalizeRunTarget(draft.target);
 
-      if (!normalizedDraft.name || !normalizedDraft.query) {
-        throw new Error("Run name and search query are required.");
+      if (!normalizedDraft.name || !normalizedDraft.query || normalizedTarget === null) {
+        throw new Error("Run name, target, and search query are required.");
       }
 
-      const response = await createRun(normalizedDraft);
+      const response = await createRun({
+        name: normalizedDraft.name,
+        query: normalizedDraft.query,
+        target: normalizedTarget,
+      });
 
       startTransition(() => {
         router.push(`/runs/${response.runId}`);
@@ -232,6 +291,7 @@ export function CreateRunShell({ showRunsIndexLink = false }: CreateRunShellProp
       draft={draft}
       onNameChange={handleNameChange}
       onQueryChange={handleQueryChange}
+      onTargetChange={handleTargetChange}
       onSubmit={handleSubmit}
       requestState={requestState}
       showRunsIndexLink={showRunsIndexLink}

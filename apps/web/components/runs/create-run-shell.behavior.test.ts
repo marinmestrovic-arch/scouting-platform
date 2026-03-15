@@ -39,6 +39,7 @@ import { CreateRunShell } from "./create-run-shell";
 type CreateRunShellElement = ReactElement<{
   onNameChange: (value: string) => void;
   onQueryChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
   onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
 }>;
 
@@ -46,6 +47,7 @@ function renderShell(options?: {
   draft?: {
     name: string;
     query: string;
+    target: string;
   };
   requestState?: {
     status: "idle" | "submitting" | "error";
@@ -64,6 +66,7 @@ function renderShell(options?: {
       options?.draft ?? {
         name: "Gaming Run",
         query: "gaming creators",
+        target: "20",
       },
       setDraft,
     ])
@@ -100,6 +103,7 @@ describe("create run shell behavior", () => {
       draft: {
         name: "  Gaming Run  ",
         query: "  gaming creators  ",
+        target: " 20 ",
       },
     });
 
@@ -111,6 +115,7 @@ describe("create run shell behavior", () => {
     expect(createRunMock).toHaveBeenCalledWith({
       name: "Gaming Run",
       query: "gaming creators",
+      target: 20,
     });
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
@@ -138,14 +143,17 @@ describe("create run shell behavior", () => {
     const updateDraft = setDraft.mock.calls[0]?.[0] as ((value: {
       name: string;
       query: string;
+      target: string;
     }) => {
       name: string;
       query: string;
+      target: string;
     }) | undefined;
 
-    expect(updateDraft?.({ name: "Gaming Run", query: "gaming creators" })).toEqual({
+    expect(updateDraft?.({ name: "Gaming Run", query: "gaming creators", target: "20" })).toEqual({
       name: "Updated run",
       query: "gaming creators",
+      target: "20",
     });
   });
 });

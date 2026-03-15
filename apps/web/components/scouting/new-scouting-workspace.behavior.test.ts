@@ -30,6 +30,7 @@ import { NewScoutingWorkspace } from "./new-scouting-workspace";
 type NewScoutingWorkspaceElement = ReactElement<{
   onNameChange: (value: string) => void;
   onPromptChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
   onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
 }>;
 
@@ -37,6 +38,7 @@ function renderWorkspace(options?: {
   draft?: {
     name: string;
     prompt: string;
+    target: string;
   };
   requestState?: {
     status: "idle" | "submitting" | "error";
@@ -55,6 +57,7 @@ function renderWorkspace(options?: {
       options?.draft ?? {
         name: "Gaming run",
         prompt: "gaming creators",
+        target: "20",
       },
       setDraft,
     ])
@@ -62,7 +65,7 @@ function renderWorkspace(options?: {
       options?.requestState ?? {
         status: "idle",
         message:
-          "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+          "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
       },
       setRequestState,
     ]);
@@ -91,6 +94,7 @@ describe("new scouting workspace behavior", () => {
       draft: {
         name: "  Spring gaming outreach  ",
         prompt: "  gaming creators for DACH  ",
+        target: " 25 ",
       },
     });
 
@@ -102,6 +106,7 @@ describe("new scouting workspace behavior", () => {
     expect(createRunMock).toHaveBeenCalledWith({
       name: "Spring gaming outreach",
       query: "gaming creators for DACH",
+      target: 25,
     });
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
@@ -116,7 +121,7 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Run name and search query are required.",
+        message: "Run name, target, and prompt are required.",
       },
     });
 
@@ -125,15 +130,20 @@ describe("new scouting workspace behavior", () => {
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
       message:
-        "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
     });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
-      | ((draft: { name: string; prompt: string }) => { name: string; prompt: string })
+      | ((draft: { name: string; prompt: string; target: string }) => {
+          name: string;
+          prompt: string;
+          target: string;
+        })
       | undefined;
 
-    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators" })).toEqual({
+    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
       name: "Gaming run",
       prompt: "updated prompt",
+      target: "20",
     });
   });
 
@@ -141,7 +151,7 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Run name and search query are required.",
+        message: "Run name, target, and prompt are required.",
       },
     });
 
@@ -150,15 +160,50 @@ describe("new scouting workspace behavior", () => {
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
       message:
-        "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
     });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
-      | ((draft: { name: string; prompt: string }) => { name: string; prompt: string })
+      | ((draft: { name: string; prompt: string; target: string }) => {
+          name: string;
+          prompt: string;
+          target: string;
+        })
       | undefined;
 
-    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators" })).toEqual({
+    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
       name: "Updated run",
       prompt: "gaming creators",
+      target: "20",
+    });
+  });
+
+  it("clears error state when the target changes", () => {
+    const { element, setDraft, setRequestState } = renderWorkspace({
+      requestState: {
+        status: "error",
+        message: "Run name, target, and prompt are required.",
+      },
+    });
+
+    element.props.onTargetChange("35");
+
+    expect(setRequestState).toHaveBeenCalledWith({
+      status: "idle",
+      message:
+        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+    });
+    const updateDraft = setDraft.mock.calls[0]?.[0] as
+      | ((draft: { name: string; prompt: string; target: string }) => {
+          name: string;
+          prompt: string;
+          target: string;
+        })
+      | undefined;
+
+    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
+      name: "Gaming run",
+      prompt: "gaming creators",
+      target: "35",
     });
   });
 });

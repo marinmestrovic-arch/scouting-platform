@@ -23,6 +23,7 @@ import {
   CreateRunShellView,
   getCreateRunErrorMessage,
   normalizeRunDraft,
+  normalizeRunTarget,
 } from "./create-run-shell";
 
 function findElementByType(node: ReactNode, type: string): ReactElement | null {
@@ -50,15 +51,34 @@ function findElementByType(node: ReactNode, type: string): ReactElement | null {
   return findElementByType(element.props.children, type);
 }
 
+function findElementsByType(node: ReactNode, type: string): ReactElement[] {
+  if (Array.isArray(node)) {
+    return node.flatMap((child) => findElementsByType(child, type));
+  }
+
+  if (!isValidElement(node)) {
+    return [];
+  }
+
+  const element = node as ReactElement<{ children?: ReactNode }>;
+
+  return [
+    ...(element.type === type ? [element] : []),
+    ...findElementsByType(element.props.children, type),
+  ];
+}
+
 function renderView(requestState: Parameters<typeof CreateRunShellView>[0]["requestState"]) {
   return renderToStaticMarkup(
     createElement(CreateRunShellView, {
       draft: {
         name: "Gaming Run",
         query: "gaming creators",
+        target: "25",
       },
       onNameChange: () => undefined,
       onQueryChange: () => undefined,
+      onTargetChange: () => undefined,
       onSubmit: () => undefined,
       requestState,
       showRunsIndexLink: true,
@@ -72,11 +92,19 @@ describe("create run shell", () => {
       normalizeRunDraft({
         name: "  Gaming Run  ",
         query: "  gaming creators  ",
+        target: " 25 ",
       }),
     ).toEqual({
       name: "Gaming Run",
       query: "gaming creators",
+      target: "25",
     });
+  });
+
+  it("normalizes run target input", () => {
+    expect(normalizeRunTarget(" 25 ")).toBe(25);
+    expect(normalizeRunTarget("0")).toBeNull();
+    expect(normalizeRunTarget("1.5")).toBeNull();
   });
 
   it("maps missing key errors to a clearer UI message", () => {
@@ -99,6 +127,7 @@ describe("create run shell", () => {
     expect(html).toContain("Start a scouting run");
     expect(html).toContain("Run name");
     expect(html).toContain("Search query");
+    expect(html).toContain("Target");
     expect(html).toContain("Create run");
     expect(html).toContain('href="/runs"');
   });
@@ -118,9 +147,11 @@ describe("create run shell", () => {
       draft: {
         name: "Gaming Run",
         query: "gaming creators",
+        target: "25",
       },
       onNameChange: () => undefined,
       onQueryChange: () => undefined,
+      onTargetChange: () => undefined,
       onSubmit: () => undefined,
       requestState: {
         status: "idle",
@@ -139,6 +170,9 @@ describe("create run shell", () => {
     const textarea = findElementByType(rendered, "textarea") as ReactElement<{
       suppressHydrationWarning?: boolean;
     }> | null;
+    const targetInput = findElementsByType(rendered, "input")[1] as ReactElement<{
+      suppressHydrationWarning?: boolean;
+    }> | null;
     const button = findElementByType(rendered, "button") as ReactElement<{
       suppressHydrationWarning?: boolean;
     }> | null;
@@ -146,6 +180,7 @@ describe("create run shell", () => {
     expect(form?.props.suppressHydrationWarning).toBe(true);
     expect(input?.props.suppressHydrationWarning).toBe(true);
     expect(textarea?.props.suppressHydrationWarning).toBe(true);
+    expect(targetInput?.props.suppressHydrationWarning).toBe(true);
     expect(button?.props.suppressHydrationWarning).toBe(true);
   });
 });

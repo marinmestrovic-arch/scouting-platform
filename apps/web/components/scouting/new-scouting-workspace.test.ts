@@ -44,20 +44,23 @@ describe("new scouting workspace", () => {
         draft: {
           name: "Gaming run",
           prompt: "gaming creators",
+          target: "20",
         },
         onNameChange: () => undefined,
         onPromptChange: () => undefined,
+        onTargetChange: () => undefined,
         onSubmit: () => undefined,
         requestState: {
           status: "idle",
           message:
-            "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+            "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
         },
         showLegacyNotice: true,
       }),
     );
 
     expect(html).toContain("Run name");
+    expect(html).toContain("Target");
     expect(html).toContain("Prompt");
     expect(html).toContain("Campaign");
     expect(html).toContain("Source mode");
@@ -73,14 +76,16 @@ describe("new scouting workspace", () => {
       draft: {
         name: "Gaming run",
         prompt: "gaming creators",
+        target: "20",
       },
       onNameChange: () => undefined,
       onPromptChange: () => undefined,
+      onTargetChange: () => undefined,
       onSubmit: () => undefined,
       requestState: {
         status: "idle",
         message:
-          "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+          "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
       },
     });
     const rendered = (tree.type as typeof NewScoutingWorkspaceView)(tree.props);
@@ -95,8 +100,8 @@ describe("new scouting workspace", () => {
     >;
 
     expect(selects.every((element) => element.props.disabled)).toBe(true);
-    expect(inputs[0]?.props.disabled).toBe(false);
-    expect(inputs.slice(1).every((element) => element.props.disabled)).toBe(true);
+    expect(inputs.filter((element) => !element.props.disabled)).toHaveLength(2);
+    expect(inputs.filter((element) => element.props.disabled)).toHaveLength(inputs.length - 2);
     expect(textareas[0]?.props.disabled).toBe(false);
   });
 });

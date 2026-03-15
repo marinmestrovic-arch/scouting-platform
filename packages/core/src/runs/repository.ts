@@ -99,6 +99,7 @@ export async function createRunRequest(input: {
   userId: string;
   name: string;
   query: string;
+  target: number;
 }): Promise<CreateRunResponse> {
   const hasYoutubeKey = await prisma.userProviderCredential.findUnique({
     where: {
@@ -125,6 +126,7 @@ export async function createRunRequest(input: {
       requestedByUserId: input.userId,
       name: input.name.trim(),
       query: input.query.trim(),
+      target: input.target,
       status: PrismaRunRequestStatus.QUEUED,
     },
     select: {
@@ -183,6 +185,7 @@ export async function listRecentRuns(input: {
       id: true,
       name: true,
       query: true,
+      target: true,
       status: true,
       lastError: true,
       createdAt: true,
@@ -202,6 +205,7 @@ export async function listRecentRuns(input: {
       id: runRequest.id,
       name: runRequest.name,
       query: runRequest.query,
+      target: runRequest.target,
       status: toRunRequestStatus(runRequest.status),
       lastError: runRequest.lastError,
       createdAt: runRequest.createdAt.toISOString(),
@@ -227,6 +231,7 @@ export async function getRunStatus(input: {
       requestedByUserId: true,
       name: true,
       query: true,
+      target: true,
       status: true,
       lastError: true,
       createdAt: true,
@@ -270,6 +275,7 @@ export async function getRunStatus(input: {
     requestedByUserId: runRequest.requestedByUserId,
     name: runRequest.name,
     query: runRequest.query,
+    target: runRequest.target,
     status: toRunRequestStatus(runRequest.status),
     lastError: runRequest.lastError,
     createdAt: runRequest.createdAt.toISOString(),

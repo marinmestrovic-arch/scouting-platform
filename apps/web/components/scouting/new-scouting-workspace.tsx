@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import React, { startTransition, useState } from "react";
 
 import { createRun } from "../../lib/runs-api";
-import { getCreateRunErrorMessage, normalizeRunDraft } from "../runs/create-run-shell";
+import {
+  getCreateRunErrorMessage,
+  normalizeRunDraft,
+  normalizeRunTarget,
+} from "../runs/create-run-shell";
 
 type NewScoutingWorkspaceProps = Readonly<{
   showLegacyNotice?: boolean;
@@ -14,6 +18,7 @@ type NewScoutingWorkspaceProps = Readonly<{
 type NewScoutingDraft = {
   name: string;
   prompt: string;
+  target: string;
 };
 
 type NewScoutingRequestState = {
@@ -26,18 +31,20 @@ type NewScoutingWorkspaceViewProps = NewScoutingWorkspaceProps & {
   requestState: NewScoutingRequestState;
   onNameChange: (value: string) => void;
   onPromptChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void | Promise<void>;
 };
 
 const DEFAULT_DRAFT: NewScoutingDraft = {
   name: "",
   prompt: "",
+  target: "",
 };
 
 const IDLE_REQUEST_STATE: NewScoutingRequestState = {
   status: "idle",
   message:
-    "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+    "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
 };
 
 const SUBMITTING_REQUEST_STATE: NewScoutingRequestState = {
@@ -49,6 +56,7 @@ export function NewScoutingWorkspaceView({
   draft,
   onNameChange,
   onPromptChange,
+  onTargetChange,
   onSubmit,
   requestState,
   showLegacyNotice = false,
@@ -138,8 +146,21 @@ export function NewScoutingWorkspaceView({
 
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
-            <span>Creators needed</span>
-            <input disabled readOnly suppressHydrationWarning value="Planned" />
+            <span>Target</span>
+            <input
+              disabled={isBusy}
+              inputMode="numeric"
+              min={1}
+              name="target"
+              onChange={(event) => onTargetChange(event.currentTarget.value)}
+              placeholder="25"
+              required
+              step={1}
+              suppressHydrationWarning
+              type="number"
+              value={draft.target}
+            />
+            <small>Number of creators needed for this scouting list.</small>
           </label>
 
           <label className="new-scouting__field">
@@ -217,6 +238,17 @@ export function NewScoutingWorkspace({
     }));
   }
 
+  function handleTargetChange(value: string) {
+    if (requestState.status === "error") {
+      setRequestState(IDLE_REQUEST_STATE);
+    }
+
+    setDraft((current) => ({
+      ...current,
+      target: value,
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setRequestState(SUBMITTING_REQUEST_STATE);
@@ -225,13 +257,19 @@ export function NewScoutingWorkspace({
       const normalizedDraft = normalizeRunDraft({
         name: draft.name,
         query: draft.prompt,
+        target: draft.target,
       });
+      const normalizedTarget = normalizeRunTarget(draft.target);
 
-      if (!normalizedDraft.name || !normalizedDraft.query) {
-        throw new Error("Run name and search query are required.");
+      if (!normalizedDraft.name || !normalizedDraft.query || normalizedTarget === null) {
+        throw new Error("Run name, target, and prompt are required.");
       }
 
-      const response = await createRun(normalizedDraft);
+      const response = await createRun({
+        name: normalizedDraft.name,
+        query: normalizedDraft.query,
+        target: normalizedTarget,
+      });
 
       startTransition(() => {
         router.push(`/database?tab=runs&runId=${encodeURIComponent(response.runId)}`);
@@ -249,6 +287,7 @@ export function NewScoutingWorkspace({
       draft={draft}
       onNameChange={handleNameChange}
       onPromptChange={handlePromptChange}
+      onTargetChange={handleTargetChange}
       onSubmit={handleSubmit}
       requestState={requestState}
       showLegacyNotice={showLegacyNotice}

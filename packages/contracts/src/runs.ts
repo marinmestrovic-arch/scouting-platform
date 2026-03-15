@@ -14,6 +14,7 @@ export const runResultSourceSchema = z.enum(["catalog", "discovery"]);
 export const createRunRequestSchema = z.object({
   name: z.string().trim().min(1).max(200),
   query: z.string().trim().min(1).max(500),
+  target: z.number().int().positive(),
 });
 
 export const createRunResponseSchema = z.object({
@@ -25,6 +26,7 @@ export const recentRunItemSchema = z.object({
   id: z.uuid(),
   name: z.string(),
   query: z.string(),
+  target: z.number().int().positive().nullable(),
   status: runRequestStatusSchema,
   lastError: z.string().nullable(),
   createdAt: isoDatetimeSchema,
@@ -60,6 +62,7 @@ export const runStatusResponseSchema = z.object({
   requestedByUserId: z.uuid(),
   name: z.string(),
   query: z.string(),
+  target: z.number().int().positive().nullable(),
   status: runRequestStatusSchema,
   lastError: z.string().nullable(),
   createdAt: isoDatetimeSchema,
