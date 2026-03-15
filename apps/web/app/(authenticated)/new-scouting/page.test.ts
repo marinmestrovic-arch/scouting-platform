@@ -21,7 +21,7 @@ describe("new scouting page", () => {
 
     expect(html).toContain("New scouting");
     expect(html).toContain(
-      "Start a scouting run from the live prompt field while campaign planning controls stay visible as disabled scaffolds for future backend support.",
+      "Start a scouting run with an exact run name and prompt while campaign planning controls stay visible as disabled scaffolds for future backend support.",
     );
     expect(newScoutingWorkspaceMock).toHaveBeenCalledTimes(1);
     expect(html).toContain("new-scouting-workspace");

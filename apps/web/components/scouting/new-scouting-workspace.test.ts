@@ -18,10 +18,7 @@ vi.mock("next/link", async () => {
   };
 });
 
-import {
-  buildGeneratedRunName,
-  NewScoutingWorkspaceView,
-} from "./new-scouting-workspace";
+import { NewScoutingWorkspaceView } from "./new-scouting-workspace";
 
 function findElementsByType(node: ReactNode, type: string): ReactElement[] {
   if (Array.isArray(node)) {
@@ -41,29 +38,26 @@ function findElementsByType(node: ReactNode, type: string): ReactElement[] {
 }
 
 describe("new scouting workspace", () => {
-  it("builds a readable generated run name from the prompt", () => {
-    expect(buildGeneratedRunName("  gaming creators for DACH   ")).toBe(
-      "Scouting: gaming creators for DACH",
-    );
-  });
-
-  it("renders the live prompt field and disabled scaffolded controls", () => {
+  it("renders the live run name and prompt fields with disabled scaffolded controls", () => {
     const html = renderToStaticMarkup(
       createElement(NewScoutingWorkspaceView, {
         draft: {
+          name: "Gaming run",
           prompt: "gaming creators",
         },
+        onNameChange: () => undefined,
         onPromptChange: () => undefined,
         onSubmit: () => undefined,
         requestState: {
           status: "idle",
           message:
-            "Only the prompt is live today. Campaign, week, brief, and targeting controls are scaffolded until the backend stores those fields.",
+            "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
         },
         showLegacyNotice: true,
       }),
     );
 
+    expect(html).toContain("Run name");
     expect(html).toContain("Prompt");
     expect(html).toContain("Campaign");
     expect(html).toContain("Source mode");
@@ -71,19 +65,22 @@ describe("new scouting workspace", () => {
     expect(html).toContain('href="/database?tab=runs"');
     expect(html).toContain("Start scouting");
     expect(html).not.toContain("Current backend mode");
+    expect(html).not.toContain("auto-generated client-side");
   });
 
-  it("marks scaffolded fields as disabled while leaving the prompt live", () => {
+  it("keeps run name and prompt live while scaffolded fields stay disabled", () => {
     const tree = createElement(NewScoutingWorkspaceView, {
       draft: {
+        name: "Gaming run",
         prompt: "gaming creators",
       },
+      onNameChange: () => undefined,
       onPromptChange: () => undefined,
       onSubmit: () => undefined,
       requestState: {
         status: "idle",
         message:
-          "Only the prompt is live today. Campaign, week, brief, and targeting controls are scaffolded until the backend stores those fields.",
+          "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
       },
     });
     const rendered = (tree.type as typeof NewScoutingWorkspaceView)(tree.props);
@@ -98,7 +95,8 @@ describe("new scouting workspace", () => {
     >;
 
     expect(selects.every((element) => element.props.disabled)).toBe(true);
-    expect(inputs.every((element) => element.props.disabled)).toBe(true);
+    expect(inputs[0]?.props.disabled).toBe(false);
+    expect(inputs.slice(1).every((element) => element.props.disabled)).toBe(true);
     expect(textareas[0]?.props.disabled).toBe(false);
   });
 });

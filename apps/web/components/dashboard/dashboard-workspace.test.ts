@@ -77,6 +77,8 @@ describe("dashboard workspace", () => {
     expect(html).toContain("Coverage");
     expect(html).toContain("Actions");
     expect(html).toContain('href="/database?tab=runs&amp;runId=run-1"');
+    expect(html).toContain(">Gaming run<");
+    expect(html).not.toContain("gaming creators");
     expect(html).not.toContain("Open Database");
     expect(html).not.toContain("New scouting");
     expect(html).toContain("Export");

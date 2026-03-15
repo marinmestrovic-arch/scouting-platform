@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import React, { startTransition, useState } from "react";
 
 import { createRun } from "../../lib/runs-api";
-import { getCreateRunErrorMessage } from "../runs/create-run-shell";
+import { getCreateRunErrorMessage, normalizeRunDraft } from "../runs/create-run-shell";
 
 type NewScoutingWorkspaceProps = Readonly<{
   showLegacyNotice?: boolean;
 }>;
 
 type NewScoutingDraft = {
+  name: string;
   prompt: string;
 };
 
@@ -23,18 +24,20 @@ type NewScoutingRequestState = {
 type NewScoutingWorkspaceViewProps = NewScoutingWorkspaceProps & {
   draft: NewScoutingDraft;
   requestState: NewScoutingRequestState;
+  onNameChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void | Promise<void>;
 };
 
 const DEFAULT_DRAFT: NewScoutingDraft = {
+  name: "",
   prompt: "",
 };
 
 const IDLE_REQUEST_STATE: NewScoutingRequestState = {
   status: "idle",
   message:
-    "Only the prompt is live today. Campaign, week, brief, and targeting controls are scaffolded until the backend stores those fields.",
+    "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
 };
 
 const SUBMITTING_REQUEST_STATE: NewScoutingRequestState = {
@@ -42,25 +45,9 @@ const SUBMITTING_REQUEST_STATE: NewScoutingRequestState = {
   message: "Creating the scouting run and opening it inside Database.",
 };
 
-function normalizePrompt(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-export function buildGeneratedRunName(prompt: string): string {
-  const normalized = normalizePrompt(prompt);
-
-  if (!normalized) {
-    return "Scouting run";
-  }
-
-  const preview =
-    normalized.length > 72 ? `${normalized.slice(0, 69).trimEnd()}...` : normalized;
-
-  return `Scouting: ${preview}`;
-}
-
 export function NewScoutingWorkspaceView({
   draft,
+  onNameChange,
   onPromptChange,
   onSubmit,
   requestState,
@@ -81,6 +68,22 @@ export function NewScoutingWorkspaceView({
       ) : null}
 
       <form className="new-scouting__panel" onSubmit={onSubmit} suppressHydrationWarning>
+        <label className="new-scouting__field">
+          <span>Run name</span>
+          <input
+            autoComplete="off"
+            disabled={isBusy}
+            maxLength={200}
+            name="name"
+            onChange={(event) => onNameChange(event.currentTarget.value)}
+            placeholder="Spring gaming outreach"
+            required
+            suppressHydrationWarning
+            value={draft.name}
+          />
+          <small>This exact name becomes the influencer list label across Dashboard and Database.</small>
+        </label>
+
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Campaign</span>
@@ -130,7 +133,7 @@ export function NewScoutingWorkspaceView({
             suppressHydrationWarning
             value={draft.prompt}
           />
-          <small>Submitted as the current run query. The run name is auto-generated client-side.</small>
+          <small>Submitted to the current backend as the run query.</small>
         </label>
 
         <div className="new-scouting__grid new-scouting__grid--two">
@@ -192,14 +195,26 @@ export function NewScoutingWorkspace({
   const [draft, setDraft] = useState<NewScoutingDraft>(DEFAULT_DRAFT);
   const [requestState, setRequestState] = useState<NewScoutingRequestState>(IDLE_REQUEST_STATE);
 
+  function handleNameChange(value: string) {
+    if (requestState.status === "error") {
+      setRequestState(IDLE_REQUEST_STATE);
+    }
+
+    setDraft((current) => ({
+      ...current,
+      name: value,
+    }));
+  }
+
   function handlePromptChange(value: string) {
     if (requestState.status === "error") {
       setRequestState(IDLE_REQUEST_STATE);
     }
 
-    setDraft({
+    setDraft((current) => ({
+      ...current,
       prompt: value,
-    });
+    }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -207,16 +222,16 @@ export function NewScoutingWorkspace({
     setRequestState(SUBMITTING_REQUEST_STATE);
 
     try {
-      const query = normalizePrompt(draft.prompt);
+      const normalizedDraft = normalizeRunDraft({
+        name: draft.name,
+        query: draft.prompt,
+      });
 
-      if (!query) {
-        throw new Error("Prompt is required.");
+      if (!normalizedDraft.name || !normalizedDraft.query) {
+        throw new Error("Run name and search query are required.");
       }
 
-      const response = await createRun({
-        name: buildGeneratedRunName(query),
-        query,
-      });
+      const response = await createRun(normalizedDraft);
 
       startTransition(() => {
         router.push(`/database?tab=runs&runId=${encodeURIComponent(response.runId)}`);
@@ -224,10 +239,7 @@ export function NewScoutingWorkspace({
     } catch (error) {
       setRequestState({
         status: "error",
-        message:
-          error instanceof Error && error.message === "Prompt is required."
-            ? error.message
-            : getCreateRunErrorMessage(error),
+        message: getCreateRunErrorMessage(error),
       });
     }
   }
@@ -235,6 +247,7 @@ export function NewScoutingWorkspace({
   return (
     <NewScoutingWorkspaceView
       draft={draft}
+      onNameChange={handleNameChange}
       onPromptChange={handlePromptChange}
       onSubmit={handleSubmit}
       requestState={requestState}

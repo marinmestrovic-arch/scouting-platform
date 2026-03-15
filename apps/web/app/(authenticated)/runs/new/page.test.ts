@@ -26,7 +26,7 @@ describe("new run page", () => {
     });
     expect(html).toContain("<h1>New scouting</h1>");
     expect(html).toContain(
-      "Legacy shortcut to the new scouting workspace. Only the prompt is live today while the remaining planning controls stay visible as disabled scaffolds.",
+      "Legacy shortcut to the new scouting workspace. Run name and prompt are live today while the remaining planning controls stay visible as disabled scaffolds.",
     );
     expect(html).toContain("new-scouting-workspace:true");
   });

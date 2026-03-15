@@ -28,12 +28,14 @@ vi.mock("../../lib/runs-api", () => ({
 import { NewScoutingWorkspace } from "./new-scouting-workspace";
 
 type NewScoutingWorkspaceElement = ReactElement<{
+  onNameChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
 }>;
 
 function renderWorkspace(options?: {
   draft?: {
+    name: string;
     prompt: string;
   };
   requestState?: {
@@ -51,6 +53,7 @@ function renderWorkspace(options?: {
   useStateMock
     .mockReturnValueOnce([
       options?.draft ?? {
+        name: "Gaming run",
         prompt: "gaming creators",
       },
       setDraft,
@@ -59,7 +62,7 @@ function renderWorkspace(options?: {
       options?.requestState ?? {
         status: "idle",
         message:
-          "Only the prompt is live today. Campaign, week, brief, and targeting controls are scaffolded until the backend stores those fields.",
+          "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
       },
       setRequestState,
     ]);
@@ -86,6 +89,7 @@ describe("new scouting workspace behavior", () => {
 
     const { element, setRequestState } = renderWorkspace({
       draft: {
+        name: "  Spring gaming outreach  ",
         prompt: "  gaming creators for DACH  ",
       },
     });
@@ -96,7 +100,7 @@ describe("new scouting workspace behavior", () => {
     await Promise.resolve();
 
     expect(createRunMock).toHaveBeenCalledWith({
-      name: "Scouting: gaming creators for DACH",
+      name: "Spring gaming outreach",
       query: "gaming creators for DACH",
     });
     expect(setRequestState).toHaveBeenCalledWith({
@@ -112,7 +116,7 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Prompt is required.",
+        message: "Run name and search query are required.",
       },
     });
 
@@ -121,10 +125,40 @@ describe("new scouting workspace behavior", () => {
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
       message:
-        "Only the prompt is live today. Campaign, week, brief, and targeting controls are scaffolded until the backend stores those fields.",
+        "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
     });
-    expect(setDraft).toHaveBeenCalledWith({
+    const updateDraft = setDraft.mock.calls[0]?.[0] as
+      | ((draft: { name: string; prompt: string }) => { name: string; prompt: string })
+      | undefined;
+
+    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators" })).toEqual({
+      name: "Gaming run",
       prompt: "updated prompt",
+    });
+  });
+
+  it("clears error state when the run name changes", () => {
+    const { element, setDraft, setRequestState } = renderWorkspace({
+      requestState: {
+        status: "error",
+        message: "Run name and search query are required.",
+      },
+    });
+
+    element.props.onNameChange("Updated run");
+
+    expect(setRequestState).toHaveBeenCalledWith({
+      status: "idle",
+      message:
+        "Run name and prompt are live today. Campaign, week, brief, and targeting controls stay scaffolded until the backend stores those fields.",
+    });
+    const updateDraft = setDraft.mock.calls[0]?.[0] as
+      | ((draft: { name: string; prompt: string }) => { name: string; prompt: string })
+      | undefined;
+
+    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators" })).toEqual({
+      name: "Updated run",
+      prompt: "gaming creators",
     });
   });
 });
