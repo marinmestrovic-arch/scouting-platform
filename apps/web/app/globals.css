@@ -2437,6 +2437,7 @@ a {
 
 .admin-dashboard__toolbar-copy,
 .admin-dashboard__content,
+.admin-dashboard__section,
 .admin-dashboard__panel,
 .admin-dashboard__feedback {
   display: grid;
@@ -2444,6 +2445,7 @@ a {
 }
 
 .admin-dashboard__toolbar-copy h2,
+.admin-dashboard__section h3,
 .admin-dashboard__panel h3,
 .admin-dashboard__panel h4 {
   margin: 0;
@@ -2454,6 +2456,8 @@ a {
 .admin-dashboard__list-copy,
 .admin-dashboard__list-meta,
 .admin-dashboard__empty-copy,
+.admin-dashboard__section-copy,
+.admin-dashboard__shortcut-copy,
 .admin-dashboard__timestamp,
 .admin-dashboard__feedback p {
   margin: 0;
@@ -2516,6 +2520,7 @@ a {
 }
 
 .admin-dashboard__feedback,
+.admin-dashboard__section,
 .admin-dashboard__panel,
 .admin-dashboard__card {
   border: 1px solid var(--color-border);
@@ -2524,6 +2529,7 @@ a {
 }
 
 .admin-dashboard__feedback,
+.admin-dashboard__section,
 .admin-dashboard__panel,
 .admin-dashboard__card {
   padding: var(--space-5);
@@ -2539,7 +2545,8 @@ a {
 }
 
 .admin-dashboard__card-grid,
-.admin-dashboard__panel-grid {
+.admin-dashboard__panel-grid,
+.admin-dashboard__shortcut-grid {
   display: grid;
   gap: var(--space-4);
 }
@@ -2549,6 +2556,10 @@ a {
 }
 
 .admin-dashboard__panel-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-dashboard__shortcut-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -2568,6 +2579,38 @@ a {
   font-size: clamp(1.8rem, 3vw, 2.5rem);
   font-weight: var(--font-weight-semibold);
   line-height: 1;
+}
+
+.admin-dashboard__shortcut-card {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98) 0%, rgba(244, 239, 228, 0.88) 100%);
+  color: var(--color-text);
+  padding: var(--space-4);
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.admin-dashboard__shortcut-card:hover {
+  border-color: rgba(15, 106, 104, 0.32);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.admin-dashboard__shortcut-card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.admin-dashboard__shortcut-title {
+  margin: 0;
+  font-size: var(--font-size-300);
 }
 
 .admin-dashboard__list {
@@ -3863,6 +3906,7 @@ a {
 
   .admin-dashboard__card-grid,
   .admin-dashboard__panel-grid,
+  .admin-dashboard__shortcut-grid,
   .admin-csv-imports__layout,
   .admin-csv-imports__details,
   .csv-export__layout,

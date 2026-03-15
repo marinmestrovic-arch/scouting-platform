@@ -27,7 +27,7 @@ export default async function AdminPage() {
   return (
     <PageSection
       title="Admin"
-      description="Track current admin workload, catch setup gaps early, and work the full HypeAuditor approval queue from one workspace."
+      description="Triage admin-only work, catch setup gaps early, and jump into catalog, export, HubSpot, or the full HypeAuditor queue from one workspace."
     >
       <div className="admin-page__stack">
         <AdminDashboardShell />

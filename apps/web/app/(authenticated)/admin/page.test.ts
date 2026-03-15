@@ -90,7 +90,7 @@ describe("admin page", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Admin");
     expect(html).toContain(
-      "Track current admin workload, catch setup gaps early, and work the full HypeAuditor approval queue from one workspace."
+      "Triage admin-only work, catch setup gaps early, and jump into catalog, export, HubSpot, or the full HypeAuditor queue from one workspace."
     );
     expect(html).toContain("Admin dashboard shell");
     expect(html).toContain("Admin approval queue");

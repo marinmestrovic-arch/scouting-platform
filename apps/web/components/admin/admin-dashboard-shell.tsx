@@ -27,11 +27,57 @@ type AdminDashboardShellViewProps = Readonly<{
   onRetry: () => void;
 }>;
 
+type AdminDashboardShortcut = Readonly<{
+  label: string;
+  title: string;
+  href: string;
+  copy: string;
+}>;
+
 const INITIAL_DASHBOARD_STATE: AdminDashboardState = {
   status: "loading",
   data: null,
   error: null,
 };
+
+const ADMIN_DASHBOARD_SHORTCUTS: readonly AdminDashboardShortcut[] = [
+  {
+    label: "Queue",
+    title: "HypeAuditor approvals",
+    href: "#admin-approval-queue",
+    copy: "Review pending, approved, queued, running, completed, and failed report requests without leaving this page.",
+  },
+  {
+    label: "Admin",
+    title: "CSV imports",
+    href: "/admin/imports",
+    copy: "Open strict-template import history, inspect exact row failures, and keep long-running batches in view.",
+  },
+  {
+    label: "Admin",
+    title: "User setup",
+    href: "/admin/users",
+    copy: "Create accounts, reset passwords, and assign YouTube API keys before managers start new runs.",
+  },
+  {
+    label: "Catalog",
+    title: "Catalog QA",
+    href: "/catalog",
+    copy: "Jump into channel detail pages for manual edits, enrichment follow-up, and advanced report request context.",
+  },
+  {
+    label: "Week 6",
+    title: "CSV exports",
+    href: "/exports",
+    copy: "Review selected and filtered export batches from the dedicated export workspace.",
+  },
+  {
+    label: "Week 6",
+    title: "HubSpot pushes",
+    href: "/hubspot",
+    copy: "Inspect row-level push results and exact HubSpot failure messages in the dedicated workspace.",
+  },
+] as const;
 
 export const ADMIN_DASHBOARD_POLL_INTERVAL_MS = 3000;
 
@@ -105,6 +151,10 @@ function getActionableImportCount(dashboard: AdminDashboardResponse): number {
   );
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function shouldPollAdminDashboard(dashboard: AdminDashboardResponse | null): boolean {
   if (!dashboard) {
     return false;
@@ -130,30 +180,33 @@ function renderReadyState(dashboard: AdminDashboardResponse): ReactElement {
         <article className="admin-dashboard__card">
           <p className="admin-dashboard__card-label">Pending approvals</p>
           <p className="admin-dashboard__card-value">{dashboard.approvals.counts.pendingApproval}</p>
-          <p className="admin-dashboard__card-copy">Requests waiting for an admin decision right now.</p>
+          <p className="admin-dashboard__card-copy">
+            Oldest pending requests stay visible below so you can review them in order.
+          </p>
         </article>
         <article className="admin-dashboard__card">
-          <p className="admin-dashboard__card-label">Active HypeAuditor work</p>
+          <p className="admin-dashboard__card-label">HypeAuditor follow-through</p>
           <p className="admin-dashboard__card-value">{activeApprovalCount}</p>
           <p className="admin-dashboard__card-copy">
-            {dashboard.approvals.counts.failed} failed request
-            {dashboard.approvals.counts.failed === 1 ? "" : "s"} still need operator attention.
+            Approved {dashboard.approvals.counts.approved}, queued {dashboard.approvals.counts.queued},
+            running {dashboard.approvals.counts.running}, failed {dashboard.approvals.counts.failed}.
           </p>
         </article>
         <article className="admin-dashboard__card">
-          <p className="admin-dashboard__card-label">Actionable CSV imports</p>
+          <p className="admin-dashboard__card-label">CSV imports needing attention</p>
           <p className="admin-dashboard__card-value">{actionableImportCount}</p>
           <p className="admin-dashboard__card-copy">
-            {dashboard.imports.counts.queued + dashboard.imports.counts.running} still processing,{" "}
-            {dashboard.imports.counts.failed} failed.
+            Queued {dashboard.imports.counts.queued}, running {dashboard.imports.counts.running},
+            failed {dashboard.imports.counts.failed}.
           </p>
         </article>
         <article className="admin-dashboard__card">
-          <p className="admin-dashboard__card-label">Managers missing YouTube keys</p>
+          <p className="admin-dashboard__card-label">Managers blocked on YouTube keys</p>
           <p className="admin-dashboard__card-value">{dashboard.users.missingYoutubeKeyCount}</p>
           <p className="admin-dashboard__card-copy">
-            {dashboard.users.activeCount} active account{dashboard.users.activeCount === 1 ? "" : "s"} across{" "}
-            {dashboard.users.totalCount} total user record{dashboard.users.totalCount === 1 ? "" : "s"}.
+            {pluralize(dashboard.users.activeCount, "active account")},{" "}
+            {pluralize(dashboard.users.adminCount, "admin")},{" "}
+            {pluralize(dashboard.users.totalCount, "total record")}.
           </p>
         </article>
       </div>
@@ -271,6 +324,33 @@ function renderReadyState(dashboard: AdminDashboardResponse): ReactElement {
   );
 }
 
+function renderWorkspaceShortcuts(): ReactElement {
+  return (
+    <section className="admin-dashboard__section" aria-labelledby="admin-dashboard-shortcuts-heading">
+      <header className="admin-dashboard__panel-header">
+        <div>
+          <p className="admin-dashboard__eyebrow">Workspaces</p>
+          <h3 id="admin-dashboard-shortcuts-heading">Jump straight into the right workflow</h3>
+          <p className="admin-dashboard__section-copy">
+            Admin-only work starts here, but imports, users, catalog QA, exports, and HubSpot all keep
+            their dedicated Week 6 surfaces.
+          </p>
+        </div>
+      </header>
+
+      <div className="admin-dashboard__shortcut-grid">
+        {ADMIN_DASHBOARD_SHORTCUTS.map((shortcut) => (
+          <Link className="admin-dashboard__shortcut-card" href={shortcut.href} key={shortcut.title}>
+            <p className="admin-dashboard__card-label">{shortcut.label}</p>
+            <h4 className="admin-dashboard__shortcut-title">{shortcut.title}</h4>
+            <p className="admin-dashboard__shortcut-copy">{shortcut.copy}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AdminDashboardShellView(props: AdminDashboardShellViewProps): ReactElement {
   const { dashboardState, isRefreshing, onReload, onRetry } = props;
 
@@ -278,10 +358,11 @@ export function AdminDashboardShellView(props: AdminDashboardShellViewProps): Re
     <div className="admin-dashboard">
       <div className="admin-dashboard__toolbar">
         <div className="admin-dashboard__toolbar-copy">
-          <p className="admin-dashboard__eyebrow">Week 5 workspace</p>
-          <h2>Operations overview</h2>
+          <p className="admin-dashboard__eyebrow">Week 6 workspace</p>
+          <h2>Admin operations hub</h2>
           <p className="admin-dashboard__toolbar-summary">
-            Track pending approvals, CSV import attention, and YouTube key readiness before working the full queue.
+            Triage admin-only work first, then jump into catalog, export, and HubSpot workflows without
+            losing the current approval queue context.
           </p>
         </div>
         <div className="admin-dashboard__toolbar-actions">
@@ -301,6 +382,8 @@ export function AdminDashboardShellView(props: AdminDashboardShellViewProps): Re
           </button>
         </div>
       </div>
+
+      {renderWorkspaceShortcuts()}
 
       {isRefreshing ? (
         <p className="admin-dashboard__inline-note" role="status">
