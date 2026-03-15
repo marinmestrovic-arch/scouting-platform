@@ -1,42 +1,53 @@
 export const APP_ROLES = ["admin", "user"] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
-export type AppNavigationKey = "catalog" | "runs" | "exports" | "hubspot" | "admin";
+export const APP_NAVIGATION_GROUPS = [
+  {
+    key: "workspace",
+    label: "Workspace",
+  },
+  {
+    key: "admin",
+    label: "Admin",
+  },
+] as const;
+
+export type AppNavigationGroupKey = (typeof APP_NAVIGATION_GROUPS)[number]["key"];
+export type AppNavigationKey = "dashboard" | "new-scouting" | "database" | "admin";
 
 export type AppNavigationItem = Readonly<{
   key: AppNavigationKey;
+  group: AppNavigationGroupKey;
+  href: "/dashboard" | "/new-scouting" | "/database" | "/admin";
   label: string;
-  href: `/${AppNavigationKey}`;
   visibleTo: readonly AppRole[];
 }>;
 
 export const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
   {
-    key: "catalog",
-    label: "Catalog",
-    href: "/catalog",
+    key: "dashboard",
+    group: "workspace",
+    label: "Dashboard",
+    href: "/dashboard",
     visibleTo: ["user", "admin"]
   },
   {
-    key: "runs",
-    label: "Runs",
-    href: "/runs",
+    key: "new-scouting",
+    group: "workspace",
+    label: "New scouting",
+    href: "/new-scouting",
     visibleTo: ["user", "admin"]
   },
   {
-    key: "exports",
-    label: "Exports",
-    href: "/exports",
-    visibleTo: ["user", "admin"]
-  },
-  {
-    key: "hubspot",
-    label: "HubSpot",
-    href: "/hubspot",
+    key: "database",
+    group: "workspace",
+    label: "Database",
+    href: "/database",
     visibleTo: ["user", "admin"]
   },
   {
     key: "admin",
+    group: "admin",
     label: "Admin",
     href: "/admin",
     visibleTo: ["admin"]
@@ -61,6 +72,10 @@ export function isNavItemVisibleToRole(item: AppNavigationItem, role: AppRole): 
 
 export function getNavigationForRole(role: AppRole): AppNavigationItem[] {
   return APP_NAVIGATION_ITEMS.filter((item) => isNavItemVisibleToRole(item, role));
+}
+
+export function getNavigationGroupLabel(group: AppNavigationGroupKey): string {
+  return APP_NAVIGATION_GROUPS.find((item) => item.key === group)?.label ?? group;
 }
 
 export function getCsvExportBatchResultHref(batchId: string): string {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   APP_ROLES,
+  APP_NAVIGATION_GROUPS,
   APP_NAVIGATION_ITEMS,
   getCsvExportBatchResultHref,
+  getNavigationGroupLabel,
   getHubspotPushBatchResultHref,
   getNavigationForRole,
   isAppRole,
@@ -11,32 +13,36 @@ import {
 } from "./navigation";
 
 describe("navigation config", () => {
-  it("defines catalog, runs, exports, hubspot, and admin entries", () => {
+  it("defines dashboard, new scouting, database, and admin entries", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual([
-      "catalog",
-      "runs",
-      "exports",
-      "hubspot",
+      "dashboard",
+      "new-scouting",
+      "database",
       "admin",
     ]);
+    expect(APP_NAVIGATION_GROUPS.map((group) => group.key)).toEqual(["workspace", "admin"]);
     expect(APP_ROLES).toEqual(["admin", "user"]);
   });
 
-  it("keeps hrefs aligned with each navigation key", () => {
-    for (const item of APP_NAVIGATION_ITEMS) {
-      expect(item.href).toBe(`/${item.key}`);
-    }
+  it("keeps hrefs aligned with each workspace route", () => {
+    expect(APP_NAVIGATION_ITEMS.map((item) => item.href)).toEqual([
+      "/dashboard",
+      "/new-scouting",
+      "/database",
+      "/admin",
+    ]);
   });
 
   it("stores role visibility metadata per entry", () => {
     const adminEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "admin");
-    const catalogEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "catalog");
+    const databaseEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "database");
     const adminOnlyEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "admin");
 
-    expect(catalogEntry).toBeDefined();
+    expect(databaseEntry).toBeDefined();
     expect(adminOnlyEntry).toBeDefined();
     expect(adminEntry?.visibleTo).toEqual(["admin"]);
-    expect(isNavItemVisibleToRole(catalogEntry!, "user")).toBe(true);
+    expect(adminEntry?.group).toBe("admin");
+    expect(isNavItemVisibleToRole(databaseEntry!, "user")).toBe(true);
     expect(isNavItemVisibleToRole(adminOnlyEntry!, "user")).toBe(false);
   });
 
@@ -49,16 +55,14 @@ describe("navigation config", () => {
 
   it("returns only entries visible to a role", () => {
     expect(getNavigationForRole("user").map((item) => item.key)).toEqual([
-      "catalog",
-      "runs",
-      "exports",
-      "hubspot",
+      "dashboard",
+      "new-scouting",
+      "database",
     ]);
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual([
-      "catalog",
-      "runs",
-      "exports",
-      "hubspot",
+      "dashboard",
+      "new-scouting",
+      "database",
       "admin"
     ]);
   });
@@ -78,6 +82,11 @@ describe("navigation config", () => {
     expect(isAppRole("owner")).toBe(false);
     expect(resolveAppRole("admin")).toBe("admin");
     expect(resolveAppRole("invalid")).toBe("user");
+  });
+
+  it("returns stable group labels", () => {
+    expect(getNavigationGroupLabel("workspace")).toBe("Workspace");
+    expect(getNavigationGroupLabel("admin")).toBe("Admin");
   });
 
   it("builds detail routes for export and HubSpot batches", () => {

@@ -1,17 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createRunShellMock, recentRunsShellMock } = vi.hoisted(() => ({
-  createRunShellMock: vi.fn(() => "create-run-shell"),
-  recentRunsShellMock: vi.fn(() => "recent-runs-shell"),
+const { databaseWorkspaceMock } = vi.hoisted(() => ({
+  databaseWorkspaceMock: vi.fn(({ forcedTab, showLegacyNotice }: { forcedTab?: string; showLegacyNotice?: boolean }) =>
+    `database-workspace:${String(forcedTab)}:${String(showLegacyNotice)}`,
+  ),
 }));
 
-vi.mock("../../../components/runs/create-run-shell", () => ({
-  CreateRunShell: createRunShellMock,
-}));
-
-vi.mock("../../../components/runs/recent-runs-shell", () => ({
-  RecentRunsShell: recentRunsShellMock,
+vi.mock("../../../components/database/database-workspace", () => ({
+  DatabaseWorkspace: databaseWorkspaceMock,
 }));
 
 import RunsPage from "./page";
@@ -21,16 +18,18 @@ describe("runs page", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the create and recent runs shells without fetching in the page", () => {
+  it("renders the legacy runs shortcut into the database workspace", () => {
     const html = renderToStaticMarkup(RunsPage());
 
     expect(html).toContain("Runs");
     expect(html).toContain(
-      "Start a new discovery run against the shared catalog and review your latest run snapshots without leaving the runs surface.",
+      "Legacy shortcut to the Database runs tab. Review stored run snapshots and launch CSV or HubSpot actions from the consolidated database workspace.",
     );
-    expect(createRunShellMock).toHaveBeenCalledTimes(1);
-    expect(recentRunsShellMock).toHaveBeenCalledTimes(1);
-    expect(html).toContain("create-run-shell");
-    expect(html).toContain("recent-runs-shell");
+    expect(databaseWorkspaceMock).toHaveBeenCalledTimes(1);
+    expect(databaseWorkspaceMock.mock.calls[0]?.[0]).toEqual({
+      forcedTab: "runs",
+      showLegacyNotice: true,
+    });
+    expect(html).toContain("database-workspace:runs:true");
   });
 });

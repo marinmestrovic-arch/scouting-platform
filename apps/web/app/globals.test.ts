@@ -17,7 +17,7 @@ describe("global design tokens and shell styles", () => {
 
   it("keeps authenticated shell and nav class contracts", () => {
     expect(css).toContain(".auth-shell");
-    expect(css).toContain(".auth-shell__sidebar");
+    expect(css).toContain(".auth-shell__header");
     expect(css).toContain(".auth-shell__content");
     expect(css).toContain(".auth-shell__signout");
     expect(css).toContain(".app-nav");

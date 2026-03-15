@@ -1,19 +1,15 @@
 import React from "react";
 
+import { DatabaseWorkspace } from "../../../components/database/database-workspace";
 import { PageSection } from "../../../components/layout/page-section";
-import { CreateRunShell } from "../../../components/runs/create-run-shell";
-import { RecentRunsShell } from "../../../components/runs/recent-runs-shell";
 
 export default function RunsPage() {
   return (
     <PageSection
       title="Runs"
-      description="Start a new discovery run against the shared catalog and review your latest run snapshots without leaving the runs surface."
+      description="Legacy shortcut to the Database runs tab. Review stored run snapshots and launch CSV or HubSpot actions from the consolidated database workspace."
     >
-      <div className="runs-page">
-        <CreateRunShell />
-        <RecentRunsShell />
-      </div>
+      <DatabaseWorkspace forcedTab="runs" showLegacyNotice />
     </PageSection>
   );
 }

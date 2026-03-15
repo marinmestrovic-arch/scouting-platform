@@ -1,13 +1,13 @@
 import { PageSection } from "../../../../components/layout/page-section";
-import { CreateRunShell } from "../../../../components/runs/create-run-shell";
+import { NewScoutingWorkspace } from "../../../../components/scouting/new-scouting-workspace";
 
 export default function NewRunPage() {
   return (
     <PageSection
-      title="Create Run"
-      description="Kick off a discovery run and move straight into its live queue-backed detail view."
+      title="New scouting"
+      description="Legacy shortcut to the new scouting workspace. Only the prompt is live today while the remaining planning controls stay visible as disabled scaffolds."
     >
-      <CreateRunShell showRunsIndexLink />
+      <NewScoutingWorkspace showLegacyNotice />
     </PageSection>
   );
 }

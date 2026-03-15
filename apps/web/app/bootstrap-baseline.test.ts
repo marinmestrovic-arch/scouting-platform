@@ -10,7 +10,7 @@ describe("week 0 bootstrap baseline", () => {
     const html = renderToStaticMarkup(HomePage());
 
     expect(html).toContain(`<h1>${APP_TITLE}</h1>`);
-    expect(html).toContain("Week 0 scaffold is ready.");
+    expect(html).toContain("The scouting workspace is available behind the authenticated app shell.");
   });
 
   it("keeps root layout metadata and language stable", () => {

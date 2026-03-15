@@ -2,13 +2,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createRunShellMock } = vi.hoisted(() => ({
-  createRunShellMock: vi.fn(({ showRunsIndexLink }: { showRunsIndexLink?: boolean }) =>
-    `create-run-shell:${String(showRunsIndexLink)}`,
+  createRunShellMock: vi.fn(({ showLegacyNotice }: { showLegacyNotice?: boolean }) =>
+    `new-scouting-workspace:${String(showLegacyNotice)}`,
   ),
 }));
 
-vi.mock("../../../../components/runs/create-run-shell", () => ({
-  CreateRunShell: createRunShellMock,
+vi.mock("../../../../components/scouting/new-scouting-workspace", () => ({
+  NewScoutingWorkspace: createRunShellMock,
 }));
 
 import NewRunPage from "./page";
@@ -18,16 +18,16 @@ describe("new run page", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the create run shell with a back link enabled", () => {
+  it("renders the legacy new scouting shortcut", () => {
     const html = renderToStaticMarkup(NewRunPage());
 
     expect(createRunShellMock.mock.calls[0]?.[0]).toEqual({
-      showRunsIndexLink: true,
+      showLegacyNotice: true,
     });
-    expect(html).toContain("<h1>Create Run</h1>");
+    expect(html).toContain("<h1>New scouting</h1>");
     expect(html).toContain(
-      "Kick off a discovery run and move straight into its live queue-backed detail view.",
+      "Legacy shortcut to the new scouting workspace. Only the prompt is live today while the remaining planning controls stay visible as disabled scaffolds.",
     );
-    expect(html).toContain("create-run-shell:true");
+    expect(html).toContain("new-scouting-workspace:true");
   });
 });

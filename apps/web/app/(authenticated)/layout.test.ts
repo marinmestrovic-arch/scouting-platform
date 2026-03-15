@@ -52,8 +52,8 @@ describe("authenticated app layout", () => {
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Internal Workspace");
-    expect(html).toContain('href="/catalog"');
-    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/dashboard"');
+    expect(html).toContain('href="/database"');
     expect(html).not.toContain('href="/admin"');
   });
 
@@ -78,8 +78,8 @@ describe("authenticated app layout", () => {
 
     const html = renderToStaticMarkup(await AuthenticatedLayout({ children: "catalog" }));
 
-    expect(html).toContain('href="/catalog"');
-    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/dashboard"');
+    expect(html).toContain('href="/database"');
     expect(html).not.toContain('href="/admin"');
   });
 });

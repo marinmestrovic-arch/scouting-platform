@@ -5,12 +5,12 @@ export default function HomePage() {
   return (
     <main className="bootstrap-home">
       <h1>{APP_TITLE}</h1>
-      <p>Week 0 scaffold is ready.</p>
+      <p>The scouting workspace is available behind the authenticated app shell.</p>
       <p>
-        Continue with the <Link href="/login">Auth.js sign-in scaffold</Link>.
+        Continue with <Link href="/login">the Auth.js sign-in flow</Link>.
       </p>
       <p>
-        Or open <Link href="/catalog">the authenticated shell placeholder</Link>.
+        Or open <Link href="/dashboard">the new scouting dashboard</Link>.
       </p>
     </main>
   );
