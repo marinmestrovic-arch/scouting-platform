@@ -9,12 +9,11 @@ This split is by ownership surface, not skill hierarchy.
 - DB schema and migrations
 - auth backend and session model
 - queue/worker architecture
-- external integrations
+- YouTube / OpenAI / HypeAuditor integrations
 - run orchestration
-- enrichment pipeline
+- enrichment pipeline backend
 - Hype approval backend
 - CSV import backend
-- HubSpot backend
 - CI/CD and deployment
 
 ### Marin owns:
@@ -28,7 +27,8 @@ This split is by ownership surface, not skill hierarchy.
 - CSV import UI
 - manual edit UI
 - Hype approval UI
-- HubSpot push UI
+- enrichment UI
+- HubSpot import workflow frontend + backend
 - Playwright e2e coverage
 
 ### Both of you:
@@ -40,7 +40,7 @@ This split is by ownership surface, not skill hierarchy.
 
 ## Milestone plan
 
-Assuming 30h/week each, this is a realistic 6 to 7 week build.
+Assuming 30h/week each, this is a realistic 8 week build.
 
 ### Week 0: Foundation
 
@@ -243,7 +243,75 @@ Done when:
 - [done] evidence note: dedicated batch result screens now ship on `/exports/[batchId]` and `/hubspot/[batchId]` with route-backed detail loading from `GET /api/csv-export-batches/:id` and `GET /api/hubspot-push-batches/:id`, automatic polling while `queued` or `running` batches remain active, stored export scope snapshots, persisted HubSpot row outcomes, and direct deep links from `/exports`, `/hubspot`, and `/catalog`, with focused coverage in `apps/web/components/exports/csv-export-batch-result-shell.test.ts`, `apps/web/components/exports/csv-export-batch-result-shell.behavior.test.ts`, `apps/web/components/hubspot/hubspot-push-batch-result-shell.test.ts`, `apps/web/components/hubspot/hubspot-push-batch-result-shell.behavior.test.ts`, `apps/web/app/(authenticated)/exports/[batchId]/page.test.ts`, `apps/web/app/(authenticated)/hubspot/[batchId]/page.test.ts`, `apps/web/components/exports/csv-export-manager.test.ts`, `apps/web/components/hubspot/hubspot-push-manager.test.ts`, and `apps/web/components/catalog/catalog-table-shell.test.ts`.
 - [done] evidence note: admin dashboard polish now ships on `/admin` with a Week 6 operations hub header, persistent workspace shortcuts into `/admin/imports`, `/admin/users`, `/catalog`, `/exports`, `/hubspot`, and the in-page HypeAuditor queue, plus tightened overview card copy that keeps imports, follow-through, and manager-readiness states scannable even while the summary refreshes or errors, with focused coverage in `apps/web/components/admin/admin-dashboard-shell.test.ts`, `apps/web/components/admin/admin-dashboard-shell.behavior.test.ts`, and `apps/web/app/(authenticated)/admin/page.test.ts`.
 
-### Week 7: Stabilization
+### Week 7: Workspace metadata, HubSpot import readiness, and YouTube enrichment hardening
+
+#### You:
+
+- strengthen YouTube enrichment backend to persist `youtube_handle`, `youtube_url`, `youtube_average_views`, `youtube_engagement_rate`, and `youtube_followers`
+- keep YouTube-derived averages and engagement best-effort and failure-visible when the API cannot provide enough recent video context
+
+#### Marin:
+
+- [done] land frontend workspace reorganization baseline (branch: `feat/ui-workspace-reorg`)
+- add a separate `user_type` model for `Admin`, `Campaign Manager`, `Campaign Lead`, and `HoC` while keeping the current admin-vs-standard permission split intact
+- set existing users to `Campaign Manager` by default and keep legacy Week 6 runs rendering safely after the migration
+- extend run metadata persistence with dashboard and HubSpot-import fields: `client`, `market`, `campaign_manager_user_id`, `brief_link`, `campaign_name`, `month`, `year`, `deal_owner`, `deal_name`, `pipeline`, `deal_stage`, `currency`, `deal_type`, `activation_type`
+- update run queries/contracts so Dashboard, Database, CSV export, and HubSpot flows can read and filter by the new run metadata
+- expose campaign manager options from users whose `user_type` is `Campaign Manager`
+- replace the planned New Scouting metadata scaffold with live fields for client, market, campaign manager, brief link, campaign name, month, year, deal owner, deal name, pipeline, deal stage, currency, deal type, and activation type
+- remove `Week` from New Scouting and from the Dashboard workspace
+- rebuild the Dashboard table with functional columns: `Client`, `Market`, `Campaign Manager`, `Brief Link`, `Influencer List`, `Coverage`, `Actions`
+- add Dashboard filters at the top for `Campaign Manager`, `Client`, and `Market`
+- make `Coverage` a visual progress line plus written percentage/result copy
+- update the Database table so these columns are available: `Channel`, `YouTube Handle`, `YouTube URL`, `YouTube Average Views`, `YouTube Engagement Rate`, `YouTube Followers`
+- own the HubSpot import workflow end-to-end in Week 7, including backend batch shaping and frontend validation/history updates
+- make every run exportable into a HubSpot-importable schema with these required properties: `Contact Type`, `Campaign Name`, `Month`, `Year`, `Client name`, `Deal owner`, `Deal name`, `Pipeline`, `Deal stage`, `Currency`, `Deal Type`, `Activation Type`, `First Name`, `Last Name`, `Email`, `Influencer Type`, `Influencer Vertical`, `Country/Region`, `Language`
+- surface missing-field blockers before a HubSpot import batch/export is created and keep per-row failures visible for retry/debugging
+
+#### Both:
+
+- keep the milestone scoped to stronger run logic, richer YouTube enrichment, and HubSpot import readiness only
+- align the final HubSpot property labels once before implementation so exports, UI copy, and worker payloads do not drift
+- review the migration/backfill plan together before merging any Prisma migration
+- preserve admin-only routes and audit coverage exactly as-is even with the new `user_type` metadata
+
+Implementation map:
+
+- `packages/db/prisma/schema.prisma` plus a new Prisma migration for `user_type`, run metadata, and the new YouTube metric fields
+- `packages/contracts/src/auth.ts`, `packages/contracts/src/admin.ts`, run contracts, channel contracts, and HubSpot/export contracts carrying the new fields
+- `packages/core/src/auth/*`, `packages/core/src/runs/*`, `packages/core/src/channels/*`, `packages/core/src/hubspot/*`, and related repositories/services for metadata persistence, filtering, mapping, and validation
+- `packages/integrations/src/youtube/*` for channel-level YouTube enrichment field capture and derived metric logic
+- `apps/web/components/scouting/*`, `apps/web/components/dashboard/*`, `apps/web/components/database/*`, `apps/web/components/hubspot/*`, matching route handlers, and their tests
+
+Test matrix:
+
+- unit: user-type normalization, HubSpot field mapping, coverage-percent formatting, and YouTube derived-metric calculations
+- integration: migrations, run create/list/detail with new metadata, dashboard filtering by campaign manager/client/market, campaign-manager-only selectors, and HubSpot batch validation failures
+- integration: enrichment persistence for `youtube_handle`, `youtube_url`, `youtube_average_views`, `youtube_engagement_rate`, and `youtube_followers`, including partial-data and retry/error cases
+- frontend/component: New Scouting field removal for `Week`, Dashboard table/filter behavior, Coverage progress rendering, Database columns, and HubSpot missing-field warnings
+- Playwright: create a run with the new metadata, filter it from Dashboard, open its influencer list, and start an export/HubSpot import flow from the run
+
+Risk / rollback notes:
+
+- YouTube does not expose canonical channel-level average-view or engagement-rate fields, so Week 7 should treat them as derived metrics from fetched video context rather than guaranteed raw provider fields
+- existing Week 6 HubSpot batches and runs must remain readable after the migration; favor additive columns and safe defaults over destructive reshaping
+- if the HubSpot property contract slips, hold batch creation behind validation rather than creating partially importable files
+
+Done when:
+
+- New Scouting stores the new campaign metadata, no longer shows `Week`, and only offers campaign managers from `user_type = Campaign Manager`
+- Dashboard filters runs by campaign manager, client, and market, and the table shows functional `Client`, `Market`, `Campaign Manager`, `Brief Link`, `Influencer List`, `Coverage`, and `Actions` columns
+- each run can produce a HubSpot-importable export/batch containing the full Week 7 property schema
+- Database exposes the new YouTube columns and channel enrichment can populate them without breaking existing catalog views
+- non-admin user types still behave like normal users, admins still keep admin rights, existing users default to `Campaign Manager`, and legacy runs/users still load safely
+
+Handoff checklist:
+
+- feature-agent: land schema/contracts/core/web changes in the order `user_type + run metadata` -> `dashboard/new scouting` -> `HubSpot import mapping` -> `YouTube enrichment + database columns`
+- test-agent: add regression coverage for migration compatibility, HubSpot property completeness, and partial YouTube enrichment data
+- review-agent: focus on auth-model drift, precedence regressions, and whether HubSpot validation blocks bad imports early enough
+
+### Week 8: Stabilization
 
 #### You:
 
