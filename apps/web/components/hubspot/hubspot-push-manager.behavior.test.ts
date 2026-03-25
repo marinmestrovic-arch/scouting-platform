@@ -1,4 +1,6 @@
 import type {
+  HubspotImportBatchDetail,
+  HubspotImportBatchSummary,
   HubspotPushBatchDetail,
   HubspotPushBatchSummary,
 } from "@scouting-platform/contracts";
@@ -6,6 +8,8 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  fetchHubspotImportBatchesMock,
+  fetchHubspotImportBatchDetailMock,
   fetchHubspotPushBatchesMock,
   fetchHubspotPushBatchDetailMock,
   replaceMock,
@@ -15,6 +19,8 @@ const {
   useSearchParamsMock,
   useStateMock,
 } = vi.hoisted(() => ({
+  fetchHubspotImportBatchesMock: vi.fn(),
+  fetchHubspotImportBatchDetailMock: vi.fn(),
   fetchHubspotPushBatchesMock: vi.fn(),
   fetchHubspotPushBatchDetailMock: vi.fn(),
   replaceMock: vi.fn(),
@@ -41,6 +47,22 @@ vi.mock("next/navigation", () => ({
   useSearchParams: useSearchParamsMock,
 }));
 
+vi.mock("../../lib/hubspot-import-batches-api", () => ({
+  HubspotImportBatchesApiError: class HubspotImportBatchesApiError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "HubspotImportBatchesApiError";
+      this.status = status;
+    }
+  },
+  fetchHubspotImportBatchDetail: fetchHubspotImportBatchDetailMock,
+  fetchHubspotImportBatches: fetchHubspotImportBatchesMock,
+  getHubspotImportBatchDownloadUrl: (batchId: string) =>
+    `/api/hubspot-import-batches/${encodeURIComponent(batchId)}/download`,
+}));
+
 vi.mock("../../lib/hubspot-push-batches-api", () => ({
   HubspotPushBatchesApiError: class HubspotPushBatchesApiError extends Error {
     readonly status: number;
@@ -51,8 +73,8 @@ vi.mock("../../lib/hubspot-push-batches-api", () => ({
       this.status = status;
     }
   },
-  fetchHubspotPushBatches: fetchHubspotPushBatchesMock,
   fetchHubspotPushBatchDetail: fetchHubspotPushBatchDetailMock,
+  fetchHubspotPushBatches: fetchHubspotPushBatchesMock,
 }));
 
 import {
@@ -64,12 +86,20 @@ import {
 type HubspotPushManagerViewProps = Parameters<typeof HubspotPushManagerView>[0];
 type HubspotPushManagerElement = ReactElement<HubspotPushManagerViewProps>;
 
-function buildSummary(overrides?: Partial<HubspotPushBatchSummary>): HubspotPushBatchSummary {
+function buildImportSummary(
+  overrides?: Partial<HubspotImportBatchSummary>,
+): HubspotImportBatchSummary {
   return {
     id: "fdd240f2-ef31-43fe-b1d2-a584951654a8",
+    run: {
+      id: "57c8b6a1-85cf-4f51-a510-43fd61026f29",
+      name: "Spring gaming outreach",
+    },
+    fileName: "spring-gaming-outreach-hubspot.csv",
+    schemaVersion: "week7-hubspot-import-v1",
     status: "queued",
     totalRowCount: 2,
-    pushedRowCount: 0,
+    preparedRowCount: 0,
     failedRowCount: 0,
     lastError: null,
     requestedBy: {
@@ -85,15 +115,66 @@ function buildSummary(overrides?: Partial<HubspotPushBatchSummary>): HubspotPush
   };
 }
 
-function buildDetail(overrides?: Partial<HubspotPushBatchDetail>): HubspotPushBatchDetail {
+function buildImportDetail(
+  overrides?: Partial<HubspotImportBatchDetail>,
+): HubspotImportBatchDetail {
   return {
-    ...buildSummary({
+    ...buildImportSummary({
       status: "completed",
-      pushedRowCount: 1,
+      preparedRowCount: 1,
       failedRowCount: 1,
       completedAt: "2026-03-13T09:02:00.000Z",
       ...overrides,
     }),
+    rows: [
+      {
+        id: "28ada809-e597-483e-9a7f-f568fc2f80dd",
+        channelId: "14e40450-71c2-4e0e-a160-b787d21843fd",
+        channelTitle: "Imported Creator",
+        contactEmail: "creator@example.com",
+        firstName: "Imported",
+        lastName: "Creator",
+        influencerType: "Creator",
+        influencerVertical: "Gaming",
+        countryRegion: "Germany",
+        language: "German",
+        status: "prepared",
+        errorMessage: null,
+        createdAt: "2026-03-13T09:00:00.000Z",
+        updatedAt: "2026-03-13T09:01:00.000Z",
+      },
+    ],
+  };
+}
+
+function buildLegacySummary(
+  overrides?: Partial<HubspotPushBatchSummary>,
+): HubspotPushBatchSummary {
+  return {
+    id: "afef11a2-ef31-43fe-b1d2-a584951654a8",
+    status: "completed",
+    totalRowCount: 2,
+    pushedRowCount: 1,
+    failedRowCount: 1,
+    lastError: null,
+    requestedBy: {
+      id: "8c1136b4-1c95-4e8c-aefe-0e58df0a39d5",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+    createdAt: "2026-03-12T09:00:00.000Z",
+    updatedAt: "2026-03-12T09:02:00.000Z",
+    startedAt: "2026-03-12T09:01:00.000Z",
+    completedAt: "2026-03-12T09:02:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildLegacyDetail(
+  overrides?: Partial<HubspotPushBatchDetail>,
+): HubspotPushBatchDetail {
+  return {
+    ...buildLegacySummary(overrides),
     scope: {
       channelIds: [
         "14e40450-71c2-4e0e-a160-b787d21843fd",
@@ -108,18 +189,8 @@ function buildDetail(overrides?: Partial<HubspotPushBatchDetail>): HubspotPushBa
         status: "pushed",
         hubspotObjectId: "hubspot-contact-1",
         errorMessage: null,
-        createdAt: "2026-03-13T09:00:00.000Z",
-        updatedAt: "2026-03-13T09:01:00.000Z",
-      },
-      {
-        id: "7399dc95-9ab0-4526-abfa-5da78000b3ab",
-        channelId: "f3d0fbec-f8a0-40ad-8e19-2370c6b99083",
-        contactEmail: null,
-        status: "failed",
-        hubspotObjectId: null,
-        errorMessage: "Channel has no contact email",
-        createdAt: "2026-03-13T09:00:00.000Z",
-        updatedAt: "2026-03-13T09:01:00.000Z",
+        createdAt: "2026-03-12T09:00:00.000Z",
+        updatedAt: "2026-03-12T09:01:00.000Z",
       },
     ],
   };
@@ -241,13 +312,21 @@ function renderShell(options?: {
 describe("hubspot push manager behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchHubspotPushBatchesMock.mockResolvedValue([buildSummary()]);
-    fetchHubspotPushBatchDetailMock.mockResolvedValue(buildDetail());
+    fetchHubspotImportBatchesMock.mockResolvedValue([buildImportSummary()]);
+    fetchHubspotImportBatchDetailMock.mockResolvedValue(buildImportDetail());
+    fetchHubspotPushBatchesMock.mockResolvedValue([buildLegacySummary()]);
+    fetchHubspotPushBatchDetailMock.mockResolvedValue(buildLegacyDetail());
   });
 
-  it("loads HubSpot push history on mount", async () => {
+  it("loads merged HubSpot history on mount", async () => {
+    const importSummary = buildImportSummary();
+    const legacySummary = buildLegacySummary();
+    fetchHubspotImportBatchesMock.mockResolvedValueOnce([importSummary]);
+    fetchHubspotPushBatchesMock.mockResolvedValueOnce([legacySummary]);
+
     const { setters } = renderShell();
 
+    expect(fetchHubspotImportBatchesMock).toHaveBeenCalledWith(expect.any(AbortSignal));
     expect(fetchHubspotPushBatchesMock).toHaveBeenCalledWith(expect.any(AbortSignal));
 
     await Promise.resolve();
@@ -255,19 +334,27 @@ describe("hubspot push manager behavior", () => {
 
     expect(setters.setHistoryState).toHaveBeenCalledWith({
       status: "ready",
-      items: [buildSummary()],
+      items: [
+        { kind: "import", summary: importSummary },
+        { kind: "legacy", summary: legacySummary },
+      ],
       error: null,
     });
   });
 
-  it("falls back to the newest batch when the URL does not provide batchId", () => {
-    const firstBatch = buildSummary({
-      id: "11111111-1111-4111-8111-111111111111",
-    });
-    const secondBatch = buildSummary({
-      id: "22222222-2222-4222-8222-222222222222",
-      status: "completed",
-    });
+  it("falls back to the first visible batch when the URL does not provide batchId", () => {
+    const firstBatch = {
+      kind: "import" as const,
+      summary: buildImportSummary({
+        id: "11111111-1111-4111-8111-111111111111",
+      }),
+    };
+    const secondBatch = {
+      kind: "legacy" as const,
+      summary: buildLegacySummary({
+        id: "22222222-2222-4222-8222-222222222222",
+      }),
+    };
     const { setters } = renderShell({
       historyState: {
         status: "ready",
@@ -277,18 +364,23 @@ describe("hubspot push manager behavior", () => {
       runEffects: true,
     });
 
-    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(firstBatch.id);
-    expect(replaceMock).toHaveBeenCalledWith(`/hubspot?batchId=${firstBatch.id}`);
+    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(firstBatch.summary.id);
+    expect(replaceMock).toHaveBeenCalledWith(`/hubspot?batchId=${firstBatch.summary.id}`);
   });
 
   it("prefers the batchId from the URL when it matches a loaded batch", () => {
-    const firstBatch = buildSummary({
-      id: "11111111-1111-4111-8111-111111111111",
-    });
-    const secondBatch = buildSummary({
-      id: "22222222-2222-4222-8222-222222222222",
-      status: "completed",
-    });
+    const firstBatch = {
+      kind: "import" as const,
+      summary: buildImportSummary({
+        id: "11111111-1111-4111-8111-111111111111",
+      }),
+    };
+    const secondBatch = {
+      kind: "legacy" as const,
+      summary: buildLegacySummary({
+        id: "22222222-2222-4222-8222-222222222222",
+      }),
+    };
     const { setters } = renderShell({
       historyState: {
         status: "ready",
@@ -296,24 +388,29 @@ describe("hubspot push manager behavior", () => {
         error: null,
       },
       searchParams: createSearchParams({
-        batchId: secondBatch.id,
+        batchId: secondBatch.summary.id,
       }),
       runEffects: true,
-      selectedBatchId: secondBatch.id,
+      selectedBatchId: secondBatch.summary.id,
     });
 
-    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(secondBatch.id);
+    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(secondBatch.summary.id);
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it("syncs the URL when the user selects a different batch", () => {
-    const firstBatch = buildSummary({
-      id: "11111111-1111-4111-8111-111111111111",
-    });
-    const secondBatch = buildSummary({
-      id: "22222222-2222-4222-8222-222222222222",
-      status: "completed",
-    });
+    const firstBatch = {
+      kind: "import" as const,
+      summary: buildImportSummary({
+        id: "11111111-1111-4111-8111-111111111111",
+      }),
+    };
+    const secondBatch = {
+      kind: "legacy" as const,
+      summary: buildLegacySummary({
+        id: "22222222-2222-4222-8222-222222222222",
+      }),
+    };
     const { element, setters } = renderShell({
       historyState: {
         status: "ready",
@@ -321,74 +418,86 @@ describe("hubspot push manager behavior", () => {
         error: null,
       },
       runEffects: false,
-      selectedBatchId: firstBatch.id,
+      selectedBatchId: firstBatch.summary.id,
     });
 
-    element.props.onSelectBatch(secondBatch.id);
+    element.props.onSelectBatch(secondBatch.summary.id);
 
-    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(secondBatch.id);
-    expect(replaceMock).toHaveBeenCalledWith(`/hubspot?batchId=${secondBatch.id}`);
+    expect(setters.setSelectedBatchId).toHaveBeenCalledWith(secondBatch.summary.id);
+    expect(replaceMock).toHaveBeenCalledWith(`/hubspot?batchId=${secondBatch.summary.id}`);
   });
 
-  it("polls both history and detail while queued or running work remains", () => {
+  it("schedules background refresh while queued or running work remains", async () => {
     vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
     try {
-      const detail = buildDetail({
-        id: "11111111-1111-4111-8111-111111111111",
+      const batchId = "11111111-1111-4111-8111-111111111111";
+      const detail = buildImportDetail({
+        id: batchId,
         status: "queued",
       });
+      fetchHubspotImportBatchDetailMock.mockResolvedValue(detail);
+
       const { setters } = renderShell({
         historyState: {
           status: "ready",
           items: [
-            buildSummary({
-              id: detail.id,
-              status: "running",
-            }),
+            {
+              kind: "import",
+              summary: buildImportSummary({
+                id: batchId,
+                status: "running",
+              }),
+            },
           ],
           error: null,
         },
         detailState: {
           requestState: "ready",
-          data: detail,
+          data: {
+            kind: "import",
+            batch: detail,
+          },
           error: null,
         },
         runEffects: true,
         searchParams: createSearchParams({
-          batchId: detail.id,
+          batchId,
         }),
-        selectedBatchId: detail.id,
+        selectedBatchId: batchId,
       });
 
-      vi.advanceTimersByTime(HUBSPOT_PUSH_HISTORY_POLL_INTERVAL_MS);
+      await Promise.resolve();
+      await Promise.resolve();
 
-      const historyUpdate = setters.setHistoryReloadToken.mock.calls[0]?.[0] as
-        | ((current: number) => number)
-        | undefined;
-      const detailUpdate = setters.setDetailReloadToken.mock.calls[0]?.[0] as
-        | ((current: number) => number)
-        | undefined;
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        HUBSPOT_PUSH_HISTORY_POLL_INTERVAL_MS,
+      );
 
-      expect(historyUpdate?.(0)).toBe(1);
-      expect(detailUpdate?.(2)).toBe(3);
+      vi.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(setters.setIsRefreshingHistory).toHaveBeenCalledWith(true);
+      expect(setters.setIsRefreshingDetail).toHaveBeenCalledWith(true);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("keeps the current history visible when a refresh fails", async () => {
-    const currentItems = [
-      buildSummary({
-        id: "11111111-1111-4111-8111-111111111111",
-        status: "completed",
-      }),
-    ];
-    fetchHubspotPushBatchesMock.mockRejectedValueOnce(new Error("History down"));
+  it("keeps history available when one source refresh fails", async () => {
+    const currentLegacy = buildLegacySummary({
+      id: "11111111-1111-4111-8111-111111111111",
+    });
+    fetchHubspotImportBatchesMock.mockRejectedValueOnce(new Error("Imports down"));
+    fetchHubspotPushBatchesMock.mockResolvedValueOnce([currentLegacy]);
+
     const { setters } = renderShell({
       historyState: {
         status: "ready",
-        items: currentItems,
+        items: [{ kind: "legacy", summary: currentLegacy }],
         error: null,
       },
       runEffects: true,
@@ -397,46 +506,37 @@ describe("hubspot push manager behavior", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(setters.setIsRefreshingHistory).toHaveBeenCalledWith(true);
-
-    const historyUpdater = setters.setHistoryState.mock.calls.find(
-      (call) => typeof call[0] === "function",
-    )?.[0] as ((current: HubspotPushManagerViewProps["historyState"]) => HubspotPushManagerViewProps["historyState"]) | undefined;
-
-    expect(
-      historyUpdater?.({
-        status: "ready",
-        items: currentItems,
-        error: null,
-      }),
-    ).toEqual({
+    expect(setters.setHistoryState).toHaveBeenLastCalledWith({
       status: "ready",
-      items: currentItems,
-      error: "History down",
+      items: [{ kind: "legacy", summary: currentLegacy }],
+      error: "Imports down",
     });
   });
 
   it("keeps the current detail visible when a refresh fails", async () => {
-    const detail = buildDetail({
+    const detail = buildImportDetail({
       id: "11111111-1111-4111-8111-111111111111",
     });
-    fetchHubspotPushBatchDetailMock.mockRejectedValueOnce(new Error("Detail down"));
+    fetchHubspotImportBatchDetailMock.mockRejectedValueOnce(new Error("Detail down"));
     const { setters } = renderShell({
       historyState: {
         status: "ready",
         items: [
-          buildSummary({
-            id: detail.id,
-            status: "completed",
-            pushedRowCount: 1,
-            failedRowCount: 1,
-          }),
+          {
+            kind: "import",
+            summary: buildImportSummary({
+              id: detail.id,
+            }),
+          },
         ],
         error: null,
       },
       detailState: {
         requestState: "ready",
-        data: detail,
+        data: {
+          kind: "import",
+          batch: detail,
+        },
         error: null,
       },
       runEffects: true,
@@ -449,22 +549,54 @@ describe("hubspot push manager behavior", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(setters.setIsRefreshingDetail).toHaveBeenCalledWith(true);
-
-    const detailUpdater = setters.setDetailState.mock.calls.find(
-      (call) => typeof call[0] === "function",
-    )?.[0] as ((current: HubspotPushManagerViewProps["detailState"]) => HubspotPushManagerViewProps["detailState"]) | undefined;
+    const detailUpdater = setters.setDetailState.mock.calls
+      .filter((call) => typeof call[0] === "function")
+      .at(-1)?.[0] as
+      | ((
+          current: HubspotPushManagerViewProps["detailState"],
+        ) => HubspotPushManagerViewProps["detailState"])
+      | undefined;
 
     expect(
       detailUpdater?.({
         requestState: "ready",
-        data: detail,
+        data: {
+          kind: "import",
+          batch: detail,
+        },
         error: null,
       }),
     ).toEqual({
       requestState: "ready",
-      data: detail,
+      data: {
+        kind: "import",
+        batch: detail,
+      },
       error: "Detail down",
     });
+  });
+
+  it("loads legacy detail when the selected history item is a Week 6 fallback", () => {
+    const legacySummary = buildLegacySummary({
+      id: "22222222-2222-4222-8222-222222222222",
+    });
+
+    renderShell({
+      historyState: {
+        status: "ready",
+        items: [{ kind: "legacy", summary: legacySummary }],
+        error: null,
+      },
+      runEffects: true,
+      searchParams: createSearchParams({
+        batchId: legacySummary.id,
+      }),
+      selectedBatchId: legacySummary.id,
+    });
+
+    expect(fetchHubspotPushBatchDetailMock).toHaveBeenCalledWith(
+      legacySummary.id,
+      expect.any(AbortSignal),
+    );
   });
 });

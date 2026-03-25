@@ -52,6 +52,8 @@ function buildBatchDetailPayload(overrides?: Record<string, unknown>) {
         youtubeChannelId: "UC-CSV-1",
         channelTitle: "Imported Creator",
         contactEmail: "creator@example.com",
+        firstName: "Imported",
+        lastName: "Creator",
         subscriberCount: "1000",
         viewCount: "20000",
         videoCount: "50",

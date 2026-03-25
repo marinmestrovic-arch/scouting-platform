@@ -14,6 +14,8 @@ vi.mock("react", async () => {
   return {
     ...actual,
     useState: useStateMock,
+    useEffect: vi.fn(),
+    startTransition: (callback: () => void) => callback(),
   };
 });
 
@@ -25,21 +27,48 @@ vi.mock("../../lib/runs-api", () => ({
   createRun: createRunMock,
 }));
 
+vi.mock("../../lib/campaign-managers-api", () => ({
+  fetchCampaignManagers: vi.fn(),
+}));
+
 import { NewScoutingWorkspace } from "./new-scouting-workspace";
 
 type NewScoutingWorkspaceElement = ReactElement<{
-  onNameChange: (value: string) => void;
-  onPromptChange: (value: string) => void;
-  onTargetChange: (value: string) => void;
+  onFieldChange: (field: string, value: string) => void;
   onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
 }>;
 
+const CAMPAIGN_MANAGER_OPTION = {
+  id: "cm-uuid-001",
+  email: "manager@example.com",
+  name: "Campaign Manager",
+};
+
+const DEFAULT_TEST_DRAFT = {
+  name: "Gaming run",
+  prompt: "gaming creators",
+  target: "20",
+  client: "Sony",
+  market: "DACH",
+  campaignManagerUserId: CAMPAIGN_MANAGER_OPTION.id,
+  briefLink: "",
+  campaignName: "Sony Gaming Q2",
+  month: "march" as const,
+  year: "2026",
+  dealOwner: "Marin",
+  dealName: "Sony Gaming Q2 Deal",
+  pipeline: "New business",
+  dealStage: "Contract sent",
+  currency: "EUR",
+  dealType: "Paid social",
+  activationType: "YouTube integration",
+};
+
+const IDLE_MESSAGE =
+  "This workspace now stores the live campaign metadata required for Dashboard filtering and HubSpot import readiness.";
+
 function renderWorkspace(options?: {
-  draft?: {
-    name: string;
-    prompt: string;
-    target: string;
-  };
+  draft?: typeof DEFAULT_TEST_DRAFT;
   requestState?: {
     status: "idle" | "submitting" | "error";
     message: string;
@@ -47,27 +76,28 @@ function renderWorkspace(options?: {
 }) {
   const setDraft = vi.fn();
   const setRequestState = vi.fn();
+  const setCampaignManagersState = vi.fn();
 
   useStateMock.mockReset();
   useRouterMock.mockReturnValue({
     push: pushMock,
   });
   useStateMock
-    .mockReturnValueOnce([
-      options?.draft ?? {
-        name: "Gaming run",
-        prompt: "gaming creators",
-        target: "20",
-      },
-      setDraft,
-    ])
+    .mockReturnValueOnce([options?.draft ?? DEFAULT_TEST_DRAFT, setDraft])
     .mockReturnValueOnce([
       options?.requestState ?? {
         status: "idle",
-        message:
-          "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+        message: IDLE_MESSAGE,
       },
       setRequestState,
+    ])
+    .mockReturnValueOnce([
+      {
+        status: "ready",
+        items: [CAMPAIGN_MANAGER_OPTION],
+        error: null,
+      },
+      setCampaignManagersState,
     ]);
 
   const element = NewScoutingWorkspace({}) as NewScoutingWorkspaceElement;
@@ -76,6 +106,7 @@ function renderWorkspace(options?: {
     element,
     setDraft,
     setRequestState,
+    setCampaignManagersState,
   };
 }
 
@@ -84,7 +115,7 @@ describe("new scouting workspace behavior", () => {
     vi.clearAllMocks();
   });
 
-  it("submits only the live prompt fields and navigates into database runs", async () => {
+  it("submits all metadata fields and navigates into database runs", async () => {
     createRunMock.mockResolvedValue({
       runId: "53adac17-f39d-4731-a61f-194150fbc431",
       status: "queued",
@@ -92,9 +123,11 @@ describe("new scouting workspace behavior", () => {
 
     const { element, setRequestState } = renderWorkspace({
       draft: {
+        ...DEFAULT_TEST_DRAFT,
         name: "  Spring gaming outreach  ",
         prompt: "  gaming creators for DACH  ",
         target: " 25 ",
+        briefLink: "",
       },
     });
 
@@ -107,6 +140,22 @@ describe("new scouting workspace behavior", () => {
       name: "Spring gaming outreach",
       query: "gaming creators for DACH",
       target: 25,
+      metadata: {
+        client: "Sony",
+        market: "DACH",
+        campaignManagerUserId: CAMPAIGN_MANAGER_OPTION.id,
+        briefLink: undefined,
+        campaignName: "Sony Gaming Q2",
+        month: "march",
+        year: 2026,
+        dealOwner: "Marin",
+        dealName: "Sony Gaming Q2 Deal",
+        pipeline: "New business",
+        dealStage: "Contract sent",
+        currency: "EUR",
+        dealType: "Paid social",
+        activationType: "YouTube integration",
+      },
     });
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
@@ -121,16 +170,15 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Run name, target, and prompt are required.",
+        message: "Influencer List, target, and prompt are required.",
       },
     });
 
-    element.props.onPromptChange("updated prompt");
+    element.props.onFieldChange("prompt", "updated prompt");
 
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
-      message:
-        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+      message: IDLE_MESSAGE,
     });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: { name: string; prompt: string; target: string }) => {
@@ -151,16 +199,15 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Run name, target, and prompt are required.",
+        message: "Influencer List, target, and prompt are required.",
       },
     });
 
-    element.props.onNameChange("Updated run");
+    element.props.onFieldChange("name", "Updated run");
 
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
-      message:
-        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+      message: IDLE_MESSAGE,
     });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: { name: string; prompt: string; target: string }) => {
@@ -181,16 +228,15 @@ describe("new scouting workspace behavior", () => {
     const { element, setDraft, setRequestState } = renderWorkspace({
       requestState: {
         status: "error",
-        message: "Run name, target, and prompt are required.",
+        message: "Influencer List, target, and prompt are required.",
       },
     });
 
-    element.props.onTargetChange("35");
+    element.props.onFieldChange("target", "35");
 
     expect(setRequestState).toHaveBeenCalledWith({
       status: "idle",
-      message:
-        "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+      message: IDLE_MESSAGE,
     });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: { name: string; prompt: string; target: string }) => {

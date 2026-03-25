@@ -217,7 +217,9 @@ export function RecentRunsShell() {
       }
 
       try {
-        const recentRuns = await fetchRecentRuns(abortController.signal);
+        const recentRuns = await fetchRecentRuns({
+          signal: abortController.signal,
+        });
 
         if (didCancel) {
           return;

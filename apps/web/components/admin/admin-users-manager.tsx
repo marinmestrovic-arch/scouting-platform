@@ -1,6 +1,6 @@
 "use client";
 
-import type { AdminUserResponse, Role } from "@scouting-platform/contracts";
+import type { AdminUserResponse, Role, UserType } from "@scouting-platform/contracts";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -10,6 +10,7 @@ type CreateUserFormState = {
   email: string;
   name: string;
   role: Role;
+  userType: UserType;
   password: string;
 };
 
@@ -22,6 +23,7 @@ const INITIAL_CREATE_USER_FORM_STATE: CreateUserFormState = {
   email: "",
   name: "",
   role: "user",
+  userType: "campaign_manager",
   password: "",
 };
 
@@ -38,11 +40,25 @@ function getErrorMessage(error: unknown): string {
   return "Unable to complete the request. Please try again.";
 }
 
+function formatUserTypeLabel(userType: UserType): string {
+  switch (userType) {
+    case "admin":
+      return "Admin";
+    case "campaign_lead":
+      return "Campaign Lead";
+    case "hoc":
+      return "HoC";
+    default:
+      return "Campaign Manager";
+  }
+}
+
 function formatUserMeta(user: AdminUserResponse): string {
   const roleLabel = user.role === "admin" ? "Admin" : "User";
+  const userTypeLabel = formatUserTypeLabel(user.userType);
   const youtubeKeyLabel = user.youtubeKeyAssigned ? "Assigned" : "Missing";
 
-  return `${roleLabel} · YouTube key: ${youtubeKeyLabel}`;
+  return `${roleLabel} · ${userTypeLabel} · YouTube key: ${youtubeKeyLabel}`;
 }
 
 export function AdminUsersManager() {
@@ -110,6 +126,7 @@ export function AdminUsersManager() {
         email: createUserForm.email.trim(),
         name: createUserForm.name.trim() || undefined,
         role: createUserForm.role,
+        userType: createUserForm.role === "admin" ? "admin" : createUserForm.userType,
         password: createUserForm.password,
       });
 
@@ -322,14 +339,33 @@ export function AdminUsersManager() {
             <select
               name="role"
               onChange={(event) => {
+                const nextRole = event.currentTarget.value === "admin" ? "admin" : "user";
+                updateCreateUserFormState("role", nextRole);
                 updateCreateUserFormState(
-                  "role",
-                  event.currentTarget.value === "admin" ? "admin" : "user",
+                  "userType",
+                  nextRole === "admin" ? "admin" : "campaign_manager",
                 );
               }}
               value={createUserForm.role}
             >
               <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label className="admin-users__field">
+            <span>User type</span>
+            <select
+              disabled={createUserForm.role === "admin"}
+              name="userType"
+              onChange={(event) => {
+                const value = event.currentTarget.value as UserType;
+                updateCreateUserFormState("userType", value);
+              }}
+              value={createUserForm.userType}
+            >
+              <option value="campaign_manager">Campaign Manager</option>
+              <option value="campaign_lead">Campaign Lead</option>
+              <option value="hoc">HoC</option>
               <option value="admin">Admin</option>
             </select>
           </label>

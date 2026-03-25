@@ -53,6 +53,8 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         youtubeChannelId: "UC-CSV-1",
         channelTitle: "Imported Creator",
         contactEmail: "creator@example.com",
+        firstName: "Imported",
+        lastName: "Creator",
         subscriberCount: "1000",
         viewCount: "20000",
         videoCount: "50",
@@ -68,6 +70,8 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         youtubeChannelId: "UC-CSV-2",
         channelTitle: "Failed Creator",
         contactEmail: null,
+        firstName: null,
+        lastName: null,
         subscriberCount: null,
         viewCount: null,
         videoCount: null,
@@ -105,7 +109,7 @@ describe("admin csv import manager view", () => {
     );
 
     expect(html).toContain("Upload CSV");
-    expect(html).toContain("youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel");
+    expect(html).toContain("youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel");
     expect(html).toContain("Maximum file size 5 MiB. Up to 10000 data rows per batch.");
     expect(html).toContain("Loading CSV import batches...");
     expect(html).toContain("Select an import batch");

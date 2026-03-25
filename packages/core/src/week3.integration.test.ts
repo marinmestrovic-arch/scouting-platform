@@ -88,6 +88,24 @@ integration("week 3 core integration", () => {
     await prisma.$disconnect();
   });
 
+  function buildRunMetadata(campaignManagerUserId: string) {
+    return {
+      client: "Sony",
+      market: "DACH",
+      campaignManagerUserId,
+      campaignName: "Spring Launch",
+      month: "march" as const,
+      year: 2026,
+      dealOwner: "Marin Mestrovic",
+      dealName: "Sony Launch DACH",
+      pipeline: "New business",
+      dealStage: "Contract sent",
+      currency: "EUR",
+      dealType: "Paid social",
+      activationType: "YouTube integration",
+    };
+  }
+
   it("creates queued run request and enqueues runs.discover job when key exists", async () => {
     const user = await prisma.user.create({
       data: {
@@ -110,6 +128,7 @@ integration("week 3 core integration", () => {
       name: "Gaming Run",
       query: "gaming creators",
       target: 20,
+      metadata: buildRunMetadata(user.id),
     });
 
     expect(created.status).toBe("queued");
@@ -147,6 +166,7 @@ integration("week 3 core integration", () => {
         name: "Gaming Run",
         query: "gaming creators",
         target: 20,
+        metadata: buildRunMetadata(user.id),
       }),
     ).rejects.toMatchObject({
       code: "YOUTUBE_KEY_REQUIRED",
@@ -262,6 +282,8 @@ integration("week 3 core integration", () => {
 
     const recentRuns = await getCore().listRecentRuns({
       userId: owner.id,
+      role: "user",
+      limit: 10,
     });
 
     expect(recentRuns.items).toHaveLength(10);
@@ -368,6 +390,7 @@ integration("week 3 core integration", () => {
       name: "Gaming Run",
       query: "gaming",
       target: 25,
+      metadata: buildRunMetadata(user.id),
     });
 
     await getCore().executeRunDiscover({
@@ -497,6 +520,7 @@ integration("week 3 core integration", () => {
       name: "Second Run",
       query: "gaming",
       target: 12,
+      metadata: buildRunMetadata(user.id),
     });
 
     await getCore().executeRunDiscover({

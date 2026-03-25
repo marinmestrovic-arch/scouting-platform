@@ -15,6 +15,11 @@ import {
   createHubspotPushBatchFromRun,
   RunBatchActionError,
 } from "../../lib/run-batch-actions";
+import {
+  formatCampaignManagerLabel,
+  formatNullableMetadataValue,
+  formatRunMonthYear,
+} from "../../lib/run-metadata";
 import { fetchRecentRuns, fetchRunStatus } from "../../lib/runs-api";
 import {
   formatRunResultCount,
@@ -95,7 +100,7 @@ function getRunBatchActionErrorMessage(action: "csv" | "hubspot", error: unknown
 
   return action === "csv"
     ? "Unable to create the CSV export for this run."
-    : "Unable to start the HubSpot push for this run.";
+    : "Unable to create the HubSpot import batch for this run.";
 }
 
 function getResultIdentityFallback(result: RunResultItem): string {
@@ -150,7 +155,9 @@ export function DatabaseRunsTab({
       }
 
       try {
-        const recentRuns = await fetchRecentRuns(abortController.signal);
+        const recentRuns = await fetchRecentRuns({
+          signal: abortController.signal,
+        });
 
         if (didCancel || abortController.signal.aborted) {
           return;
@@ -281,7 +288,7 @@ export function DatabaseRunsTab({
       message:
         action === "csv"
           ? "Creating CSV export from this run."
-          : "Creating HubSpot push from this run.",
+          : "Creating HubSpot import batch from this run.",
     });
 
     try {
@@ -311,8 +318,8 @@ export function DatabaseRunsTab({
             <p className="workspace-eyebrow">Run snapshots</p>
             <h2>Runs</h2>
             <p className="workspace-copy">
-              Select a run to review the stored snapshot, then export or push every creator from
-              that result set without leaving Database.
+              Select a run to review the stored snapshot, then export or generate a HubSpot
+              import batch from that result set without leaving Database.
             </p>
           </div>
 
@@ -524,6 +531,30 @@ export function DatabaseRunsTab({
 
             <dl className="database-runs__meta-grid">
               <div>
+                <dt>Client</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.client)}</dd>
+              </div>
+              <div>
+                <dt>Market</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.market)}</dd>
+              </div>
+              <div>
+                <dt>Campaign manager</dt>
+                <dd>{formatCampaignManagerLabel(detailRequestState.data.metadata.campaignManager)}</dd>
+              </div>
+              <div>
+                <dt>Campaign</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.campaignName)}</dd>
+              </div>
+              <div>
+                <dt>Month / Year</dt>
+                <dd>{formatRunMonthYear(detailRequestState.data.metadata)}</dd>
+              </div>
+              <div>
+                <dt>Deal owner</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.dealOwner)}</dd>
+              </div>
+              <div>
                 <dt>Created</dt>
                 <dd>{formatRunTimestamp(detailRequestState.data.createdAt)}</dd>
               </div>
@@ -538,6 +569,22 @@ export function DatabaseRunsTab({
               <div>
                 <dt>Results</dt>
                 <dd>{formatRunResultCount(detailRequestState.data.results.length)}</dd>
+              </div>
+              <div>
+                <dt>Deal name</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.dealName)}</dd>
+              </div>
+              <div>
+                <dt>Pipeline</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.pipeline)}</dd>
+              </div>
+              <div>
+                <dt>Deal stage</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.dealStage)}</dd>
+              </div>
+              <div>
+                <dt>Brief link</dt>
+                <dd>{formatNullableMetadataValue(detailRequestState.data.metadata.briefLink)}</dd>
               </div>
             </dl>
 

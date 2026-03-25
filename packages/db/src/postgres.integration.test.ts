@@ -119,5 +119,25 @@ if (!databaseUrl) {
       expect(batchRows[0]?.relation_name).toBe("hubspot_push_batches");
       expect(rowRows[0]?.relation_name).toBe("hubspot_push_batch_rows");
     });
+
+    it("sees week 7 hubspot import tables and user type enum after migrations are applied", async () => {
+      const batchRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('hubspot_import_batches')::text AS relation_name
+      `;
+      const rowRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('hubspot_import_batch_rows')::text AS relation_name
+      `;
+      const enumRows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_type
+          WHERE typname = 'user_type'
+        ) AS exists
+      `;
+
+      expect(batchRows[0]?.relation_name).toBe("hubspot_import_batches");
+      expect(rowRows[0]?.relation_name).toBe("hubspot_import_batch_rows");
+      expect(enumRows[0]?.exists).toBe(true);
+    });
   });
 }

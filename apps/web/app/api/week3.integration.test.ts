@@ -80,15 +80,38 @@ integration("week 3 API integration", () => {
     });
   }
 
+  function buildRunMetadata(campaignManagerUserId: string) {
+    return {
+      client: "Sony",
+      market: "DACH",
+      campaignManagerUserId,
+      campaignName: "Spring Launch",
+      month: "march" as const,
+      year: 2026,
+      dealOwner: "Marin Mestrovic",
+      dealName: "Sony Launch DACH",
+      pipeline: "New business",
+      dealStage: "Contract sent",
+      currency: "EUR",
+      dealType: "Paid social",
+      activationType: "YouTube integration",
+    };
+  }
+
   it("returns 401 for unauthenticated run routes", async () => {
-    const listResponse = await runsRoute.GET();
+    const listResponse = await runsRoute.GET(new Request("http://localhost/api/runs"));
     expect(listResponse.status).toBe(401);
 
     const createResponse = await runsRoute.POST(
       new Request("http://localhost/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Run", query: "gaming creators", target: 20 }),
+        body: JSON.stringify({
+          name: "Run",
+          query: "gaming creators",
+          target: 20,
+          metadata: buildRunMetadata("6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b"),
+        }),
       }),
     );
     expect(createResponse.status).toBe(401);
@@ -133,7 +156,12 @@ integration("week 3 API integration", () => {
       new Request("http://localhost/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Run 1", query: "gaming creators", target: 20 }),
+        body: JSON.stringify({
+          name: "Run 1",
+          query: "gaming creators",
+          target: 20,
+          metadata: buildRunMetadata(user.id),
+        }),
       }),
     );
 
@@ -192,7 +220,7 @@ integration("week 3 API integration", () => {
 
     currentSessionUser = { id: owner.id, role: "user" };
 
-    const response = await runsRoute.GET();
+    const response = await runsRoute.GET(new Request("http://localhost/api/runs"));
 
     expect(response.status).toBe(200);
     const payload = await response.json();
@@ -209,8 +237,30 @@ integration("week 3 API integration", () => {
         startedAt: "2026-03-10T10:01:00.000Z",
         completedAt: "2026-03-10T10:05:00.000Z",
         resultCount: 1,
+        metadata: {
+          client: null,
+          market: null,
+          campaignManagerUserId: null,
+          campaignManager: null,
+          briefLink: null,
+          campaignName: null,
+          month: null,
+          year: null,
+          dealOwner: null,
+          dealName: null,
+          pipeline: null,
+          dealStage: null,
+          currency: null,
+          dealType: null,
+          activationType: null,
+        },
       },
     ]);
+    expect(payload.filterOptions).toEqual({
+      campaignManagers: [],
+      clients: [],
+      markets: [],
+    });
   });
 
   it("returns 404 for missing run and 403 for non-owner access", async () => {

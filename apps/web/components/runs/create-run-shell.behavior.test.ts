@@ -1,8 +1,7 @@
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createRunMock, pushMock, useRouterMock, useStateMock } = vi.hoisted(() => ({
-  createRunMock: vi.fn(),
+const { pushMock, useRouterMock, useStateMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   useRouterMock: vi.fn(),
   useStateMock: vi.fn(),
@@ -31,7 +30,6 @@ vi.mock("../../lib/runs-api", () => ({
       this.status = status;
     }
   },
-  createRun: createRunMock,
 }));
 
 import { CreateRunShell } from "./create-run-shell";
@@ -94,11 +92,6 @@ describe("create run shell behavior", () => {
   });
 
   it("submits a normalized run draft and navigates to the detail page", async () => {
-    createRunMock.mockResolvedValue({
-      runId: "53adac17-f39d-4731-a61f-194150fbc431",
-      status: "queued",
-    });
-
     const { element, setRequestState } = renderShell({
       draft: {
         name: "  Gaming Run  ",
@@ -112,16 +105,11 @@ describe("create run shell behavior", () => {
     });
     await Promise.resolve();
 
-    expect(createRunMock).toHaveBeenCalledWith({
-      name: "Gaming Run",
-      query: "gaming creators",
-      target: 20,
-    });
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
-      message: "Creating the run and opening its live status page.",
+      message: "Opening the Week 7 New Scouting workspace.",
     });
-    expect(pushMock).toHaveBeenCalledWith("/runs/53adac17-f39d-4731-a61f-194150fbc431");
+    expect(pushMock).toHaveBeenCalledWith("/new-scouting");
   });
 
   it("clears error state when the draft changes", () => {

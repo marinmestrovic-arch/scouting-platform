@@ -38,6 +38,30 @@ type RecentRunsShellElement = ReactElement<{
   onRetry: () => void;
 }>;
 
+function buildRunMetadata() {
+  return {
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+    campaignManager: {
+      id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+    briefLink: "https://example.com/brief",
+    campaignName: "Spring Launch 2026",
+    month: "march" as const,
+    year: 2026,
+    dealOwner: "Marin",
+    dealName: "Sony Gaming Q2",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
 function buildRecentRunsPayload(status: "queued" | "running" | "completed" | "failed") {
   return {
     items: [
@@ -53,8 +77,14 @@ function buildRecentRunsPayload(status: "queued" | "running" | "completed" | "fa
         startedAt: "2026-03-10T10:01:00.000Z",
         completedAt: status === "completed" ? "2026-03-10T10:03:00.000Z" : null,
         resultCount: status === "completed" ? 2 : 0,
+        metadata: buildRunMetadata(),
       },
     ],
+    filterOptions: {
+      campaignManagers: [buildRunMetadata().campaignManager],
+      clients: ["Sony"],
+      markets: ["DACH"],
+    },
   };
 }
 
@@ -122,7 +152,9 @@ describe("recent runs shell behavior", () => {
       data: null,
       error: null,
     });
-    expect(fetchRecentRunsMock).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(fetchRecentRunsMock).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+    });
 
     await Promise.resolve();
     await Promise.resolve();
@@ -143,7 +175,7 @@ describe("recent runs shell behavior", () => {
       error: null,
     });
 
-    const signal = fetchRecentRunsMock.mock.calls[0]?.[0] as AbortSignal | undefined;
+    const signal = fetchRecentRunsMock.mock.calls[0]?.[0]?.signal as AbortSignal | undefined;
 
     cleanups.forEach((cleanup) => {
       cleanup();

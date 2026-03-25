@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { Role, UserType } from "@prisma/client";
 import { prisma } from "@scouting-platform/db";
 
 import { hashPassword } from "./password";
@@ -22,12 +22,14 @@ export async function seedInitialAdmin(input: {
       email,
       name,
       role: Role.ADMIN,
+      userType: UserType.ADMIN,
       passwordHash,
       isActive: true,
     },
     update: {
       name,
       role: Role.ADMIN,
+      userType: UserType.ADMIN,
       passwordHash,
       isActive: true,
     },

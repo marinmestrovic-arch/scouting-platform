@@ -113,9 +113,9 @@ integration("week 5 csv import API integration", () => {
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
         body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel",
-          "UC-CSV-1,Creator One,creator@example.com,1000,20000,50,Top creator,ops",
-          "UC-CSV-2,Creator Two,invalid-email,2000,30000,60,,ops",
+          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops",
+          "UC-CSV-2,Creator Two,invalid-email,,,2000,30000,60,,ops",
         ].join("\n"))),
       }),
     );
@@ -150,9 +150,9 @@ integration("week 5 csv import API integration", () => {
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
         body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel",
-          "UC-CSV-1,Creator One,creator@example.com,1000,20000,50,Top creator,ops",
-          "UC-CSV-2,,invalid-email,20x,30000,60,,ops",
+          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops",
+          "UC-CSV-2,,invalid-email,,,20x,30000,60,,ops",
         ].join("\n"))),
       }),
     );

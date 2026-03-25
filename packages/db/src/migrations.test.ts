@@ -38,6 +38,10 @@ const week6HubspotPushBackendMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260311143000_week6_hubspot_push_backend/migration.sql",
 );
+const week7WorkspaceMetadataHubspotImportMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260316113000_week7_workspace_metadata_hubspot_import/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -147,6 +151,32 @@ describe("week 6 hubspot push backend migration", () => {
     );
     expect(migrationSql).toContain(
       'ALTER TABLE "hubspot_push_batches" ADD CONSTRAINT "hubspot_push_batches_requested_by_user_id_fkey"',
+    );
+  });
+});
+
+describe("week 7 workspace metadata and hubspot import migration", () => {
+  it("creates user type, run metadata, contact names, and hubspot import tables", () => {
+    const migrationSql = readFileSync(week7WorkspaceMetadataHubspotImportMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "user_type" AS ENUM');
+    expect(migrationSql).toContain('ALTER TABLE "users"');
+    expect(migrationSql).toContain('"user_type" "user_type" NOT NULL DEFAULT \'campaign_manager\'');
+    expect(migrationSql).toContain('ALTER TABLE "run_requests"');
+    expect(migrationSql).toContain('"campaign_manager_user_id" UUID');
+    expect(migrationSql).toContain('"campaign_name" TEXT');
+    expect(migrationSql).toContain('"activation_type" TEXT');
+    expect(migrationSql).toContain('ALTER TABLE "channel_contacts"');
+    expect(migrationSql).toContain('"first_name" TEXT');
+    expect(migrationSql).toContain('"last_name" TEXT');
+    expect(migrationSql).toContain('ALTER TABLE "channel_metrics"');
+    expect(migrationSql).toContain('"youtube_average_views" BIGINT');
+    expect(migrationSql).toContain('"youtube_engagement_rate" DOUBLE PRECISION');
+    expect(migrationSql).toContain('"youtube_followers" BIGINT');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_import_batches"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_import_batch_rows"');
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_import_batch_rows_batch_id_channel_id_contact_email_key"',
     );
   });
 });

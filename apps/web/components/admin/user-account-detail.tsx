@@ -1,10 +1,10 @@
 "use client";
 
-import type { AdminUserResponse } from "@scouting-platform/contracts";
+import type { AdminUserResponse, UserType } from "@scouting-platform/contracts";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
-import { updateAdminUserYoutubeKey } from "../../lib/admin-users-api";
+import { updateAdminUserProfile, updateAdminUserYoutubeKey } from "../../lib/admin-users-api";
 
 type OperationStatus = {
   type: "idle" | "success" | "error";
@@ -28,15 +28,59 @@ function formatRole(role: AdminUserResponse["role"]): string {
   return role === "admin" ? "Admin" : "User";
 }
 
+function formatUserType(userType: UserType): string {
+  switch (userType) {
+    case "admin":
+      return "Admin";
+    case "campaign_lead":
+      return "Campaign Lead";
+    case "hoc":
+      return "HoC";
+    default:
+      return "Campaign Manager";
+  }
+}
+
 type UserAccountDetailProps = Readonly<{
   user: AdminUserResponse;
 }>;
 
 export function UserAccountDetail({ user }: UserAccountDetailProps) {
+  const [name, setName] = useState(user.name ?? "");
+  const [userType, setUserType] = useState<UserType>(user.userType);
   const [youtubeKeyAssigned, setYoutubeKeyAssigned] = useState(user.youtubeKeyAssigned);
   const [youtubeApiKey, setYoutubeApiKey] = useState("");
   const [isUpdatingKey, setIsUpdatingKey] = useState(false);
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<OperationStatus>(IDLE_OPERATION_STATUS);
   const [updateStatus, setUpdateStatus] = useState<OperationStatus>(IDLE_OPERATION_STATUS);
+
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setIsUpdatingProfile(true);
+    setProfileStatus(IDLE_OPERATION_STATUS);
+
+    try {
+      const updatedUser = await updateAdminUserProfile(user.id, {
+        name: name.trim() || null,
+        userType: user.role === "admin" ? "admin" : userType,
+      });
+
+      setName(updatedUser.name ?? "");
+      setUserType(updatedUser.userType);
+      setProfileStatus({
+        type: "success",
+        message: "Profile updated.",
+      });
+    } catch (error) {
+      setProfileStatus({
+        type: "error",
+        message: getErrorMessage(error),
+      });
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  }
 
   async function handleYoutubeKeySubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -91,20 +135,68 @@ export function UserAccountDetail({ user }: UserAccountDetailProps) {
           <header>
             <h2 id="user-account-detail-identity-heading">Account identity</h2>
           </header>
-          <dl className="user-account-detail__identity-list">
-            <div>
-              <dt>Name</dt>
-              <dd>{user.name?.trim() || "Unnamed user"}</dd>
-            </div>
-            <div>
-              <dt>Email</dt>
-              <dd>{user.email}</dd>
-            </div>
-            <div>
-              <dt>Role</dt>
-              <dd>{formatRole(user.role)}</dd>
-            </div>
-          </dl>
+          <form className="user-account-detail__form" onSubmit={handleProfileSubmit}>
+            <dl className="user-account-detail__identity-list">
+              <div>
+                <dt>Email</dt>
+                <dd>{user.email}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{formatRole(user.role)}</dd>
+              </div>
+            </dl>
+
+            <label className="admin-users__field">
+              <span>Name</span>
+              <input
+                autoComplete="name"
+                onChange={(event) => {
+                  setName(event.currentTarget.value);
+                }}
+                suppressHydrationWarning
+                type="text"
+                value={name}
+              />
+            </label>
+
+            <label className="admin-users__field">
+              <span>User type</span>
+              <select
+                disabled={user.role === "admin"}
+                onChange={(event) => {
+                  setUserType(event.currentTarget.value as UserType);
+                }}
+                value={user.role === "admin" ? "admin" : userType}
+              >
+                <option value="campaign_manager">Campaign Manager</option>
+                <option value="campaign_lead">Campaign Lead</option>
+                <option value="hoc">HoC</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            <p className="user-account-detail__helper">
+              Current user type: {formatUserType(user.role === "admin" ? "admin" : userType)}.
+            </p>
+
+            <button
+              className="admin-users__button"
+              disabled={isUpdatingProfile}
+              suppressHydrationWarning
+              type="submit"
+            >
+              {isUpdatingProfile ? "Saving..." : "Save profile"}
+            </button>
+
+            <p
+              aria-live="polite"
+              className={`admin-users__inline-status admin-users__inline-status--${profileStatus.type}`}
+              role={profileStatus.type === "error" ? "alert" : undefined}
+            >
+              {profileStatus.message}
+            </p>
+          </form>
         </section>
 
         <section

@@ -14,6 +14,15 @@ enum Role {
   @@map("role")
 }
 
+enum UserType {
+  ADMIN            @map("admin")
+  CAMPAIGN_MANAGER @map("campaign_manager")
+  CAMPAIGN_LEAD    @map("campaign_lead")
+  HOC              @map("hoc")
+
+  @@map("user_type")
+}
+
 enum CredentialProvider {
   YOUTUBE_DATA_API @map("youtube_data_api")
 
@@ -34,6 +43,23 @@ enum RunResultSource {
   DISCOVERY @map("discovery")
 
   @@map("run_result_source")
+}
+
+enum RunMonth {
+  JANUARY   @map("january")
+  FEBRUARY  @map("february")
+  MARCH     @map("march")
+  APRIL     @map("april")
+  MAY       @map("may")
+  JUNE      @map("june")
+  JULY      @map("july")
+  AUGUST    @map("august")
+  SEPTEMBER @map("september")
+  OCTOBER   @map("october")
+  NOVEMBER  @map("november")
+  DECEMBER  @map("december")
+
+  @@map("run_month")
 }
 
 enum ChannelManualOverrideField {
@@ -125,6 +151,23 @@ enum HubspotPushBatchRowStatus {
   @@map("hubspot_push_batch_row_status")
 }
 
+enum HubspotImportBatchStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("hubspot_import_batch_status")
+}
+
+enum HubspotImportBatchRowStatus {
+  PENDING  @map("pending")
+  PREPARED @map("prepared")
+  FAILED   @map("failed")
+
+  @@map("hubspot_import_batch_row_status")
+}
+
 enum CsvExportScopeType {
   SELECTED @map("selected")
   FILTERED @map("filtered")
@@ -140,6 +183,7 @@ model User {
   image                         String?
   passwordHash                  String                  @map("password_hash")
   role                          Role                    @default(USER)
+  userType                      UserType                @default(CAMPAIGN_MANAGER) @map("user_type")
   isActive                      Boolean                 @default(true) @map("is_active")
   createdAt                     DateTime                @default(now()) @map("created_at")
   updatedAt                     DateTime                @updatedAt @map("updated_at")
@@ -149,6 +193,7 @@ model User {
   auditEvents                   AuditEvent[]            @relation("AuditActor")
   savedSegments                 SavedSegment[]
   runRequests                   RunRequest[]            @relation("RunRequestedBy")
+  campaignManagedRuns           RunRequest[]            @relation("RunCampaignManager")
   createdChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideCreatedBy")
   updatedChannelManualOverrides ChannelManualOverride[] @relation("ChannelManualOverrideUpdatedBy")
   requestedChannelEnrichments   ChannelEnrichment[]     @relation("ChannelEnrichmentRequestedBy")
@@ -157,6 +202,7 @@ model User {
   requestedCsvImportBatches     CsvImportBatch[]        @relation("CsvImportRequestedBy")
   requestedCsvExportBatches     CsvExportBatch[]        @relation("CsvExportRequestedBy")
   requestedHubspotPushBatches   HubspotPushBatch[]      @relation("HubspotPushRequestedBy")
+  requestedHubspotImportBatches HubspotImportBatch[]    @relation("HubspotImportRequestedBy")
 
   @@map("users")
 }
@@ -228,6 +274,7 @@ model Channel {
   youtubeChannelId String                 @unique @map("youtube_channel_id")
   title           String
   handle          String?
+  youtubeUrl      String?                 @map("youtube_url")
   description     String?                 @db.Text
   thumbnailUrl    String?                 @map("thumbnail_url")
   createdAt       DateTime                @default(now()) @map("created_at")
@@ -243,6 +290,7 @@ model Channel {
   metrics         ChannelMetric?
   csvImportRows   CsvImportRow[]
   hubspotPushBatchRows HubspotPushBatchRow[]
+  hubspotImportBatchRows HubspotImportBatchRow[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@map("channels")
@@ -252,6 +300,8 @@ model ChannelContact {
   id               String         @id @default(uuid()) @db.Uuid
   channelId        String         @map("channel_id") @db.Uuid
   email            String
+  firstName        String?        @map("first_name")
+  lastName         String?        @map("last_name")
   csvImportBatchId String?        @map("csv_import_batch_id") @db.Uuid
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
@@ -269,6 +319,9 @@ model ChannelMetric {
   subscriberCount  BigInt?        @map("subscriber_count")
   viewCount        BigInt?        @map("view_count")
   videoCount       BigInt?        @map("video_count")
+  youtubeAverageViews BigInt?     @map("youtube_average_views")
+  youtubeEngagementRate Float?    @map("youtube_engagement_rate")
+  youtubeFollowers  BigInt?       @map("youtube_followers")
   csvImportBatchId String?        @map("csv_import_batch_id") @db.Uuid
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
@@ -469,6 +522,8 @@ model CsvImportRow {
   youtubeChannelId String           @map("youtube_channel_id")
   channelTitle     String           @map("channel_title")
   contactEmail     String?          @map("contact_email")
+  firstName        String?          @map("first_name")
+  lastName         String?          @map("last_name")
   subscriberCount  String?          @map("subscriber_count")
   viewCount        String?          @map("view_count")
   videoCount       String?          @map("video_count")
@@ -554,12 +609,75 @@ model HubspotPushBatchRow {
   @@map("hubspot_push_batch_rows")
 }
 
+model HubspotImportBatch {
+  id                String                   @id @default(uuid()) @db.Uuid
+  requestedByUserId String                   @map("requested_by_user_id") @db.Uuid
+  runRequestId      String                   @map("run_request_id") @db.Uuid
+  fileName          String                   @map("file_name")
+  schemaVersion     String                   @map("schema_version")
+  status            HubspotImportBatchStatus @default(QUEUED)
+  totalRowCount     Int                      @default(0) @map("total_row_count")
+  preparedRowCount  Int                      @default(0) @map("prepared_row_count")
+  failedRowCount    Int                      @default(0) @map("failed_row_count")
+  csvContent        String?                  @map("csv_content") @db.Text
+  startedAt         DateTime?                @map("started_at")
+  completedAt       DateTime?                @map("completed_at")
+  lastError         String?                  @map("last_error") @db.Text
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  requestedByUser   User                     @relation("HubspotImportRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  runRequest        RunRequest               @relation(fields: [runRequestId], references: [id], onDelete: Restrict)
+  rows              HubspotImportBatchRow[]
+
+  @@index([requestedByUserId], map: "hubspot_import_batches_requested_by_user_id_idx")
+  @@index([runRequestId], map: "hubspot_import_batches_run_request_id_idx")
+  @@index([status], map: "hubspot_import_batches_status_idx")
+  @@index([createdAt], map: "hubspot_import_batches_created_at_idx")
+  @@map("hubspot_import_batches")
+}
+
+model HubspotImportBatchRow {
+  id               String                      @id @default(uuid()) @db.Uuid
+  batchId          String                      @map("batch_id") @db.Uuid
+  channelId        String                      @map("channel_id") @db.Uuid
+  contactEmail     String                      @map("contact_email")
+  firstName        String                      @map("first_name")
+  lastName         String                      @map("last_name")
+  payload          Json                        @map("payload")
+  status           HubspotImportBatchRowStatus @default(PENDING)
+  errorMessage     String?                     @map("error_message") @db.Text
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+  batch            HubspotImportBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  channel          Channel                     @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, channelId, contactEmail], map: "hubspot_import_batch_rows_batch_id_channel_id_contact_email_key")
+  @@index([batchId], map: "hubspot_import_batch_rows_batch_id_idx")
+  @@index([channelId], map: "hubspot_import_batch_rows_channel_id_idx")
+  @@index([status], map: "hubspot_import_batch_rows_status_idx")
+  @@map("hubspot_import_batch_rows")
+}
+
 model RunRequest {
   id                String           @id @default(uuid()) @db.Uuid
   requestedByUserId String           @map("requested_by_user_id") @db.Uuid
   name              String
   query             String
   target            Int?
+  client            String?
+  market            String?
+  campaignManagerUserId String?      @map("campaign_manager_user_id") @db.Uuid
+  briefLink         String?          @map("brief_link")
+  campaignName      String?          @map("campaign_name")
+  month             RunMonth?
+  year              Int?
+  dealOwner         String?          @map("deal_owner")
+  dealName          String?          @map("deal_name")
+  pipeline          String?
+  dealStage         String?          @map("deal_stage")
+  currency          String?
+  dealType          String?          @map("deal_type")
+  activationType    String?          @map("activation_type")
   status            RunRequestStatus @default(QUEUED)
   lastError         String?          @map("last_error") @db.Text
   createdAt         DateTime         @default(now()) @map("created_at")
@@ -567,9 +685,14 @@ model RunRequest {
   startedAt         DateTime?        @map("started_at")
   completedAt       DateTime?        @map("completed_at")
   requestedByUser   User             @relation("RunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  campaignManagerUser User?          @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
+  hubspotImportBatches HubspotImportBatch[]
   results           RunResult[]
 
   @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
+  @@index([campaignManagerUserId], map: "run_requests_campaign_manager_user_id_idx")
+  @@index([client], map: "run_requests_client_idx")
+  @@index([market], map: "run_requests_market_idx")
   @@index([status], map: "run_requests_status_idx")
   @@index([createdAt], map: "run_requests_created_at_idx")
   @@map("run_requests")

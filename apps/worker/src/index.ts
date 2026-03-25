@@ -4,6 +4,7 @@ import { PgBoss } from "pg-boss";
 import { registerChannelsEnrichHypeAuditorWorker } from "./channels-enrich-hypeauditor-worker";
 import { registerChannelsEnrichLlmWorker } from "./channels-enrich-llm-worker";
 import { registerExportsCsvGenerateWorker } from "./exports-csv-generate-worker";
+import { registerHubspotImportBatchWorker } from "./hubspot-import-batch-worker";
 import { registerHubspotPushBatchWorker } from "./hubspot-push-batch-worker";
 import { registerImportsCsvProcessWorker } from "./imports-csv-process-worker";
 import { JOB_NAMES } from "./jobs";
@@ -51,6 +52,7 @@ async function registerWorkers(boss: PgBoss): Promise<void> {
   await registerChannelsEnrichHypeAuditorWorker(boss);
   await registerImportsCsvProcessWorker(boss);
   await registerExportsCsvGenerateWorker(boss);
+  await registerHubspotImportBatchWorker(boss);
   await registerHubspotPushBatchWorker(boss);
 }
 

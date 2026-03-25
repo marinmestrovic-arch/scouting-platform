@@ -2,11 +2,13 @@ import {
   adminUserResponseSchema,
   createAdminUserRequestSchema,
   listAdminUsersResponseSchema,
+  updateAdminUserProfileRequestSchema,
   updateAdminUserPasswordRequestSchema,
   updateAdminUserYoutubeKeyRequestSchema,
   updateAdminUserYoutubeKeyResponseSchema,
   type AdminUserResponse,
   type CreateAdminUserRequest,
+  type UpdateAdminUserProfileRequest,
   type UpdateAdminUserPasswordRequest,
   type UpdateAdminUserYoutubeKeyRequest,
   type UpdateAdminUserYoutubeKeyResponse,
@@ -113,6 +115,38 @@ export async function updateAdminUserPassword(
   try {
     const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/password`, {
       method: "PUT",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(response, payload));
+    }
+
+    const parsed = adminUserResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw new Error(normalizeErrorMessage(error));
+  }
+}
+
+export async function updateAdminUserProfile(
+  userId: string,
+  input: UpdateAdminUserProfileRequest,
+): Promise<AdminUserResponse> {
+  const requestPayload = updateAdminUserProfileRequestSchema.parse(input);
+
+  try {
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
       headers: {
         "content-type": "application/json",
       },

@@ -1,12 +1,19 @@
 import {
   CredentialProvider,
-  type Prisma,
+  Role,
+  RunMonth as PrismaRunMonth,
   RunRequestStatus as PrismaRunRequestStatus,
   RunResultSource as PrismaRunResultSource,
+  UserType,
+  type Prisma,
 } from "@prisma/client";
 import type {
   CreateRunResponse,
   ListRecentRunsResponse,
+  RunFilterOptions,
+  RunMetadataInput,
+  RunMetadataResponse,
+  RunMonth,
   RunRequestStatus,
   RunStatusResponse,
 } from "@scouting-platform/contracts";
@@ -20,6 +27,32 @@ import { getUserYoutubeApiKey } from "../auth";
 import { upsertChannelSkeleton } from "../channels";
 import { ServiceError } from "../errors";
 import { enqueueRunsDiscoverJob } from "./queue";
+
+const campaignManagerSelect = {
+  id: true,
+  email: true,
+  name: true,
+} as const;
+
+const runMetadataSelect = {
+  client: true,
+  market: true,
+  campaignManagerUserId: true,
+  briefLink: true,
+  campaignName: true,
+  month: true,
+  year: true,
+  dealOwner: true,
+  dealName: true,
+  pipeline: true,
+  dealStage: true,
+  currency: true,
+  dealType: true,
+  activationType: true,
+  campaignManagerUser: {
+    select: campaignManagerSelect,
+  },
+} as const;
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -49,9 +82,154 @@ function toRunResultSource(source: PrismaRunResultSource): "catalog" | "discover
   return source === PrismaRunResultSource.DISCOVERY ? "discovery" : "catalog";
 }
 
+function toRunMonth(month: PrismaRunMonth | null): RunMonth | null {
+  switch (month) {
+    case PrismaRunMonth.JANUARY:
+      return "january";
+    case PrismaRunMonth.FEBRUARY:
+      return "february";
+    case PrismaRunMonth.MARCH:
+      return "march";
+    case PrismaRunMonth.APRIL:
+      return "april";
+    case PrismaRunMonth.MAY:
+      return "may";
+    case PrismaRunMonth.JUNE:
+      return "june";
+    case PrismaRunMonth.JULY:
+      return "july";
+    case PrismaRunMonth.AUGUST:
+      return "august";
+    case PrismaRunMonth.SEPTEMBER:
+      return "september";
+    case PrismaRunMonth.OCTOBER:
+      return "october";
+    case PrismaRunMonth.NOVEMBER:
+      return "november";
+    case PrismaRunMonth.DECEMBER:
+      return "december";
+    default:
+      return null;
+  }
+}
+
+function fromRunMonth(month: RunMonth): PrismaRunMonth {
+  switch (month) {
+    case "january":
+      return PrismaRunMonth.JANUARY;
+    case "february":
+      return PrismaRunMonth.FEBRUARY;
+    case "march":
+      return PrismaRunMonth.MARCH;
+    case "april":
+      return PrismaRunMonth.APRIL;
+    case "may":
+      return PrismaRunMonth.MAY;
+    case "june":
+      return PrismaRunMonth.JUNE;
+    case "july":
+      return PrismaRunMonth.JULY;
+    case "august":
+      return PrismaRunMonth.AUGUST;
+    case "september":
+      return PrismaRunMonth.SEPTEMBER;
+    case "october":
+      return PrismaRunMonth.OCTOBER;
+    case "november":
+      return PrismaRunMonth.NOVEMBER;
+    case "december":
+      return PrismaRunMonth.DECEMBER;
+  }
+}
+
+function toRunMetadata(
+  runRequest: Prisma.RunRequestGetPayload<{ select: typeof runMetadataSelect }>,
+): RunMetadataResponse {
+  return {
+    client: runRequest.client,
+    market: runRequest.market,
+    campaignManagerUserId: runRequest.campaignManagerUserId,
+    campaignManager: runRequest.campaignManagerUser
+      ? {
+          id: runRequest.campaignManagerUser.id,
+          email: runRequest.campaignManagerUser.email,
+          name: runRequest.campaignManagerUser.name,
+        }
+      : null,
+    briefLink: runRequest.briefLink,
+    campaignName: runRequest.campaignName,
+    month: toRunMonth(runRequest.month),
+    year: runRequest.year,
+    dealOwner: runRequest.dealOwner,
+    dealName: runRequest.dealName,
+    pipeline: runRequest.pipeline,
+    dealStage: runRequest.dealStage,
+    currency: runRequest.currency,
+    dealType: runRequest.dealType,
+    activationType: runRequest.activationType,
+  };
+}
+
+function toRunMetadataCreateInput(
+  metadata: RunMetadataInput,
+): Pick<
+  Prisma.RunRequestUncheckedCreateInput,
+  | "client"
+  | "market"
+  | "briefLink"
+  | "campaignName"
+  | "month"
+  | "year"
+  | "dealOwner"
+  | "dealName"
+  | "pipeline"
+  | "dealStage"
+  | "currency"
+  | "dealType"
+  | "activationType"
+> {
+  return {
+    client: metadata.client.trim(),
+    market: metadata.market.trim(),
+    briefLink: metadata.briefLink?.trim() || null,
+    campaignName: metadata.campaignName.trim(),
+    month: fromRunMonth(metadata.month),
+    year: metadata.year,
+    dealOwner: metadata.dealOwner.trim(),
+    dealName: metadata.dealName.trim(),
+    pipeline: metadata.pipeline.trim(),
+    dealStage: metadata.dealStage.trim(),
+    currency: metadata.currency.trim(),
+    dealType: metadata.dealType.trim(),
+    activationType: metadata.activationType.trim(),
+  };
+}
+
 type CatalogCandidate = {
   id: string;
 };
+
+async function validateCampaignManagerUser(userId: string): Promise<void> {
+  const campaignManager = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      isActive: true,
+      role: Role.USER,
+      userType: UserType.CAMPAIGN_MANAGER,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!campaignManager) {
+    throw new ServiceError(
+      "CAMPAIGN_MANAGER_INVALID",
+      400,
+      "Selected campaign manager must be an active Campaign Manager user",
+    );
+  }
+}
 
 async function getCatalogCandidatesForQuery(query: string): Promise<CatalogCandidate[]> {
   const normalizedQuery = query.trim();
@@ -95,11 +273,107 @@ async function getCatalogCandidatesForQuery(query: string): Promise<CatalogCandi
   });
 }
 
+function buildRunScopeWhere(input: {
+  userId: string;
+  role: "admin" | "user";
+}): Prisma.RunRequestWhereInput {
+  if (input.role === "admin") {
+    return {};
+  }
+
+  return {
+    requestedByUserId: input.userId,
+  };
+}
+
+function buildRunListWhere(input: {
+  userId: string;
+  role: "admin" | "user";
+  campaignManagerUserId?: string;
+  client?: string;
+  market?: string;
+}): Prisma.RunRequestWhereInput {
+  const scopedWhere = buildRunScopeWhere({
+    userId: input.userId,
+    role: input.role,
+  });
+
+  return {
+    ...scopedWhere,
+    ...(input.campaignManagerUserId
+      ? {
+          campaignManagerUserId: input.campaignManagerUserId,
+        }
+      : {}),
+    ...(input.client
+      ? {
+          client: input.client.trim(),
+        }
+      : {}),
+    ...(input.market
+      ? {
+          market: input.market.trim(),
+        }
+      : {}),
+  };
+}
+
+function uniqueSorted(values: readonly (string | null)[]): string[] {
+  return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+async function getRunFilterOptions(input: {
+  userId: string;
+  role: "admin" | "user";
+}): Promise<RunFilterOptions> {
+  const runs = await prisma.runRequest.findMany({
+    where: buildRunScopeWhere({
+      userId: input.userId,
+      role: input.role,
+    }),
+    select: {
+      client: true,
+      market: true,
+      campaignManagerUser: {
+        select: campaignManagerSelect,
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const campaignManagers = new Map<string, RunFilterOptions["campaignManagers"][number]>();
+
+  for (const run of runs) {
+    if (!run.campaignManagerUser) {
+      continue;
+    }
+
+    campaignManagers.set(run.campaignManagerUser.id, {
+      id: run.campaignManagerUser.id,
+      email: run.campaignManagerUser.email,
+      name: run.campaignManagerUser.name,
+    });
+  }
+
+  return {
+    campaignManagers: [...campaignManagers.values()].sort((left, right) =>
+      (left.name?.trim() || left.email).localeCompare(right.name?.trim() || right.email),
+    ),
+    clients: uniqueSorted(runs.map((run) => run.client)),
+    markets: uniqueSorted(runs.map((run) => run.market)),
+  };
+}
+
 export async function createRunRequest(input: {
   userId: string;
   name: string;
   query: string;
   target: number;
+  metadata: RunMetadataInput;
 }): Promise<CreateRunResponse> {
   const hasYoutubeKey = await prisma.userProviderCredential.findUnique({
     where: {
@@ -121,14 +395,20 @@ export async function createRunRequest(input: {
     );
   }
 
+  await validateCampaignManagerUser(input.metadata.campaignManagerUserId);
+
+  const runRequestCreateInput: Prisma.RunRequestUncheckedCreateInput = {
+    requestedByUserId: input.userId,
+    campaignManagerUserId: input.metadata.campaignManagerUserId,
+    name: input.name.trim(),
+    query: input.query.trim(),
+    target: input.target,
+    status: PrismaRunRequestStatus.QUEUED,
+    ...toRunMetadataCreateInput(input.metadata),
+  };
+
   const runRequest = await prisma.runRequest.create({
-    data: {
-      requestedByUserId: input.userId,
-      name: input.name.trim(),
-      query: input.query.trim(),
-      target: input.target,
-      status: PrismaRunRequestStatus.QUEUED,
-    },
+    data: runRequestCreateInput,
     select: {
       id: true,
       status: true,
@@ -165,13 +445,15 @@ export async function createRunRequest(input: {
 
 export async function listRecentRuns(input: {
   userId: string;
+  role: "admin" | "user";
   limit?: number;
+  campaignManagerUserId?: string;
+  client?: string;
+  market?: string;
 }): Promise<ListRecentRunsResponse> {
-  const limit = Math.max(1, Math.floor(input.limit ?? 10));
+  const limit = Math.max(1, Math.floor(input.limit ?? 50));
   const runRequests = await prisma.runRequest.findMany({
-    where: {
-      requestedByUserId: input.userId,
-    },
+    where: buildRunListWhere(input),
     orderBy: [
       {
         createdAt: "desc",
@@ -192,6 +474,7 @@ export async function listRecentRuns(input: {
       updatedAt: true,
       startedAt: true,
       completedAt: true,
+      ...runMetadataSelect,
       _count: {
         select: {
           results: true,
@@ -213,7 +496,12 @@ export async function listRecentRuns(input: {
       startedAt: runRequest.startedAt?.toISOString() ?? null,
       completedAt: runRequest.completedAt?.toISOString() ?? null,
       resultCount: runRequest._count.results,
+      metadata: toRunMetadata(runRequest),
     })),
+    filterOptions: await getRunFilterOptions({
+      userId: input.userId,
+      role: input.role,
+    }),
   };
 }
 
@@ -238,6 +526,7 @@ export async function getRunStatus(input: {
       updatedAt: true,
       startedAt: true,
       completedAt: true,
+      ...runMetadataSelect,
       results: {
         orderBy: {
           rank: "asc",
@@ -282,6 +571,7 @@ export async function getRunStatus(input: {
     updatedAt: runRequest.updatedAt.toISOString(),
     startedAt: runRequest.startedAt?.toISOString() ?? null,
     completedAt: runRequest.completedAt?.toISOString() ?? null,
+    metadata: toRunMetadata(runRequest),
     results: runRequest.results.map((result) => ({
       id: result.id,
       channelId: result.channelId,

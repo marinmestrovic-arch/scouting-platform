@@ -80,6 +80,7 @@ integration("week 1 core integration", () => {
       email: "user@example.com",
       name: "Campaign User",
       role: "user",
+      userType: "campaign_manager",
       password: "StrongPassword123",
     });
 
@@ -92,6 +93,7 @@ integration("week 1 core integration", () => {
         email: "user@example.com",
         name: "Campaign User 2",
         role: "user",
+        userType: "campaign_manager",
         password: "StrongPassword123",
       }),
     ).rejects.toMatchObject({
@@ -119,6 +121,7 @@ integration("week 1 core integration", () => {
       email: "campaign@example.com",
       name: "Campaign User",
       role: "user",
+      userType: "campaign_manager",
       password: "StrongPassword123",
     });
 

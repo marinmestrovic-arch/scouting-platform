@@ -5,6 +5,7 @@ export const JOB_NAMES = [
   "channels.enrich.hypeauditor",
   "imports.csv.process",
   "exports.csv.generate",
+  "hubspot.import.batch",
   "hubspot.push.batch",
   "maintenance.refresh-stale",
 ] as const;

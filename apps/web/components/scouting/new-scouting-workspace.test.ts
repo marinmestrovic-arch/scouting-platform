@@ -20,6 +20,28 @@ vi.mock("next/link", async () => {
 
 import { NewScoutingWorkspaceView } from "./new-scouting-workspace";
 
+function buildDraft() {
+  return {
+    name: "Gaming run",
+    prompt: "gaming creators",
+    target: "20",
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+    briefLink: "https://example.com/brief",
+    campaignName: "Spring Launch 2026",
+    month: "march" as const,
+    year: "2026",
+    dealOwner: "Marin",
+    dealName: "Sony Gaming Q2",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
 function findElementsByType(node: ReactNode, type: string): ReactElement[] {
   if (Array.isArray(node)) {
     return node.flatMap((child) => findElementsByType(child, type));
@@ -38,57 +60,78 @@ function findElementsByType(node: ReactNode, type: string): ReactElement[] {
 }
 
 describe("new scouting workspace", () => {
-  it("renders the live run name and prompt fields with disabled scaffolded controls", () => {
+  it("renders the Week 7 live metadata field set", () => {
     const html = renderToStaticMarkup(
       createElement(NewScoutingWorkspaceView, {
-        draft: {
-          name: "Gaming run",
-          prompt: "gaming creators",
-          target: "20",
+        campaignManagersState: {
+          status: "ready",
+          items: [
+            {
+              id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+              email: "manager@example.com",
+              name: "Manager",
+            },
+          ],
+          error: null,
         },
-        onNameChange: () => undefined,
-        onPromptChange: () => undefined,
-        onTargetChange: () => undefined,
+        draft: buildDraft(),
+        onFieldChange: () => undefined,
         onSubmit: () => undefined,
         requestState: {
           status: "idle",
           message:
-            "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+            "This workspace now stores the live campaign metadata required for Dashboard filtering and HubSpot import readiness.",
         },
         showLegacyNotice: true,
       }),
     );
 
-    expect(html).toContain("Run name");
+    expect(html).toContain("Influencer List");
+    expect(html).toContain("Client");
+    expect(html).toContain("Market");
+    expect(html).toContain("Campaign manager");
+    expect(html).toContain("Brief link");
+    expect(html).toContain("Campaign name");
+    expect(html).toContain("Month");
+    expect(html).toContain("Year");
+    expect(html).toContain("Deal owner");
+    expect(html).toContain("Deal name");
+    expect(html).toContain("Pipeline");
+    expect(html).toContain("Deal stage");
+    expect(html).toContain("Currency");
+    expect(html).toContain("Deal type");
+    expect(html).toContain("Activation type");
     expect(html).toContain("Target");
     expect(html).toContain("Prompt");
-    expect(html).toContain("Campaign");
-    expect(html).toContain("Source mode");
     expect(html).toContain("Legacy route");
     expect(html).toContain('href="/database?tab=runs"');
     expect(html).toContain("Start scouting");
-    expect(html).not.toContain("Current backend mode");
-    expect(html).not.toContain("auto-generated client-side");
+    expect(html).not.toContain(">Week<");
   });
 
-  it("keeps run name and prompt live while scaffolded fields stay disabled", () => {
+  it("keeps all fields interactive once campaign managers are loaded", () => {
     const tree = createElement(NewScoutingWorkspaceView, {
-      draft: {
-        name: "Gaming run",
-        prompt: "gaming creators",
-        target: "20",
+      campaignManagersState: {
+        status: "ready",
+        items: [
+          {
+            id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+            email: "manager@example.com",
+            name: "Manager",
+          },
+        ],
+        error: null,
       },
-      onNameChange: () => undefined,
-      onPromptChange: () => undefined,
-      onTargetChange: () => undefined,
+      draft: buildDraft(),
+      onFieldChange: () => undefined,
       onSubmit: () => undefined,
       requestState: {
         status: "idle",
         message:
-          "Run name, target, and prompt are live today. Campaign, week, brief, and remaining planning controls stay scaffolded until the backend stores those fields.",
+          "This workspace now stores the live campaign metadata required for Dashboard filtering and HubSpot import readiness.",
       },
     });
-    const rendered = (tree.type as typeof NewScoutingWorkspaceView)(tree.props);
+    const rendered = NewScoutingWorkspaceView(tree.props);
     const selects = findElementsByType(rendered, "select") as Array<
       ReactElement<{ disabled?: boolean }>
     >;
@@ -99,9 +142,8 @@ describe("new scouting workspace", () => {
       ReactElement<{ disabled?: boolean }>
     >;
 
-    expect(selects.every((element) => element.props.disabled)).toBe(true);
-    expect(inputs.filter((element) => !element.props.disabled)).toHaveLength(2);
-    expect(inputs.filter((element) => element.props.disabled)).toHaveLength(inputs.length - 2);
+    expect(selects.every((element) => element.props.disabled !== true)).toBe(true);
+    expect(inputs.every((element) => element.props.disabled !== true)).toBe(true);
     expect(textareas[0]?.props.disabled).toBe(false);
   });
 });

@@ -59,6 +59,10 @@ export type ChannelSummary = {
   youtubeChannelId: string;
   title: string;
   handle: string | null;
+  youtubeUrl: string | null;
+  youtubeAverageViews: string | null;
+  youtubeEngagementRate: number | null;
+  youtubeFollowers: string | null;
   thumbnailUrl: string | null;
   enrichment: ChannelEnrichmentSummary;
   advancedReport: ChannelAdvancedReportSummary;
@@ -156,8 +160,16 @@ const channelListSelect = {
   youtubeChannelId: true,
   title: true,
   handle: true,
+  youtubeUrl: true,
   thumbnailUrl: true,
   updatedAt: true,
+  metrics: {
+    select: {
+      youtubeAverageViews: true,
+      youtubeEngagementRate: true,
+      youtubeFollowers: true,
+    },
+  },
   enrichment: {
     select: channelEnrichmentListSelect,
   },
@@ -175,10 +187,18 @@ const channelDetailSelect = {
   youtubeChannelId: true,
   title: true,
   handle: true,
+  youtubeUrl: true,
   description: true,
   thumbnailUrl: true,
   createdAt: true,
   updatedAt: true,
+  metrics: {
+    select: {
+      youtubeAverageViews: true,
+      youtubeEngagementRate: true,
+      youtubeFollowers: true,
+    },
+  },
   enrichment: {
     select: channelEnrichmentDetailSelect,
   },
@@ -395,6 +415,10 @@ function toBrandMentions(value: Prisma.JsonValue | null) {
   return parsed.success ? parsed.data : [];
 }
 
+function toNullableBigIntString(value: bigint | null | undefined): string | null {
+  return value === null || value === undefined ? null : value.toString();
+}
+
 function toChannelInsights(row: ChannelInsightsRow | null): ChannelInsights {
   return {
     audienceCountries: row ? toAudienceCountries(row.audienceCountries) : [],
@@ -449,8 +473,14 @@ function toChannelSummary(channel: {
   youtubeChannelId: string;
   title: string;
   handle: string | null;
+  youtubeUrl: string | null;
   thumbnailUrl: string | null;
   updatedAt: Date;
+  metrics: {
+    youtubeAverageViews: bigint | null;
+    youtubeEngagementRate: number | null;
+    youtubeFollowers: bigint | null;
+  } | null;
   enrichment: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
@@ -464,6 +494,10 @@ function toChannelSummary(channel: {
     youtubeChannelId: channel.youtubeChannelId,
     title: channel.title,
     handle: channel.handle,
+    youtubeUrl: channel.youtubeUrl,
+    youtubeAverageViews: toNullableBigIntString(channel.metrics?.youtubeAverageViews),
+    youtubeEngagementRate: channel.metrics?.youtubeEngagementRate ?? null,
+    youtubeFollowers: toNullableBigIntString(channel.metrics?.youtubeFollowers),
     thumbnailUrl: channel.thumbnailUrl,
     enrichment: toChannelEnrichmentSummary(channel.updatedAt, channel.enrichment),
     advancedReport: toChannelAdvancedReportSummary(channel.advancedReportRequests[0] ?? null),
@@ -475,10 +509,16 @@ function toChannelDetail(channel: {
   youtubeChannelId: string;
   title: string;
   handle: string | null;
+  youtubeUrl: string | null;
   thumbnailUrl: string | null;
   description: string | null;
   createdAt: Date;
   updatedAt: Date;
+  metrics: {
+    youtubeAverageViews: bigint | null;
+    youtubeEngagementRate: number | null;
+    youtubeFollowers: bigint | null;
+  } | null;
   enrichment: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
@@ -708,6 +748,7 @@ export async function upsertChannelSkeleton(input: {
           youtubeChannelId: input.youtubeChannelId,
           title: automatedValues.title,
           handle: automatedValues.handle,
+          youtubeUrl: `https://www.youtube.com/channel/${input.youtubeChannelId}`,
           description: automatedValues.description,
           thumbnailUrl: automatedValues.thumbnailUrl,
         },
@@ -722,6 +763,7 @@ export async function upsertChannelSkeleton(input: {
     const updateData: Prisma.ChannelUpdateInput = {
       title: automatedValues.title,
       handle: automatedValues.handle,
+      youtubeUrl: `https://www.youtube.com/channel/${input.youtubeChannelId}`,
       description: automatedValues.description,
       thumbnailUrl: automatedValues.thumbnailUrl,
     };
