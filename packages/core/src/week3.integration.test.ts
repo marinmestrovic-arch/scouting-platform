@@ -283,6 +283,7 @@ integration("week 3 core integration", () => {
     const recentRuns = await getCore().listRecentRuns({
       userId: owner.id,
       role: "user",
+      limit: 10,
     });
 
     expect(recentRuns.items).toHaveLength(10);

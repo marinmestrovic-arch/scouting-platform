@@ -101,7 +101,7 @@ integration("week 5 csv import core integration", () => {
 
   function makeCsv(rows: string[]): string {
     return [
-      "youtubeChannelId,channelTitle,contactEmail,subscriberCount,viewCount,videoCount,notes,sourceLabel",
+      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
       ...rows,
     ].join("\n");
   }
@@ -115,8 +115,8 @@ integration("week 5 csv import core integration", () => {
       fileName: "contacts.csv",
       fileSize: 512,
       csvText: makeCsv([
-        "UC-CSV-1,Creator One,creator@example.com,1000,20000,50,Top creator,ops",
-        "UC-CSV-2,Creator Two,not-an-email,2000,30000,60,,ops",
+        "UC-CSV-1,Creator One,creator@example.com,Creator,One,1000,20000,50,Top creator,ops",
+        "UC-CSV-2,Creator Two,not-an-email,Creator,Two,2000,30000,60,,ops",
       ]),
     });
 
@@ -165,8 +165,8 @@ integration("week 5 csv import core integration", () => {
       fileName: "invalid.csv",
       fileSize: 256,
       csvText: makeCsv([
-        "UC-CSV-1,,creator@example.com,1000,20000,50,,ops",
-        ",Creator Two,creator-two@example.com,2000,30000,60,,ops",
+        "UC-CSV-1,,creator@example.com,,,1000,20000,50,,ops",
+        ",Creator Two,creator-two@example.com,,,2000,30000,60,,ops",
       ]),
     });
 
@@ -199,9 +199,9 @@ integration("week 5 csv import core integration", () => {
       fileName: "dedupe.csv",
       fileSize: 1024,
       csvText: makeCsv([
-        "UC-CSV-1,Creator One,FIRST@example.com,100,1000,10,first row,ops",
-        "UC-CSV-1,Creator One,first@example.com,,2000,,duplicate email,ops",
-        "UC-CSV-1,Creator One,second@example.com,,,11,second email,ops",
+        "UC-CSV-1,Creator One,FIRST@example.com,Creator,One,100,1000,10,first row,ops",
+        "UC-CSV-1,Creator One,first@example.com,,,,2000,,duplicate email,ops",
+        "UC-CSV-1,Creator One,second@example.com,,,,,11,second email,ops",
       ]),
     });
 
@@ -284,7 +284,7 @@ integration("week 5 csv import core integration", () => {
       fileName: "queue-failure.csv",
       fileSize: 512,
       csvText: makeCsv([
-        "UC-CSV-9,Creator Nine,creator-nine@example.com,100,1000,10,,ops",
+        "UC-CSV-9,Creator Nine,creator-nine@example.com,Creator,Nine,100,1000,10,,ops",
       ]),
     });
 

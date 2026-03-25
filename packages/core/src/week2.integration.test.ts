@@ -372,18 +372,20 @@ integration("week 2 core integration", () => {
         completedAt: new Date("2026-02-01T10:00:00.000Z"),
       },
     });
+    const readyEnrichmentCompletedAt = new Date();
+    const readyChannelUpdatedAt = new Date(readyEnrichmentCompletedAt.getTime() - 24 * 60 * 60 * 1000);
     await prisma.channelEnrichment.create({
       data: {
         channelId: readyChannel.id,
         status: ChannelEnrichmentStatus.COMPLETED,
         requestedByUserId: requester.id,
-        requestedAt: new Date("2026-03-09T10:00:00.000Z"),
-        completedAt: new Date("2026-03-09T10:00:00.000Z"),
+        requestedAt: readyEnrichmentCompletedAt,
+        completedAt: readyEnrichmentCompletedAt,
       },
     });
     await prisma.$executeRaw`
       UPDATE channels
-      SET updated_at = ${new Date("2026-03-08T10:00:00.000Z")}
+      SET updated_at = ${readyChannelUpdatedAt}
       WHERE id = ${readyChannel.id}::uuid
     `;
     await prisma.channelEnrichment.create({
