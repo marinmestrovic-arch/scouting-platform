@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   createCsvExportBatchMock,
-  createHubspotPushBatchMock,
+  createHubspotImportBatchMock,
   fetchRunStatusMock,
 } = vi.hoisted(() => ({
   createCsvExportBatchMock: vi.fn(),
-  createHubspotPushBatchMock: vi.fn(),
+  createHubspotImportBatchMock: vi.fn(),
   fetchRunStatusMock: vi.fn(),
 }));
 
@@ -14,8 +14,18 @@ vi.mock("./csv-export-batches-api", () => ({
   createCsvExportBatch: createCsvExportBatchMock,
 }));
 
-vi.mock("./hubspot-push-batches-api", () => ({
-  createHubspotPushBatch: createHubspotPushBatchMock,
+vi.mock("./hubspot-import-batches-api", () => ({
+  createHubspotImportBatch: createHubspotImportBatchMock,
+  HubspotImportBatchesApiError: class HubspotImportBatchesApiError extends Error {
+    readonly status: number;
+    readonly validation: null = null;
+
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "HubspotImportBatchesApiError";
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock("./runs-api", () => ({
@@ -70,13 +80,13 @@ describe("run batch actions", () => {
     fetchRunStatusMock.mockResolvedValueOnce({
       results: [{ channelId: "channel-9" }],
     });
-    createHubspotPushBatchMock.mockResolvedValueOnce({ id: "hubspot-1" });
+    createHubspotImportBatchMock.mockResolvedValueOnce({ id: "hubspot-1" });
 
     const result = await createHubspotPushBatchFromRun("run-9");
 
     expect(fetchRunStatusMock).toHaveBeenCalledWith("run-9");
-    expect(createHubspotPushBatchMock).toHaveBeenCalledWith({
-      channelIds: ["channel-9"],
+    expect(createHubspotImportBatchMock).toHaveBeenCalledWith({
+      runId: "run-9",
     });
     expect(result).toEqual({ id: "hubspot-1" });
   });

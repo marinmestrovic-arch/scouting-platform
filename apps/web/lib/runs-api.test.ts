@@ -24,6 +24,7 @@ function buildRunStatusPayload() {
     updatedAt: "2026-03-10T10:02:00.000Z",
     startedAt: "2026-03-10T10:01:00.000Z",
     completedAt: null,
+    metadata: buildRunMetadata(),
     results: [
       {
         id: "24a57b02-3008-4af1-9b3a-340bd0db7d1c",
@@ -43,6 +44,30 @@ function buildRunStatusPayload() {
   };
 }
 
+function buildRunMetadata() {
+  return {
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+    campaignManager: {
+      id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+    briefLink: "https://example.com/brief",
+    campaignName: "Spring Launch 2026",
+    month: "march" as const,
+    year: 2026,
+    dealOwner: "Marin",
+    dealName: "Sony Gaming Q2",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
 function buildRecentRunsPayload() {
   return {
     items: [
@@ -58,8 +83,14 @@ function buildRecentRunsPayload() {
         startedAt: "2026-03-10T10:01:00.000Z",
         completedAt: null,
         resultCount: 2,
+        metadata: buildRunMetadata(),
       },
     ],
+    filterOptions: {
+      campaignManagers: [buildRunMetadata().campaignManager],
+      clients: ["Sony"],
+      markets: ["DACH"],
+    },
   };
 }
 
@@ -80,6 +111,22 @@ describe("runs api helpers", () => {
       name: "  Gaming Run  ",
       query: "  gaming creators  ",
       target: 20,
+      metadata: {
+        client: "Sony",
+        market: "DACH",
+        campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+        briefLink: "https://example.com/brief",
+        campaignName: "Spring Launch 2026",
+        month: "march",
+        year: 2026,
+        dealOwner: "Marin",
+        dealName: "Sony Gaming Q2",
+        pipeline: "New business",
+        dealStage: "Contract sent",
+        currency: "EUR",
+        dealType: "Paid social",
+        activationType: "YouTube integration",
+      },
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -93,6 +140,22 @@ describe("runs api helpers", () => {
           name: "Gaming Run",
           query: "gaming creators",
           target: 20,
+          metadata: {
+            client: "Sony",
+            market: "DACH",
+            campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+            briefLink: "https://example.com/brief",
+            campaignName: "Spring Launch 2026",
+            month: "march",
+            year: 2026,
+            dealOwner: "Marin",
+            dealName: "Sony Gaming Q2",
+            pipeline: "New business",
+            dealStage: "Contract sent",
+            currency: "EUR",
+            dealType: "Paid social",
+            activationType: "YouTube integration",
+          },
         }),
       }),
     );
@@ -117,6 +180,22 @@ describe("runs api helpers", () => {
         name: "Gaming Run",
         query: "gaming creators",
         target: 20,
+        metadata: {
+          client: "Sony",
+          market: "DACH",
+          campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+          briefLink: "https://example.com/brief",
+          campaignName: "Spring Launch 2026",
+          month: "march",
+          year: 2026,
+          dealOwner: "Marin",
+          dealName: "Sony Gaming Q2",
+          pipeline: "New business",
+          dealStage: "Contract sent",
+          currency: "EUR",
+          dealType: "Paid social",
+          activationType: "YouTube integration",
+        },
       }),
     ).rejects.toMatchObject({
       message: "Assigned YouTube API key is required before creating a run",
@@ -130,6 +209,22 @@ describe("runs api helpers", () => {
         name: "",
         query: "gaming creators",
         target: 20,
+        metadata: {
+          client: "Sony",
+          market: "DACH",
+          campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+          briefLink: "https://example.com/brief",
+          campaignName: "Spring Launch 2026",
+          month: "march",
+          year: 2026,
+          dealOwner: "Marin",
+          dealName: "Sony Gaming Q2",
+          pipeline: "New business",
+          dealStage: "Contract sent",
+          currency: "EUR",
+          dealType: "Paid social",
+          activationType: "YouTube integration",
+        },
       }),
     ).rejects.toThrow("Too small: expected string to have >=1 characters");
   });
@@ -140,6 +235,22 @@ describe("runs api helpers", () => {
         name: "Gaming Run",
         query: "gaming creators",
         target: 0,
+        metadata: {
+          client: "Sony",
+          market: "DACH",
+          campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+          briefLink: "https://example.com/brief",
+          campaignName: "Spring Launch 2026",
+          month: "march",
+          year: 2026,
+          dealOwner: "Marin",
+          dealName: "Sony Gaming Q2",
+          pipeline: "New business",
+          dealStage: "Contract sent",
+          currency: "EUR",
+          dealType: "Paid social",
+          activationType: "YouTube integration",
+        },
       }),
     ).rejects.toThrow("Too small");
   });
@@ -172,7 +283,7 @@ describe("runs api helpers", () => {
       jsonResponse(buildRecentRunsPayload()),
     );
 
-    const response = await fetchRecentRuns(abortController.signal);
+    const response = await fetchRecentRuns({ signal: abortController.signal });
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/runs",

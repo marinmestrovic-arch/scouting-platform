@@ -1,6 +1,7 @@
 import {
   createRunRequestSchema,
   createRunResponseSchema,
+  listRunsQuerySchema,
   listRecentRunsResponseSchema,
 } from "@scouting-platform/contracts";
 import { createRunRequest, listRecentRuns } from "@scouting-platform/core";
@@ -11,9 +12,7 @@ import {
   toRouteErrorResponse,
 } from "../../../lib/api";
 
-const RECENT_RUNS_LIMIT = 10;
-
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const session = await requireAuthenticatedSession();
 
   if (!session.ok) {
@@ -21,9 +20,33 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
+    const url = new URL(request.url);
+    const query = listRunsQuerySchema.safeParse({
+      campaignManagerUserId: url.searchParams.get("campaignManagerUserId") ?? undefined,
+      client: url.searchParams.get("client") ?? undefined,
+      market: url.searchParams.get("market") ?? undefined,
+      limit: url.searchParams.get("limit") ?? undefined,
+    });
+
+    if (!query.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid query parameters",
+          details: query.error.flatten(),
+        },
+        { status: 400 },
+      );
+    }
+
     const runs = await listRecentRuns({
       userId: session.userId,
-      limit: RECENT_RUNS_LIMIT,
+      role: session.role,
+      limit: query.data.limit,
+      ...(query.data.campaignManagerUserId
+        ? { campaignManagerUserId: query.data.campaignManagerUserId }
+        : {}),
+      ...(query.data.client ? { client: query.data.client } : {}),
+      ...(query.data.market ? { market: query.data.market } : {}),
     });
     const payload = listRecentRunsResponseSchema.parse(runs);
 
@@ -58,6 +81,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       name: body.data.name,
       query: body.data.query,
       target: body.data.target,
+      metadata: body.data.metadata,
     });
     const payload = createRunResponseSchema.parse(run);
 

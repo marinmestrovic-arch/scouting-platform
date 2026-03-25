@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 export const roleSchema = z.enum(["admin", "user"]);
+export const userTypeSchema = z.enum([
+  "admin",
+  "campaign_manager",
+  "campaign_lead",
+  "hoc",
+]);
 
 export const credentialsSignInSchema = z.object({
   email: z.string().email(),
@@ -8,4 +14,5 @@ export const credentialsSignInSchema = z.object({
 });
 
 export type Role = z.infer<typeof roleSchema>;
+export type UserType = z.infer<typeof userTypeSchema>;
 export type CredentialsSignInInput = z.infer<typeof credentialsSignInSchema>;

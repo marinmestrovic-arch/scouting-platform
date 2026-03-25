@@ -20,6 +20,30 @@ vi.mock("next/link", async () => {
 
 import { RecentRunsShellView, getRecentRunProgressMessage, hasActiveRecentRuns } from "./recent-runs-shell";
 
+function buildRunMetadata() {
+  return {
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+    campaignManager: {
+      id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+    briefLink: "https://example.com/brief",
+    campaignName: "Spring Launch 2026",
+    month: "march" as const,
+    year: 2026,
+    dealOwner: "Marin",
+    dealName: "Sony Gaming Q2",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
 function buildRun(
   status: "queued" | "running" | "completed" | "failed",
   overrides?: Partial<{
@@ -45,6 +69,7 @@ function buildRun(
       overrides?.completedAt ??
       (status === "completed" || status === "failed" ? "2026-03-10T10:03:00.000Z" : null),
     resultCount: overrides?.resultCount ?? (status === "completed" ? 2 : 0),
+    metadata: buildRunMetadata(),
   } as const;
 }
 
@@ -93,6 +118,11 @@ describe("recent runs shell", () => {
       status: "ready",
       data: {
         items: [],
+        filterOptions: {
+          campaignManagers: [],
+          clients: [],
+          markets: [],
+        },
       },
       error: null,
     });
@@ -108,6 +138,11 @@ describe("recent runs shell", () => {
             lastError: "Assigned YouTube API key is required before creating a run",
           }),
         ],
+        filterOptions: {
+          campaignManagers: [buildRunMetadata().campaignManager],
+          clients: ["Sony"],
+          markets: ["DACH"],
+        },
       },
       error: null,
     });

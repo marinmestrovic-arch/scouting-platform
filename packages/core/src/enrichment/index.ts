@@ -37,6 +37,14 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+function toNullableBigInt(value: number | null): bigint | null {
+  if (value === null || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return BigInt(Math.round(value));
+}
+
 function getCachedYoutubeContext(row: ChannelYoutubeContextCacheRow | null) {
   if (!row?.context) {
     return null;
@@ -347,6 +355,13 @@ export async function executeChannelLlmEnrichment(input: {
       }
     })();
 
+    const youtubeAverageViews =
+      youtubeContext.viewCount !== null &&
+      youtubeContext.videoCount !== null &&
+      youtubeContext.videoCount > 0
+        ? Math.round(youtubeContext.viewCount / youtubeContext.videoCount)
+        : null;
+
     const enrichmentResult = await (async () => {
       try {
         return await enrichChannelWithOpenAi({
@@ -368,6 +383,40 @@ export async function executeChannelLlmEnrichment(input: {
     })();
 
     await prisma.$transaction(async (tx) => {
+      await tx.channel.update({
+        where: {
+          id: executionState.channel.id,
+        },
+        data: {
+          handle: youtubeContext.handle,
+          youtubeUrl: `https://www.youtube.com/channel/${youtubeContext.youtubeChannelId}`,
+          description: executionState.channel.description ?? youtubeContext.description,
+          thumbnailUrl: youtubeContext.thumbnailUrl,
+        },
+      });
+
+      await tx.channelMetric.upsert({
+        where: {
+          channelId: executionState.channel.id,
+        },
+        create: {
+          channelId: executionState.channel.id,
+          subscriberCount: toNullableBigInt(youtubeContext.subscriberCount),
+          viewCount: toNullableBigInt(youtubeContext.viewCount),
+          videoCount: toNullableBigInt(youtubeContext.videoCount),
+          youtubeAverageViews: toNullableBigInt(youtubeAverageViews),
+          youtubeEngagementRate: null,
+          youtubeFollowers: toNullableBigInt(youtubeContext.subscriberCount),
+        },
+        update: {
+          subscriberCount: toNullableBigInt(youtubeContext.subscriberCount),
+          viewCount: toNullableBigInt(youtubeContext.viewCount),
+          videoCount: toNullableBigInt(youtubeContext.videoCount),
+          youtubeAverageViews: toNullableBigInt(youtubeAverageViews),
+          youtubeFollowers: toNullableBigInt(youtubeContext.subscriberCount),
+        },
+      });
+
       await tx.channelEnrichment.update({
         where: {
           channelId: executionState.channelId,

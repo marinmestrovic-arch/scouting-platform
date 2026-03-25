@@ -7,6 +7,7 @@ export const JOB_NAMES = [
   "channels.enrich.hypeauditor",
   "imports.csv.process",
   "exports.csv.generate",
+  "hubspot.import.batch",
   "hubspot.push.batch",
   "maintenance.refresh-stale",
 ] as const;
@@ -50,6 +51,11 @@ export const hubspotPushBatchPayloadSchema = z.object({
   requestedByUserId: uuid,
 });
 
+export const hubspotImportBatchPayloadSchema = z.object({
+  importBatchId: uuid,
+  requestedByUserId: uuid,
+});
+
 export const maintenanceRefreshStalePayloadSchema = z.object({
   initiatedBy: z.enum(["system", "admin"]),
   requestedByUserId: uuid.optional(),
@@ -62,6 +68,7 @@ export const jobPayloadSchemas = {
   "channels.enrich.hypeauditor": channelsEnrichHypeAuditorPayloadSchema,
   "imports.csv.process": importsCsvProcessPayloadSchema,
   "exports.csv.generate": exportsCsvGeneratePayloadSchema,
+  "hubspot.import.batch": hubspotImportBatchPayloadSchema,
   "hubspot.push.batch": hubspotPushBatchPayloadSchema,
   "maintenance.refresh-stale": maintenanceRefreshStalePayloadSchema,
 } as const satisfies Record<JobName, z.ZodType>;

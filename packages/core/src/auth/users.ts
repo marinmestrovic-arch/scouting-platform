@@ -1,17 +1,28 @@
-import { CredentialProvider, type Role as PrismaRole } from "@prisma/client";
+import { CredentialProvider, Role, UserType as PrismaUserType, type Role as PrismaRole } from "@prisma/client";
 
-import type { AdminUserResponse, CreateAdminUserRequest } from "@scouting-platform/contracts";
+import type {
+  AdminUserResponse,
+  CampaignManagerOption,
+  CreateAdminUserRequest,
+  UpdateAdminUserProfileRequest,
+} from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { ServiceError } from "../errors";
 import { hashPassword } from "./password";
-import { fromPrismaRole, toPrismaRole } from "./roles";
+import {
+  fromPrismaRole,
+  fromPrismaUserType,
+  toPrismaRole,
+  toPrismaUserType,
+} from "./roles";
 
 type UserWithYoutubeCredential = {
   id: string;
   email: string;
   name: string | null;
   role: PrismaRole;
+  userType: PrismaUserType;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -37,11 +48,31 @@ function toAdminUserResponse(user: UserWithYoutubeCredential): AdminUserResponse
     email: user.email,
     name: user.name ?? null,
     role: fromPrismaRole(user.role),
+    userType: fromPrismaUserType(user.userType),
     isActive: user.isActive,
     youtubeKeyAssigned: user.credentials.length > 0,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
+}
+
+function normalizeUserType(input: {
+  role: "admin" | "user";
+  userType: CreateAdminUserRequest["userType"] | UpdateAdminUserProfileRequest["userType"];
+}): PrismaUserType {
+  if (input.role === "admin") {
+    return PrismaUserType.ADMIN;
+  }
+
+  if (input.userType === "admin") {
+    throw new ServiceError(
+      "USER_TYPE_ROLE_MISMATCH",
+      400,
+      "Only admin-role accounts can use the Admin user type",
+    );
+  }
+
+  return toPrismaUserType(input.userType);
 }
 
 async function getUserWithYoutubeCredential(userId: string): Promise<UserWithYoutubeCredential> {
@@ -94,6 +125,11 @@ export async function createUser(
 ): Promise<AdminUserResponse> {
   const normalizedEmail = normalizeEmail(input.email);
   const passwordHash = await hashPassword(input.password);
+  const normalizedRole = input.role;
+  const normalizedUserType = normalizeUserType({
+    role: normalizedRole,
+    userType: input.userType,
+  });
 
   try {
     const userId = await withDbTransaction(async (tx) => {
@@ -101,7 +137,8 @@ export async function createUser(
         data: {
           email: normalizedEmail,
           name: input.name?.trim() || null,
-          role: toPrismaRole(input.role),
+          role: toPrismaRole(normalizedRole),
+          userType: normalizedUserType,
           passwordHash,
           isActive: true,
         },
@@ -113,11 +150,12 @@ export async function createUser(
           action: "user.created",
           entityType: "user",
           entityId: user.id,
-          metadata: {
-            role: input.role,
-          },
+        metadata: {
+            role: normalizedRole,
+            userType: fromPrismaUserType(normalizedUserType),
         },
-      });
+      },
+    });
 
       return user.id;
     });
@@ -195,4 +233,89 @@ export async function updateUserPassword(input: {
 
   const user = await getUserWithYoutubeCredential(input.userId);
   return toAdminUserResponse(user);
+}
+
+export async function updateUserProfile(input: {
+  userId: string;
+  actorUserId: string;
+  profile: UpdateAdminUserProfileRequest;
+}): Promise<AdminUserResponse> {
+  await withDbTransaction(async (tx) => {
+    const existing = await tx.user.findUnique({
+      where: {
+        id: input.userId,
+      },
+      select: {
+        id: true,
+        role: true,
+        userType: true,
+        name: true,
+      },
+    });
+
+    if (!existing) {
+      throw new ServiceError("USER_NOT_FOUND", 404, "User not found");
+    }
+
+    const nextUserType = normalizeUserType({
+      role: fromPrismaRole(existing.role),
+      userType: input.profile.userType,
+    });
+    const nextName =
+      input.profile.name === undefined ? existing.name : input.profile.name?.trim() || null;
+
+    await tx.user.update({
+      where: {
+        id: input.userId,
+      },
+      data: {
+        name: nextName,
+        userType: nextUserType,
+      },
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        actorUserId: input.actorUserId,
+        action: "user.profile.updated",
+        entityType: "user",
+        entityId: input.userId,
+        metadata: {
+          userType: fromPrismaUserType(nextUserType),
+        },
+      },
+    });
+  });
+
+  const user = await getUserWithYoutubeCredential(input.userId);
+  return toAdminUserResponse(user);
+}
+
+export async function listCampaignManagers(): Promise<CampaignManagerOption[]> {
+  const users = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      role: Role.USER,
+      userType: PrismaUserType.CAMPAIGN_MANAGER,
+    },
+    orderBy: [
+      {
+        name: "asc",
+      },
+      {
+        email: "asc",
+      },
+    ],
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+
+  return users.map((user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+  }));
 }

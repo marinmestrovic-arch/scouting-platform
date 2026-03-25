@@ -326,6 +326,28 @@ function getChannelHandle(channel: ChannelSummary): string {
   return channel.handle?.trim() || "No handle";
 }
 
+function formatChannelMetric(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsedValue)) {
+    return value;
+  }
+
+  return new Intl.NumberFormat("en-US").format(parsedValue);
+}
+
+function formatChannelEngagementRate(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
 function getIdentityFallback(channel: ChannelSummary): string {
   return channel.title.trim().charAt(0).toUpperCase() || "?";
 }
@@ -1385,9 +1407,12 @@ function CatalogTableResults({
                   </div>
                 </th>
                 <th scope="col">Channel</th>
-                <th scope="col">YouTube channel ID</th>
+                <th scope="col">YouTube Handle</th>
+                <th scope="col">YouTube URL</th>
+                <th scope="col">YouTube Average Views</th>
+                <th scope="col">YouTube Engagement Rate</th>
+                <th scope="col">YouTube Followers</th>
                 <th scope="col">Enrichment</th>
-                <th scope="col">Detail</th>
               </tr>
             </thead>
             <tbody>
@@ -1434,14 +1459,33 @@ function CatalogTableResults({
                           </div>
                         )}
                         <div className="catalog-table__identity-copy">
-                          <p className="catalog-table__title">{channel.title}</p>
+                          <Link className="catalog-table__title catalog-table__link" href={`/catalog/${channel.id}`}>
+                            {channel.title}
+                          </Link>
                           <p className="catalog-table__meta">{getChannelHandle(channel)}</p>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <code className="catalog-table__code">{channel.youtubeChannelId}</code>
+                      <span className="catalog-table__meta">{getChannelHandle(channel)}</span>
                     </td>
+                    <td>
+                      {channel.youtubeUrl ? (
+                        <a
+                          className="catalog-table__link"
+                          href={channel.youtubeUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Open channel
+                        </a>
+                      ) : (
+                        <span className="catalog-table__meta">—</span>
+                      )}
+                    </td>
+                    <td>{formatChannelMetric(channel.youtubeAverageViews ?? null)}</td>
+                    <td>{formatChannelEngagementRate(channel.youtubeEngagementRate ?? null)}</td>
+                    <td>{formatChannelMetric(channel.youtubeFollowers ?? null)}</td>
                     <td>
                       <div className="catalog-table__enrichment">
                         <span
@@ -1455,11 +1499,6 @@ function CatalogTableResults({
                           {getCatalogEnrichmentDetailCopy(channel.enrichment)}
                         </p>
                       </div>
-                    </td>
-                    <td>
-                      <Link className="catalog-table__link" href={`/catalog/${channel.id}`}>
-                        Open channel
-                      </Link>
                     </td>
                   </tr>
                 );

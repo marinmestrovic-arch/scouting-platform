@@ -253,20 +253,21 @@ Done when:
 #### Marin:
 
 - [done] land frontend workspace reorganization baseline (branch: `feat/ui-workspace-reorg`)
-- add a separate `user_type` model for `Admin`, `Campaign Manager`, `Campaign Lead`, and `HoC` while keeping the current admin-vs-standard permission split intact
-- set existing users to `Campaign Manager` by default and keep legacy Week 6 runs rendering safely after the migration
-- extend run metadata persistence with dashboard and HubSpot-import fields: `client`, `market`, `campaign_manager_user_id`, `brief_link`, `campaign_name`, `month`, `year`, `deal_owner`, `deal_name`, `pipeline`, `deal_stage`, `currency`, `deal_type`, `activation_type`
-- update run queries/contracts so Dashboard, Database, CSV export, and HubSpot flows can read and filter by the new run metadata
-- expose campaign manager options from users whose `user_type` is `Campaign Manager`
-- replace the planned New Scouting metadata scaffold with live fields for client, market, campaign manager, brief link, campaign name, month, year, deal owner, deal name, pipeline, deal stage, currency, deal type, and activation type
-- remove `Week` from New Scouting and from the Dashboard workspace
-- rebuild the Dashboard table with functional columns: `Client`, `Market`, `Campaign Manager`, `Brief Link`, `Influencer List`, `Coverage`, `Actions`
-- add Dashboard filters at the top for `Campaign Manager`, `Client`, and `Market`
-- make `Coverage` a visual progress line plus written percentage/result copy
-- update the Database table so these columns are available: `Channel`, `YouTube Handle`, `YouTube URL`, `YouTube Average Views`, `YouTube Engagement Rate`, `YouTube Followers`
-- own the HubSpot import workflow end-to-end in Week 7, including backend batch shaping and frontend validation/history updates
-- make every run exportable into a HubSpot-importable schema with these required properties: `Contact Type`, `Campaign Name`, `Month`, `Year`, `Client name`, `Deal owner`, `Deal name`, `Pipeline`, `Deal stage`, `Currency`, `Deal Type`, `Activation Type`, `First Name`, `Last Name`, `Email`, `Influencer Type`, `Influencer Vertical`, `Country/Region`, `Language`
-- surface missing-field blockers before a HubSpot import batch/export is created and keep per-row failures visible for retry/debugging
+- [done] add a separate `user_type` model for `Admin`, `Campaign Manager`, `Campaign Lead`, and `HoC` while keeping the current admin-vs-standard permission split intact
+- [done] set existing users to `Campaign Manager` by default and keep legacy Week 6 runs rendering safely after the migration
+- [done] extend run metadata persistence with dashboard and HubSpot-import fields: `client`, `market`, `campaign_manager_user_id`, `brief_link`, `campaign_name`, `month`, `year`, `deal_owner`, `deal_name`, `pipeline`, `deal_stage`, `currency`, `deal_type`, `activation_type`
+- [done] update run queries/contracts so Dashboard, Database, CSV export, and HubSpot flows can read and filter by the new run metadata
+- [done] expose campaign manager options from users whose `user_type` is `Campaign Manager`
+- [done] replace the planned New Scouting metadata scaffold with live fields for client, market, campaign manager, brief link, campaign name, month, year, deal owner, deal name, pipeline, deal stage, currency, deal type, and activation type
+- [done] remove `Week` from New Scouting and from the Dashboard workspace
+- [done] rebuild the Dashboard table with functional columns: `Client`, `Market`, `Campaign Manager`, `Brief Link`, `Influencer List`, `Coverage`, `Actions`
+- [done] add Dashboard filters at the top for `Campaign Manager`, `Client`, and `Market`
+- [done] make `Coverage` a visual progress line plus written percentage/result copy
+- [done] update the Database table so these columns are available: `Channel`, `YouTube Handle`, `YouTube URL`, `YouTube Average Views`, `YouTube Engagement Rate`, `YouTube Followers`
+- [done] own the HubSpot import workflow end-to-end in Week 7, including backend batch shaping and frontend validation/history updates
+- [done] make every run exportable into a HubSpot-importable schema with these required properties: `Contact Type`, `Campaign Name`, `Month`, `Year`, `Client name`, `Deal owner`, `Deal name`, `Pipeline`, `Deal stage`, `Currency`, `Deal Type`, `Activation Type`, `First Name`, `Last Name`, `Email`, `Influencer Type`, `Influencer Vertical`, `Country/Region`, `Language`
+- [done] surface missing-field blockers before a HubSpot import batch/export is created and keep per-row failures visible for retry/debugging
+- Evidence: migration `20260316113000_week7_workspace_metadata_hubspot_import`; routes `/api/users/campaign-managers` and `/api/hubspot-import-batches*`; UI in New Scouting, Dashboard, Database, HubSpot, and admin user management; targeted tests in `apps/web`, `packages/core`, and `apps/worker`.
 
 #### Both:
 

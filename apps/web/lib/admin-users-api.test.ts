@@ -30,6 +30,7 @@ describe("admin users api helpers", () => {
             email: "admin@example.com",
             name: "Admin User",
             role: "admin",
+            userType: "admin",
             isActive: true,
             youtubeKeyAssigned: true,
             createdAt: "2026-03-06T10:00:00.000Z",
@@ -82,6 +83,7 @@ describe("admin users api helpers", () => {
       createAdminUser({
         email: "existing@example.com",
         role: "user",
+        userType: "campaign_manager",
         password: "StrongPassword123",
       }),
     ).rejects.toThrow("A user with this email already exists");
@@ -94,6 +96,7 @@ describe("admin users api helpers", () => {
         email: "campaign@example.com",
         name: "Campaign User",
         role: "user",
+        userType: "campaign_manager",
         isActive: true,
         youtubeKeyAssigned: false,
         createdAt: "2026-03-06T10:00:00.000Z",
@@ -105,6 +108,7 @@ describe("admin users api helpers", () => {
       email: "campaign@example.com",
       name: "Campaign User",
       role: "user",
+      userType: "campaign_manager",
       password: "StrongPassword123",
     });
 
@@ -117,6 +121,7 @@ describe("admin users api helpers", () => {
         email: "campaign@example.com",
         name: "Campaign User",
         role: "user",
+        userType: "campaign_manager",
         password: "StrongPassword123",
       }),
     });
@@ -131,6 +136,7 @@ describe("admin users api helpers", () => {
         email: "campaign@example.com",
         name: "Campaign User",
         role: "user",
+        userType: "campaign_manager",
         isActive: true,
         youtubeKeyAssigned: false,
         createdAt: "2026-03-06T10:00:00.000Z",

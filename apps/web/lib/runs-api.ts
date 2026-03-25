@@ -1,11 +1,13 @@
 import {
   createRunRequestSchema,
   createRunResponseSchema,
+  listRunsQuerySchema,
   listRecentRunsResponseSchema,
   runStatusResponseSchema,
   type CreateRunRequest,
   type CreateRunResponse,
   type ListRecentRunsResponse,
+  type ListRunsQuery,
   type RunStatusResponse,
 } from "@scouting-platform/contracts";
 
@@ -126,12 +128,36 @@ export async function createRun(input: CreateRunRequest): Promise<CreateRunRespo
   }
 }
 
-export async function fetchRecentRuns(signal?: AbortSignal): Promise<ListRecentRunsResponse> {
+export async function fetchRecentRuns(
+  input?: { signal?: AbortSignal; filters?: Partial<ListRunsQuery> },
+): Promise<ListRecentRunsResponse> {
   try {
-    const response = await fetch("/api/runs", {
+    const searchParams = new URLSearchParams();
+
+    if (input?.filters) {
+      const parsedFilters = listRunsQuerySchema.partial().parse(input.filters);
+
+      if (parsedFilters.campaignManagerUserId) {
+        searchParams.set("campaignManagerUserId", parsedFilters.campaignManagerUserId);
+      }
+
+      if (parsedFilters.client) {
+        searchParams.set("client", parsedFilters.client);
+      }
+
+      if (parsedFilters.market) {
+        searchParams.set("market", parsedFilters.market);
+      }
+
+      if (parsedFilters.limit) {
+        searchParams.set("limit", String(parsedFilters.limit));
+      }
+    }
+
+    const response = await fetch(`/api/runs${searchParams.size > 0 ? `?${searchParams.toString()}` : ""}`, {
       method: "GET",
       cache: "no-store",
-      signal: signal ?? null,
+      signal: input?.signal ?? null,
     });
     const payload = await readJsonPayload(response);
 

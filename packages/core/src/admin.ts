@@ -3,6 +3,7 @@ import {
   CredentialProvider,
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
   Role as PrismaRole,
+  UserType as PrismaUserType,
   type Prisma,
 } from "@prisma/client";
 import type {
@@ -76,6 +77,7 @@ const adminDashboardMissingKeyUserSelect = {
   email: true,
   name: true,
   role: true,
+  userType: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -112,6 +114,14 @@ function toAdminUserResponse(user: MissingKeyUserRecord): AdminUserResponse {
     email: user.email,
     name: user.name,
     role: user.role === PrismaRole.ADMIN ? "admin" : "user",
+    userType:
+      user.userType === PrismaUserType.ADMIN
+        ? "admin"
+        : user.userType === PrismaUserType.CAMPAIGN_LEAD
+          ? "campaign_lead"
+          : user.userType === PrismaUserType.HOC
+            ? "hoc"
+            : "campaign_manager",
     isActive: user.isActive,
     youtubeKeyAssigned: false,
     createdAt: user.createdAt.toISOString(),

@@ -33,7 +33,7 @@ describe("hubspot batch result page", () => {
     });
     expect(html).toContain("<h1>HubSpot Batch Result</h1>");
     expect(html).toContain(
-      "Review stored row outcomes, visible failures, and worker status for a single HubSpot push batch.",
+      "Review stored row outcomes, visible failures, CSV readiness, and legacy fallback detail for a single HubSpot batch.",
     );
     expect(html).toContain("hubspot-push-batch-result-shell:batch-123");
   });

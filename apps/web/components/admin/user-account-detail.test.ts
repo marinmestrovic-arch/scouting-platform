@@ -7,8 +7,9 @@ type OperationStatus = {
   message: string;
 };
 
-const { useStateMock, updateAdminUserYoutubeKeyMock } = vi.hoisted(() => ({
+const { useStateMock, updateAdminUserProfileMock, updateAdminUserYoutubeKeyMock } = vi.hoisted(() => ({
   useStateMock: vi.fn(),
+  updateAdminUserProfileMock: vi.fn(),
   updateAdminUserYoutubeKeyMock: vi.fn(),
 }));
 
@@ -38,6 +39,7 @@ vi.mock("next/link", async () => {
 });
 
 vi.mock("../../lib/admin-users-api", () => ({
+  updateAdminUserProfile: updateAdminUserProfileMock,
   updateAdminUserYoutubeKey: updateAdminUserYoutubeKeyMock,
 }));
 
@@ -48,6 +50,7 @@ const user = {
   email: "campaign@example.com",
   name: "Campaign User",
   role: "user" as const,
+  userType: "campaign_manager" as const,
   isActive: true,
   youtubeKeyAssigned: false,
   createdAt: "2026-03-06T10:00:00.000Z",
@@ -55,20 +58,41 @@ const user = {
 };
 
 function mockComponentState(overrides: {
+  name?: string;
+  userType?: "admin" | "campaign_manager" | "campaign_lead" | "hoc";
   youtubeKeyAssigned?: boolean;
   youtubeApiKey?: string;
+  isUpdatingProfile?: boolean;
+  profileStatus?: OperationStatus;
   isUpdatingKey?: boolean;
   updateStatus?: OperationStatus;
 } = {}) {
+  const setName = vi.fn();
+  const setUserType = vi.fn();
   const setYoutubeKeyAssigned = vi.fn();
   const setYoutubeApiKey = vi.fn();
+  const setIsUpdatingProfile = vi.fn();
+  const setProfileStatus = vi.fn();
   const setIsUpdatingKey = vi.fn();
   const setUpdateStatus = vi.fn();
 
   useStateMock.mockReset();
-  useStateMock.mockReturnValueOnce([overrides.youtubeKeyAssigned ?? user.youtubeKeyAssigned, setYoutubeKeyAssigned]);
+  useStateMock.mockReturnValueOnce([overrides.name ?? user.name, setName]);
+  useStateMock.mockReturnValueOnce([overrides.userType ?? user.userType, setUserType]);
+  useStateMock.mockReturnValueOnce([
+    overrides.youtubeKeyAssigned ?? user.youtubeKeyAssigned,
+    setYoutubeKeyAssigned,
+  ]);
   useStateMock.mockReturnValueOnce([overrides.youtubeApiKey ?? "", setYoutubeApiKey]);
   useStateMock.mockReturnValueOnce([overrides.isUpdatingKey ?? false, setIsUpdatingKey]);
+  useStateMock.mockReturnValueOnce([overrides.isUpdatingProfile ?? false, setIsUpdatingProfile]);
+  useStateMock.mockReturnValueOnce([
+    overrides.profileStatus ?? {
+      type: "idle",
+      message: "",
+    },
+    setProfileStatus,
+  ]);
   useStateMock.mockReturnValueOnce([
     overrides.updateStatus ?? {
       type: "idle",
@@ -78,36 +102,42 @@ function mockComponentState(overrides: {
   ]);
 
   return {
+    setName,
+    setUserType,
     setYoutubeKeyAssigned,
     setYoutubeApiKey,
+    setIsUpdatingProfile,
+    setProfileStatus,
     setIsUpdatingKey,
     setUpdateStatus,
   };
 }
 
-function findElementByType(node: ReactNode, type: string): ReactElement | null {
+function findElementsByType(node: ReactNode, type: string): ReactElement[] {
   if (Array.isArray(node)) {
-    for (const child of node) {
-      const match = findElementByType(child, type);
-      if (match) {
-        return match;
-      }
-    }
-
-    return null;
+    return node.flatMap((child) => findElementsByType(child, type));
   }
 
   if (!isValidElement(node)) {
-    return null;
+    return [];
   }
 
   const element = node as ReactElement<{ children?: ReactNode }>;
 
-  if (element.type === type) {
-    return element;
-  }
+  return [
+    ...(element.type === type ? [element] : []),
+    ...findElementsByType(element.props.children, type),
+  ];
+}
 
-  return findElementByType(element.props.children, type);
+function findYoutubeKeyForm(
+  tree: ReactNode,
+): ReactElement<{ onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void }> | null {
+  const forms = findElementsByType(tree, "form") as Array<
+    ReactElement<{ onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void }>
+  >;
+
+  return forms[1] ?? null;
 }
 
 describe("user account detail", () => {
@@ -174,9 +204,7 @@ describe("user account detail", () => {
         youtubeKeyAssigned: false,
       },
     });
-    const form = findElementByType(tree, "form") as ReactElement<{
-      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
-    }> | null;
+    const form = findYoutubeKeyForm(tree);
 
     expect(form).not.toBeNull();
 
@@ -217,9 +245,7 @@ describe("user account detail", () => {
       },
     });
     const initialHtml = renderToStaticMarkup(initialTree);
-    const form = findElementByType(initialTree, "form") as ReactElement<{
-      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
-    }> | null;
+    const form = findYoutubeKeyForm(initialTree);
 
     expect(initialHtml).toContain("Missing");
     expect(initialHtml).toContain("Assign YouTube API key");
@@ -271,9 +297,7 @@ describe("user account detail", () => {
         youtubeKeyAssigned: true,
       },
     });
-    const form = findElementByType(tree, "form") as ReactElement<{
-      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
-    }> | null;
+    const form = findYoutubeKeyForm(tree);
 
     expect(form).not.toBeNull();
 
@@ -307,9 +331,7 @@ describe("user account detail", () => {
         youtubeKeyAssigned: true,
       },
     });
-    const form = findElementByType(tree, "form") as ReactElement<{
-      onSubmit: (event: { preventDefault: () => void }) => Promise<void> | void;
-    }> | null;
+    const form = findYoutubeKeyForm(tree);
 
     expect(form).not.toBeNull();
 
@@ -337,15 +359,24 @@ describe("user account detail", () => {
         youtubeKeyAssigned: false,
       },
     });
-    const form = findElementByType(tree, "form") as ReactElement<{
-      suppressHydrationWarning?: boolean;
-    }> | null;
-    const input = findElementByType(tree, "input") as ReactElement<{
-      suppressHydrationWarning?: boolean;
-    }> | null;
-    const button = findElementByType(tree, "button") as ReactElement<{
-      suppressHydrationWarning?: boolean;
-    }> | null;
+    const forms = findElementsByType(tree, "form") as Array<
+      ReactElement<{
+        suppressHydrationWarning?: boolean;
+      }>
+    >;
+    const inputs = findElementsByType(tree, "input") as Array<
+      ReactElement<{
+        suppressHydrationWarning?: boolean;
+      }>
+    >;
+    const buttons = findElementsByType(tree, "button") as Array<
+      ReactElement<{
+        suppressHydrationWarning?: boolean;
+      }>
+    >;
+    const form = forms[1] ?? null;
+    const input = inputs[1] ?? null;
+    const button = buttons[1] ?? null;
 
     expect(form?.props.suppressHydrationWarning).toBe(true);
     expect(input?.props.suppressHydrationWarning).toBe(true);

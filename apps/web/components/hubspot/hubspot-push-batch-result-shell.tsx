@@ -1,8 +1,10 @@
 "use client";
 
 import type {
+  HubspotImportBatchDetail,
+  HubspotImportBatchRowStatus,
+  HubspotImportBatchStatus,
   HubspotPushBatchDetail,
-  HubspotPushBatchRow,
   HubspotPushBatchRowStatus,
   HubspotPushBatchStatus,
 } from "@scouting-platform/contracts";
@@ -10,17 +12,26 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import {
-  HubspotPushBatchesApiError,
+  fetchHubspotImportBatchDetail,
+  getHubspotImportBatchDownloadUrl,
+  HubspotImportBatchesApiError,
+} from "../../lib/hubspot-import-batches-api";
+import {
   fetchHubspotPushBatchDetail,
+  HubspotPushBatchesApiError,
 } from "../../lib/hubspot-push-batches-api";
 
 type HubspotPushBatchResultShellProps = Readonly<{
   batchId: string;
 }>;
 
+type HubspotBatchDetail =
+  | { kind: "import"; batch: HubspotImportBatchDetail }
+  | { kind: "legacy"; batch: HubspotPushBatchDetail };
+
 type HubspotPushBatchResultRequestState = {
   requestState: "loading" | "error" | "notFound" | "ready";
-  data: HubspotPushBatchDetail | null;
+  data: HubspotBatchDetail | null;
   error: string | null;
 };
 
@@ -42,7 +53,10 @@ const NOT_FOUND_REQUEST_STATE: HubspotPushBatchResultRequestState = {
   error: null,
 };
 
-const ACTIVE_POLLING_STATUSES = new Set<HubspotPushBatchStatus>(["queued", "running"]);
+const ACTIVE_POLLING_STATUSES = new Set<HubspotImportBatchStatus | HubspotPushBatchStatus>([
+  "queued",
+  "running",
+]);
 
 export const HUBSPOT_PUSH_BATCH_RESULT_POLL_INTERVAL_MS = 3000;
 
@@ -73,15 +87,26 @@ function toTitleCase(value: string): string {
     .join(" ");
 }
 
-function getRequestedByLabel(batch: Pick<HubspotPushBatchDetail, "requestedBy">): string {
+function getRequestedByLabel(
+  batch: Pick<HubspotImportBatchDetail, "requestedBy"> | Pick<HubspotPushBatchDetail, "requestedBy">,
+): string {
   return batch.requestedBy.name?.trim() || batch.requestedBy.email;
 }
 
-function formatNullableCell(value: string | null): string {
-  return value?.trim() || "Not provided";
+function getImportRowResultCopy(row: HubspotImportBatchDetail["rows"][number]): string {
+  switch (row.status) {
+    case "prepared":
+      return "Included in the generated import CSV.";
+    case "failed":
+      return row.errorMessage ?? "HubSpot import preparation failed.";
+    case "pending":
+      return "Waiting for the worker to prepare this row.";
+    default:
+      return row.status;
+  }
 }
 
-function getRowResultCopy(row: HubspotPushBatchRow): string {
+function getLegacyRowResultCopy(row: HubspotPushBatchDetail["rows"][number]): string {
   switch (row.status) {
     case "pushed":
       return row.hubspotObjectId
@@ -96,18 +121,35 @@ function getRowResultCopy(row: HubspotPushBatchRow): string {
   }
 }
 
-function getBatchStatusSummary(batch: HubspotPushBatchDetail): string {
+function getImportBatchStatusSummary(batch: HubspotImportBatchDetail): string {
   switch (batch.status) {
     case "queued":
-      return "The push is queued. This screen refreshes automatically while the worker picks it up.";
+      return "The import-ready CSV is queued. This screen refreshes automatically while the worker picks it up.";
     case "running":
-      return "The worker is pushing stored contacts to HubSpot in the background. Keep this screen open while progress refreshes automatically.";
+      return "The worker is preparing the import-ready CSV in the background. Keep this screen open while progress refreshes automatically.";
     case "completed":
-      return "The push completed and the stored per-row outcomes are ready for review.";
+      return "The import-ready CSV completed and the stored per-row outcomes are ready for review.";
     case "failed":
       return batch.lastError
-        ? `The worker failed before finishing the push. ${batch.lastError}`
-        : "The worker failed before finishing the push.";
+        ? `The worker failed before finishing the CSV. ${batch.lastError}`
+        : "The worker failed before finishing the CSV.";
+    default:
+      return batch.status;
+  }
+}
+
+function getLegacyBatchStatusSummary(batch: HubspotPushBatchDetail): string {
+  switch (batch.status) {
+    case "queued":
+      return "This legacy Week 6 push is still queued.";
+    case "running":
+      return "This legacy Week 6 push is still running.";
+    case "completed":
+      return "The legacy direct push completed and the stored row outcomes are ready for review.";
+    case "failed":
+      return batch.lastError
+        ? `The legacy push failed before finishing. ${batch.lastError}`
+        : "The legacy push failed before finishing.";
     default:
       return batch.status;
   }
@@ -118,27 +160,32 @@ function buildHubspotPushWorkspaceHref(batchId: string): string {
 }
 
 export function formatHubspotPushBatchResultStatusLabel(
-  status: HubspotPushBatchStatus | HubspotPushBatchRowStatus,
+  status:
+    | HubspotImportBatchStatus
+    | HubspotPushBatchStatus
+    | HubspotImportBatchRowStatus
+    | HubspotPushBatchRowStatus,
 ): string {
   return toTitleCase(status);
 }
 
-export function shouldPollHubspotPushBatchResult(
-  batch: Pick<HubspotPushBatchDetail, "status"> | null,
-): boolean {
+export function shouldPollHubspotPushBatchResult(batch: HubspotBatchDetail | null): boolean {
   if (!batch) {
     return false;
   }
 
-  return ACTIVE_POLLING_STATUSES.has(batch.status);
+  return ACTIVE_POLLING_STATUSES.has(batch.batch.status);
 }
 
 export function getHubspotPushBatchDetailRequestErrorMessage(error: unknown): string {
-  if (error instanceof HubspotPushBatchesApiError) {
-    if (error.status === 401 || error.status === 403) {
-      return "Your session does not allow access to this HubSpot push batch anymore. Sign in again and retry.";
-    }
+  if (
+    (error instanceof HubspotImportBatchesApiError || error instanceof HubspotPushBatchesApiError) &&
+    (error.status === 401 || error.status === 403)
+  ) {
+    return "Your session does not allow access to this HubSpot batch anymore. Sign in again and retry.";
+  }
 
+  if (error instanceof HubspotImportBatchesApiError || error instanceof HubspotPushBatchesApiError) {
     return error.message;
   }
 
@@ -146,7 +193,222 @@ export function getHubspotPushBatchDetailRequestErrorMessage(error: unknown): st
     return error.message;
   }
 
-  return "Unable to load HubSpot push batch details. Please try again.";
+  return "Unable to load HubSpot batch details. Please try again.";
+}
+
+function renderImportResult(batch: HubspotImportBatchDetail) {
+  return (
+    <>
+      <div className="hubspot-push__callout">
+        <h3>Batch summary</h3>
+        <p>
+          {batch.preparedRowCount} prepared · {batch.failedRowCount} failed · {batch.totalRowCount} total
+        </p>
+      </div>
+
+      <dl className="hubspot-push__details">
+        <div>
+          <dt>Requested by</dt>
+          <dd>{getRequestedByLabel(batch)}</dd>
+        </div>
+        <div>
+          <dt>Run</dt>
+          <dd>{batch.run.name}</dd>
+        </div>
+        <div>
+          <dt>File</dt>
+          <dd>{batch.fileName}</dd>
+        </div>
+        <div>
+          <dt>Schema</dt>
+          <dd>{batch.schemaVersion}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{formatTimestamp(batch.createdAt)}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>{formatTimestamp(batch.startedAt)}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{formatTimestamp(batch.updatedAt)}</dd>
+        </div>
+        <div>
+          <dt>Completed</dt>
+          <dd>{formatTimestamp(batch.completedAt)}</dd>
+        </div>
+        <div>
+          <dt>Last error</dt>
+          <dd>{batch.lastError ?? "No batch-level worker error recorded."}</dd>
+        </div>
+      </dl>
+
+      <div className="hubspot-push__detail-actions">
+        <a className="hubspot-push__button" href={getHubspotImportBatchDownloadUrl(batch.id)}>
+          Download CSV
+        </a>
+        <Link
+          className="hubspot-push__button hubspot-push__button--secondary"
+          href={buildHubspotPushWorkspaceHref(batch.id)}
+        >
+          Open workspace view
+        </Link>
+      </div>
+
+      {batch.rows.length === 0 ? (
+        <div className="hubspot-push__empty-state">
+          <h3>No stored rows</h3>
+          <p>This batch has no stored row results yet.</p>
+        </div>
+      ) : (
+        <div className="hubspot-push__table-wrap">
+          <table className="hubspot-push__table">
+            <thead>
+              <tr>
+                <th scope="col">Status</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Channel</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batch.rows.map((row) => (
+                <tr
+                  className={
+                    row.status === "failed"
+                      ? "hubspot-push__table-row hubspot-push__table-row--failed"
+                      : "hubspot-push__table-row"
+                  }
+                  key={row.id}
+                >
+                  <td>
+                    <span className={`hubspot-push__status hubspot-push__status--${row.status}`}>
+                      {formatHubspotPushBatchResultStatusLabel(row.status)}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="hubspot-push__cell-copy">
+                      {[row.firstName, row.lastName].filter(Boolean).join(" ")}
+                    </div>
+                    <div className="hubspot-push__cell-copy">{row.contactEmail}</div>
+                  </td>
+                  <td>{row.channelTitle}</td>
+                  <td>{getImportRowResultCopy(row)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function renderLegacyResult(batch: HubspotPushBatchDetail) {
+  return (
+    <>
+      <div className="hubspot-push__callout">
+        <h3>Legacy Week 6 push</h3>
+        <p>
+          This result came from the older direct-push workflow and remains available here as
+          read-only history.
+        </p>
+      </div>
+
+      <dl className="hubspot-push__details">
+        <div>
+          <dt>Requested by</dt>
+          <dd>{getRequestedByLabel(batch)}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{formatTimestamp(batch.createdAt)}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>{formatTimestamp(batch.startedAt)}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{formatTimestamp(batch.updatedAt)}</dd>
+        </div>
+        <div>
+          <dt>Completed</dt>
+          <dd>{formatTimestamp(batch.completedAt)}</dd>
+        </div>
+        <div>
+          <dt>Last error</dt>
+          <dd>{batch.lastError ?? "No batch-level worker error recorded."}</dd>
+        </div>
+      </dl>
+
+      <details className="hubspot-push__scope-disclosure">
+        <summary>View selected channel IDs</summary>
+        <ul className="hubspot-push__scope-list">
+          {batch.scope.channelIds.map((channelId) => (
+            <li key={channelId}>
+              <code>{channelId}</code>
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <div className="hubspot-push__detail-actions">
+        <Link
+          className="hubspot-push__button hubspot-push__button--secondary"
+          href={buildHubspotPushWorkspaceHref(batch.id)}
+        >
+          Open workspace view
+        </Link>
+        <Link className="hubspot-push__button hubspot-push__button--secondary" href="/catalog">
+          Open catalog
+        </Link>
+      </div>
+
+      {batch.rows.length === 0 ? (
+        <div className="hubspot-push__empty-state">
+          <h3>No stored rows</h3>
+          <p>This legacy push has no stored row results yet.</p>
+        </div>
+      ) : (
+        <div className="hubspot-push__table-wrap">
+          <table className="hubspot-push__table">
+            <thead>
+              <tr>
+                <th scope="col">Status</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Channel</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batch.rows.map((row) => (
+                <tr
+                  className={
+                    row.status === "failed"
+                      ? "hubspot-push__table-row hubspot-push__table-row--failed"
+                      : "hubspot-push__table-row"
+                  }
+                  key={row.id}
+                >
+                  <td>
+                    <span className={`hubspot-push__status hubspot-push__status--${row.status}`}>
+                      {formatHubspotPushBatchResultStatusLabel(row.status)}
+                    </span>
+                  </td>
+                  <td>{row.contactEmail ?? "Not provided"}</td>
+                  <td>{row.channelId}</td>
+                  <td>{getLegacyRowResultCopy(row)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
 }
 
 export function HubspotPushBatchResultShellView({
@@ -159,7 +421,7 @@ export function HubspotPushBatchResultShellView({
     return (
       <section className="hubspot-push__feedback hubspot-push__feedback--loading" role="status">
         <p>
-          Loading HubSpot push batch <code>{batchId}</code>.
+          Loading HubSpot batch <code>{batchId}</code>.
         </p>
       </section>
     );
@@ -168,7 +430,7 @@ export function HubspotPushBatchResultShellView({
   if (requestState.requestState === "error" && !requestState.data) {
     return (
       <section className="hubspot-push__feedback hubspot-push__feedback--error" role="alert">
-        <p>{requestState.error ?? "Unable to load HubSpot push batch details."}</p>
+        <p>{requestState.error ?? "Unable to load HubSpot batch details."}</p>
         <button className="hubspot-push__button" onClick={onRetry} type="button">
           Retry
         </button>
@@ -179,30 +441,39 @@ export function HubspotPushBatchResultShellView({
   if (requestState.requestState === "notFound") {
     return (
       <section className="hubspot-push__empty-state" role="status">
-        <h2>HubSpot push batch not found</h2>
+        <h2>HubSpot batch not found</h2>
         <p>The requested batch does not exist or is no longer visible to this account.</p>
       </section>
     );
   }
 
-  const batch = requestState.data;
+  const detail = requestState.data;
 
-  if (!batch) {
+  if (!detail) {
     return (
       <section className="hubspot-push__feedback hubspot-push__feedback--error" role="alert">
-        <p>Unable to load HubSpot push batch details.</p>
+        <p>Unable to load HubSpot batch details.</p>
       </section>
     );
   }
+
+  const batch = detail.batch;
+  const summary =
+    detail.kind === "import"
+      ? getImportBatchStatusSummary(detail.batch)
+      : getLegacyBatchStatusSummary(detail.batch);
+  const title = detail.kind === "import" ? detail.batch.run.name : getRequestedByLabel(detail.batch);
 
   return (
     <div className="hubspot-push">
       <section className="hubspot-push__panel">
         <header className="hubspot-push__detail-header">
           <div>
-            <p className="hubspot-push__eyebrow">Batch result</p>
-            <h2>{getRequestedByLabel(batch)}</h2>
-            <p className="hubspot-push__panel-copy">{getBatchStatusSummary(batch)}</p>
+            <p className="hubspot-push__eyebrow">
+              {detail.kind === "import" ? "Week 7 import batch" : "Legacy Week 6 push"}
+            </p>
+            <h2>{title}</h2>
+            <p className="hubspot-push__panel-copy">{summary}</p>
           </div>
           <span className={`hubspot-push__status hubspot-push__status--${batch.status}`}>
             {formatHubspotPushBatchResultStatusLabel(batch.status)}
@@ -221,123 +492,9 @@ export function HubspotPushBatchResultShellView({
           </p>
         ) : null}
 
-        <div className="hubspot-push__callout">
-          <h3>Batch summary</h3>
-          <p>
-            {batch.pushedRowCount} pushed · {batch.failedRowCount} failed · {batch.totalRowCount} total
-          </p>
-        </div>
-
-        <dl className="hubspot-push__details">
-          <div>
-            <dt>Requested by</dt>
-            <dd>{getRequestedByLabel(batch)}</dd>
-          </div>
-          <div>
-            <dt>Batch ID</dt>
-            <dd>
-              <code>{batch.id}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>Created</dt>
-            <dd>{formatTimestamp(batch.createdAt)}</dd>
-          </div>
-          <div>
-            <dt>Started</dt>
-            <dd>{formatTimestamp(batch.startedAt)}</dd>
-          </div>
-          <div>
-            <dt>Updated</dt>
-            <dd>{formatTimestamp(batch.updatedAt)}</dd>
-          </div>
-          <div>
-            <dt>Completed</dt>
-            <dd>{formatTimestamp(batch.completedAt)}</dd>
-          </div>
-          <div>
-            <dt>Last error</dt>
-            <dd>{batch.lastError ?? "No batch-level worker error recorded."}</dd>
-          </div>
-        </dl>
-
-        <details className="hubspot-push__scope-disclosure">
-          <summary>View selected channel IDs</summary>
-          <ul className="hubspot-push__scope-list">
-            {batch.scope.channelIds.map((channelId) => (
-              <li key={channelId}>
-                <code>{channelId}</code>
-              </li>
-            ))}
-          </ul>
-        </details>
-
-        <div className="hubspot-push__detail-actions">
-          <Link
-            className="hubspot-push__button hubspot-push__button--secondary"
-            href={buildHubspotPushWorkspaceHref(batch.id)}
-          >
-            Open workspace view
-          </Link>
-          <Link className="hubspot-push__button hubspot-push__button--secondary" href="/catalog">
-            Open catalog
-          </Link>
-        </div>
-      </section>
-
-      <section className="hubspot-push__panel">
-        <header className="hubspot-push__panel-header">
-          <h2>Row outcomes</h2>
-          <p>Stored per-row results stay visible here for retry planning and failure review.</p>
-        </header>
-
-        {batch.rows.length === 0 ? (
-          <div className="hubspot-push__empty-state">
-            <h3>No stored rows</h3>
-            <p>This batch has no stored row results yet.</p>
-          </div>
-        ) : (
-          <div className="hubspot-push__table-wrap">
-            <table className="hubspot-push__table">
-              <thead>
-                <tr>
-                  <th scope="col">Status</th>
-                  <th scope="col">Contact</th>
-                  <th scope="col">Channel</th>
-                  <th scope="col">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batch.rows.map((row) => (
-                  <tr
-                    className={
-                      row.status === "failed"
-                        ? "hubspot-push__table-row hubspot-push__table-row--failed"
-                        : "hubspot-push__table-row"
-                    }
-                    key={row.id}
-                  >
-                    <td>
-                      <span className={`hubspot-push__status hubspot-push__status--${row.status}`}>
-                        {formatHubspotPushBatchResultStatusLabel(row.status)}
-                      </span>
-                    </td>
-                    <td>{formatNullableCell(row.contactEmail)}</td>
-                    <td>
-                      <code>{row.channelId}</code>
-                    </td>
-                    <td>
-                      {getRowResultCopy(row)}
-                      {row.status === "pushed" && row.hubspotObjectId ? (
-                        <div className="hubspot-push__cell-copy">{row.hubspotObjectId}</div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {detail.kind === "import"
+          ? renderImportResult(detail.batch)
+          : renderLegacyResult(detail.batch)}
       </section>
     </div>
   );
@@ -350,19 +507,45 @@ export function HubspotPushBatchResultShell({ batchId }: HubspotPushBatchResultS
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
+    let didCancel = false;
     const abortController = new AbortController();
-    const keepCurrentDetailVisible =
-      requestState.requestState === "ready" && requestState.data?.id === batchId;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    if (!keepCurrentDetailVisible) {
-      setRequestState(INITIAL_REQUEST_STATE);
-    } else {
-      setIsRefreshing(true);
-    }
+    async function loadDetail(polling = false) {
+      if (!polling) {
+        setRequestState((current) =>
+          current.data
+            ? { ...current, error: null }
+            : {
+                requestState: "loading",
+                data: null,
+                error: null,
+              },
+        );
+      } else {
+        setIsRefreshing(true);
+      }
 
-    void fetchHubspotPushBatchDetail(batchId, abortController.signal)
-      .then((detail) => {
-        if (abortController.signal.aborted) {
+      try {
+        let detail: HubspotBatchDetail;
+
+        try {
+          detail = {
+            kind: "import",
+            batch: await fetchHubspotImportBatchDetail(batchId, abortController.signal),
+          };
+        } catch (error) {
+          if (error instanceof HubspotImportBatchesApiError && error.status === 404) {
+            detail = {
+              kind: "legacy",
+              batch: await fetchHubspotPushBatchDetail(batchId, abortController.signal),
+            };
+          } else {
+            throw error;
+          }
+        }
+
+        if (didCancel || abortController.signal.aborted) {
           return;
         }
 
@@ -371,73 +554,66 @@ export function HubspotPushBatchResultShell({ batchId }: HubspotPushBatchResultS
           data: detail,
           error: null,
         });
-      })
-      .catch((error: unknown) => {
-        if (abortController.signal.aborted) {
+
+        if (shouldPollHubspotPushBatchResult(detail)) {
+          timeoutId = setTimeout(() => {
+            void loadDetail(true);
+          }, HUBSPOT_PUSH_BATCH_RESULT_POLL_INTERVAL_MS);
+        }
+      } catch (error) {
+        if (didCancel || abortController.signal.aborted) {
           return;
         }
 
-        if (error instanceof HubspotPushBatchesApiError && error.status === 404) {
+        if (
+          (error instanceof HubspotImportBatchesApiError || error instanceof HubspotPushBatchesApiError) &&
+          error.status === 404
+        ) {
           setRequestState(NOT_FOUND_REQUEST_STATE);
           return;
         }
 
-        const message = getHubspotPushBatchDetailRequestErrorMessage(error);
+        const errorMessage = getHubspotPushBatchDetailRequestErrorMessage(error);
 
-        setRequestState((current) => {
-          if (current.requestState === "ready" && current.data?.id === batchId) {
-            return {
-              requestState: "ready",
-              data: current.data,
-              error: message,
-            };
-          }
-
-          return {
-            requestState: "error",
-            data: null,
-            error: message,
-          };
-        });
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
+        setRequestState((current) =>
+          current.data
+            ? {
+                requestState: "ready",
+                data: current.data,
+                error: errorMessage,
+              }
+            : {
+                requestState: "error",
+                data: null,
+                error: errorMessage,
+              },
+        );
+      } finally {
+        if (!didCancel && !abortController.signal.aborted) {
           setIsRefreshing(false);
         }
-      });
-
-    return () => {
-      abortController.abort();
-    };
-  }, [batchId, reloadToken]);
-
-  useEffect(() => {
-    if (
-      requestState.requestState !== "ready" ||
-      isRefreshing ||
-      !shouldPollHubspotPushBatchResult(requestState.data)
-    ) {
-      return;
+      }
     }
 
-    const timeoutId = setTimeout(() => {
-      setReloadToken((current) => current + 1);
-    }, HUBSPOT_PUSH_BATCH_RESULT_POLL_INTERVAL_MS);
+    void loadDetail();
 
     return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [isRefreshing, requestState]);
+      didCancel = true;
+      abortController.abort();
 
-  function handleRetry() {
-    setReloadToken((current) => current + 1);
-  }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [batchId, reloadToken]);
 
   return (
     <HubspotPushBatchResultShellView
       batchId={batchId}
       isRefreshing={isRefreshing}
-      onRetry={handleRetry}
+      onRetry={() => {
+        setReloadToken((current) => current + 1);
+      }}
       requestState={requestState}
     />
   );

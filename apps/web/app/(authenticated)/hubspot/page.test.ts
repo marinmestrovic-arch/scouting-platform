@@ -21,7 +21,7 @@ describe("hubspot page", () => {
 
     expect(html).toContain("HubSpot");
     expect(html).toContain(
-      "Review selected creator push batches, inspect row failures, and track background HubSpot delivery without leaving the authenticated workspace.",
+      "Review Week 7 import-ready CSV batches, inspect missing-field failures, and keep legacy Week 6 push history readable without leaving the authenticated workspace.",
     );
     expect(hubspotPushManagerMock).toHaveBeenCalledTimes(1);
     expect(html).toContain("hubspot-push-manager");

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { startTransition, useState } from "react";
 
-import { ApiRequestError, createRun } from "../../lib/runs-api";
+import { ApiRequestError } from "../../lib/runs-api";
 
 type CreateRunShellProps = Readonly<{
   showRunsIndexLink?: boolean;
@@ -44,7 +44,7 @@ const IDLE_REQUEST_STATE: CreateRunRequestState = {
 
 const SUBMITTING_REQUEST_STATE: CreateRunRequestState = {
   status: "submitting",
-  message: "Creating the run and opening its live status page.",
+  message: "Opening the Week 7 New Scouting workspace.",
 };
 
 export function normalizeRunDraft(draft: RunDraft): RunDraft {
@@ -117,23 +117,23 @@ export function CreateRunShellView({
           <p className="run-create__eyebrow">Week 3 discovery</p>
           <h2 id="run-create-heading">Start a scouting run</h2>
           <p>
-            The worker will search the existing catalog first, then use the assigned YouTube API
-            key for fresh discovery and snapshot the combined result set.
+            This legacy shell now forwards to the Week 7 New Scouting workspace, where campaign
+            metadata, Dashboard filters, and HubSpot import readiness are stored together.
           </p>
         </header>
 
         <dl className="run-create__highlights">
           <div>
             <dt>Input</dt>
-            <dd>Run name, target, and a discovery query.</dd>
+            <dd>Use New Scouting for the full Week 7 metadata set.</dd>
           </div>
           <div>
-            <dt>Discovery source</dt>
-            <dd>Your server-side assigned YouTube Data API key.</dd>
+            <dt>Primary route</dt>
+            <dd>The live run form now lives at /new-scouting.</dd>
           </div>
           <div>
             <dt>Output</dt>
-            <dd>A persisted run snapshot with queue-backed status tracking.</dd>
+            <dd>Dashboard-ready runs plus HubSpot import-ready metadata.</dd>
           </div>
         </dl>
       </section>
@@ -269,14 +269,8 @@ export function CreateRunShell({ showRunsIndexLink = false }: CreateRunShellProp
         throw new Error("Run name, target, and search query are required.");
       }
 
-      const response = await createRun({
-        name: normalizedDraft.name,
-        query: normalizedDraft.query,
-        target: normalizedTarget,
-      });
-
       startTransition(() => {
-        router.push(`/runs/${response.runId}`);
+        router.push("/new-scouting");
       });
     } catch (error) {
       setRequestState({

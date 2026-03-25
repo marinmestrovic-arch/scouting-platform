@@ -52,6 +52,8 @@ const csvImportRowSelect = {
   youtubeChannelId: true,
   channelTitle: true,
   contactEmail: true,
+  firstName: true,
+  lastName: true,
   subscriberCount: true,
   viewCount: true,
   videoCount: true,
@@ -79,6 +81,8 @@ type ParsedCsvImportRow = {
   youtubeChannelId: string;
   channelTitle: string;
   contactEmail: string | null;
+  firstName: string | null;
+  lastName: string | null;
   subscriberCount: string | null;
   viewCount: string | null;
   videoCount: string | null;
@@ -132,6 +136,8 @@ function toCsvImportRow(row: CsvImportBatchDetailRecord["rows"][number]): CsvImp
     youtubeChannelId: row.youtubeChannelId,
     channelTitle: row.channelTitle,
     contactEmail: row.contactEmail,
+    firstName: row.firstName,
+    lastName: row.lastName,
     subscriberCount: row.subscriberCount,
     viewCount: row.viewCount,
     videoCount: row.videoCount,
@@ -253,6 +259,10 @@ function isValidContactEmail(value: string): boolean {
   return value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function isValidContactName(value: string): boolean {
+  return value.length <= 200;
+}
+
 function isValidCountString(value: string): boolean {
   return value.length <= 30 && /^\d+$/.test(value);
 }
@@ -285,33 +295,45 @@ function toParsedCsvImportRow(rowNumber: number, rawRow: string[]): ParsedCsvImp
     isValidContactEmail,
     errors,
   );
+  const firstName = validateOptionalField(
+    "firstName",
+    toNullableTrimmed(rawRow[3]),
+    isValidContactName,
+    errors,
+  );
+  const lastName = validateOptionalField(
+    "lastName",
+    toNullableTrimmed(rawRow[4]),
+    isValidContactName,
+    errors,
+  );
   const subscriberCount = validateOptionalField(
     "subscriberCount",
-    toNullableTrimmed(rawRow[3]),
+    toNullableTrimmed(rawRow[5]),
     isValidCountString,
     errors,
   );
   const viewCount = validateOptionalField(
     "viewCount",
-    toNullableTrimmed(rawRow[4]),
+    toNullableTrimmed(rawRow[6]),
     isValidCountString,
     errors,
   );
   const videoCount = validateOptionalField(
     "videoCount",
-    toNullableTrimmed(rawRow[5]),
+    toNullableTrimmed(rawRow[7]),
     isValidCountString,
     errors,
   );
   const notes = validateOptionalField(
     "notes",
-    toNullableTrimmed(rawRow[6]),
+    toNullableTrimmed(rawRow[8]),
     isValidNotes,
     errors,
   );
   const sourceLabel = validateOptionalField(
     "sourceLabel",
-    toNullableTrimmed(rawRow[7]),
+    toNullableTrimmed(rawRow[9]),
     isValidSourceLabel,
     errors,
   );
@@ -322,6 +344,8 @@ function toParsedCsvImportRow(rowNumber: number, rawRow: string[]): ParsedCsvImp
     youtubeChannelId,
     channelTitle,
     contactEmail,
+    firstName,
+    lastName,
     subscriberCount,
     viewCount,
     videoCount,
@@ -559,6 +583,8 @@ export async function createCsvImportBatch(input: {
         youtubeChannelId: row.youtubeChannelId,
         channelTitle: row.channelTitle,
         contactEmail: row.contactEmail,
+        firstName: row.firstName,
+        lastName: row.lastName,
         subscriberCount: row.subscriberCount,
         viewCount: row.viewCount,
         videoCount: row.videoCount,
@@ -694,6 +720,8 @@ async function applyPendingRow(input: {
         youtubeChannelId: true,
         channelTitle: true,
         contactEmail: true,
+        firstName: true,
+        lastName: true,
         subscriberCount: true,
         viewCount: true,
         videoCount: true,
@@ -736,9 +764,13 @@ async function applyPendingRow(input: {
         create: {
           channelId: channel.id,
           email: row.contactEmail,
+          firstName: row.firstName,
+          lastName: row.lastName,
           csvImportBatchId: input.importBatchId,
         },
         update: {
+          firstName: row.firstName,
+          lastName: row.lastName,
           csvImportBatchId: input.importBatchId,
         },
       });
@@ -749,6 +781,7 @@ async function applyPendingRow(input: {
         channelId: channel.id,
         csvImportBatchId: input.importBatchId,
         ...(row.subscriberCount ? { subscriberCount: BigInt(row.subscriberCount) } : {}),
+        ...(row.subscriberCount ? { youtubeFollowers: BigInt(row.subscriberCount) } : {}),
         ...(row.viewCount ? { viewCount: BigInt(row.viewCount) } : {}),
         ...(row.videoCount ? { videoCount: BigInt(row.videoCount) } : {}),
       };
@@ -761,6 +794,7 @@ async function applyPendingRow(input: {
         update: {
           csvImportBatchId: input.importBatchId,
           ...(row.subscriberCount ? { subscriberCount: BigInt(row.subscriberCount) } : {}),
+          ...(row.subscriberCount ? { youtubeFollowers: BigInt(row.subscriberCount) } : {}),
           ...(row.viewCount ? { viewCount: BigInt(row.viewCount) } : {}),
           ...(row.videoCount ? { videoCount: BigInt(row.videoCount) } : {}),
         },

@@ -4,6 +4,7 @@ export * from "./auth";
 export * from "./channels";
 export * from "./csv-exports";
 export * from "./csv-imports";
+export * from "./hubspot-imports";
 export * from "./hubspot-pushes";
 export * from "./jobs";
 export * from "./runs";

@@ -11,7 +11,7 @@ export default async function HubspotBatchResultPage({ params }: HubspotBatchRes
   return (
     <PageSection
       title="HubSpot Batch Result"
-      description="Review stored row outcomes, visible failures, and worker status for a single HubSpot push batch."
+      description="Review stored row outcomes, visible failures, CSV readiness, and legacy fallback detail for a single HubSpot batch."
     >
       <HubspotPushBatchResultShell batchId={batchId} />
     </PageSection>

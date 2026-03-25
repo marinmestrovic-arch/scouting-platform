@@ -24,6 +24,30 @@ vi.mock("next/navigation", () => ({
 
 import { DashboardWorkspace } from "./dashboard-workspace";
 
+function buildRunMetadata() {
+  return {
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+    campaignManager: {
+      id: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+    briefLink: "https://example.com/brief",
+    campaignName: "Spring Launch 2026",
+    month: "march" as const,
+    year: 2026,
+    dealOwner: "Marin",
+    dealName: "Sony Gaming Q2",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
 describe("dashboard workspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,10 +73,24 @@ describe("dashboard workspace", () => {
                 startedAt: "2026-03-15T12:01:00.000Z",
                 completedAt: "2026-03-15T13:00:00.000Z",
                 resultCount: 12,
+                metadata: buildRunMetadata(),
               },
             ],
+            filterOptions: {
+              campaignManagers: [buildRunMetadata().campaignManager],
+              clients: ["Sony"],
+              markets: ["DACH"],
+            },
           },
           error: null,
+        },
+        vi.fn(),
+      ])
+      .mockReturnValueOnce([
+        {
+          campaignManagerUserId: "",
+          client: "",
+          market: "",
         },
         vi.fn(),
       ])
@@ -68,24 +106,28 @@ describe("dashboard workspace", () => {
       ]);
   });
 
-  it("renders scaffolded planning controls and live run actions", () => {
+  it("renders Week 7 dashboard filters, metadata columns, and run actions", () => {
     const html = renderToStaticMarkup(createElement(DashboardWorkspace));
 
     expect(html).toContain("Runs");
-    expect(html).toContain("Client and Market");
-    expect(html).toContain("Campaign manager");
-    expect(html).toContain("Target");
+    expect(html).toContain("Campaign Manager");
+    expect(html).toContain("Client");
+    expect(html).toContain("Market");
+    expect(html).toContain("Brief Link");
+    expect(html).toContain("Influencer List");
     expect(html).toContain("Coverage");
     expect(html).toContain("Actions");
     expect(html).toContain('href="/database?tab=runs&amp;runId=run-1"');
     expect(html).toContain(">Gaming run<");
-    expect(html).not.toContain("gaming creators");
-    expect(html).not.toContain("Open Database");
-    expect(html).not.toContain("New scouting");
-    expect(html).toContain(">20<");
-    expect(html).toContain("12 / 20");
+    expect(html).toContain(">Sony<");
+    expect(html).toContain(">DACH<");
+    expect(html).toContain(">Manager<");
+    expect(html).toContain('href="https://example.com/brief"');
+    expect(html).toContain("60% coverage · 12/20");
     expect(html).toContain("Export");
     expect(html).toContain("HubSpot");
-    expect((html.match(/Pending backend/g) ?? []).length).toBe(2);
+    expect(html).toContain("All campaign managers");
+    expect(html).toContain("All clients");
+    expect(html).toContain("All markets");
   });
 });

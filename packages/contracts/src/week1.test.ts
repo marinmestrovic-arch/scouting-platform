@@ -9,6 +9,36 @@ import {
   segmentFiltersSchema,
 } from "./index";
 
+function buildRunMetadataInput() {
+  return {
+    client: "Sony",
+    market: "DACH",
+    campaignManagerUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+    campaignName: "Spring Launch",
+    month: "march" as const,
+    year: 2026,
+    dealOwner: "Marin Mestrovic",
+    dealName: "Sony Launch DACH",
+    pipeline: "New business",
+    dealStage: "Contract sent",
+    currency: "EUR",
+    dealType: "Paid social",
+    activationType: "YouTube integration",
+  };
+}
+
+function buildRunMetadataResponse() {
+  return {
+    ...buildRunMetadataInput(),
+    briefLink: null,
+    campaignManager: {
+      id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+      email: "manager@example.com",
+      name: "Manager",
+    },
+  };
+}
+
 describe("week 1 and week 2 contracts", () => {
   it("parses valid admin user payload", () => {
     const payload = createAdminUserRequestSchema.parse({
@@ -68,6 +98,7 @@ describe("week 1 and week 2 contracts", () => {
       name: "Campaign run",
       query: "gaming creators",
       target: 20,
+      metadata: buildRunMetadataInput(),
     });
 
     expect(payload.name).toBe("Campaign run");
@@ -87,6 +118,7 @@ describe("week 1 and week 2 contracts", () => {
       updatedAt: new Date().toISOString(),
       startedAt: null,
       completedAt: null,
+      metadata: buildRunMetadataResponse(),
       results: [
         {
           id: "24a57b02-3008-4af1-9b3a-340bd0db7d1c",
@@ -123,8 +155,20 @@ describe("week 1 and week 2 contracts", () => {
           startedAt: new Date().toISOString(),
           completedAt: new Date().toISOString(),
           resultCount: 3,
+          metadata: buildRunMetadataResponse(),
         },
       ],
+      filterOptions: {
+        campaignManagers: [
+          {
+            id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+            email: "manager@example.com",
+            name: "Manager",
+          },
+        ],
+        clients: ["Sony"],
+        markets: ["DACH"],
+      },
     });
 
     expect(payload.items[0]?.resultCount).toBe(3);

@@ -90,6 +90,7 @@ function buildDashboard(overrides?: Partial<AdminDashboardResponse>): AdminDashb
           email: "missing-key@example.com",
           name: "Missing Key",
           role: "user",
+          userType: "campaign_manager",
           isActive: true,
           youtubeKeyAssigned: false,
           createdAt: "2026-03-10T09:00:00.000Z",

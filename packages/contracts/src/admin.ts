@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { adminAdvancedReportRequestSummarySchema } from "./advanced-reports";
-import { roleSchema } from "./auth";
+import { roleSchema, userTypeSchema } from "./auth";
 import { csvImportBatchSummarySchema } from "./csv-imports";
 
 const isoDatetimeSchema = z.string().datetime();
@@ -10,7 +10,13 @@ export const createAdminUserRequestSchema = z.object({
   email: z.string().email(),
   name: z.string().trim().min(1).max(200).optional(),
   role: roleSchema.default("user"),
+  userType: userTypeSchema.default("campaign_manager"),
   password: z.string().min(8).max(128),
+});
+
+export const updateAdminUserProfileRequestSchema = z.object({
+  name: z.string().trim().min(1).max(200).nullable().optional(),
+  userType: userTypeSchema,
 });
 
 export const updateAdminUserPasswordRequestSchema = z.object({
@@ -30,6 +36,7 @@ export const adminUserResponseSchema = z.object({
   email: z.string().email(),
   name: z.string().nullable(),
   role: roleSchema,
+  userType: userTypeSchema,
   isActive: z.boolean(),
   youtubeKeyAssigned: z.boolean(),
   createdAt: isoDatetimeSchema,
@@ -76,6 +83,7 @@ export const adminDashboardResponseSchema = z.object({
 });
 
 export type CreateAdminUserRequest = z.infer<typeof createAdminUserRequestSchema>;
+export type UpdateAdminUserProfileRequest = z.infer<typeof updateAdminUserProfileRequestSchema>;
 export type UpdateAdminUserPasswordRequest = z.infer<typeof updateAdminUserPasswordRequestSchema>;
 export type UpdateAdminUserYoutubeKeyRequest = z.infer<typeof updateAdminUserYoutubeKeyRequestSchema>;
 export type UpdateAdminUserYoutubeKeyResponse = z.infer<typeof updateAdminUserYoutubeKeyResponseSchema>;
