@@ -231,6 +231,7 @@ describe("week 5 contracts", () => {
             email: "manager-without-key@example.com",
             name: "Missing Key",
             role: "user",
+            userType: "campaign_manager",
             isActive: true,
             youtubeKeyAssigned: false,
             createdAt: new Date().toISOString(),
