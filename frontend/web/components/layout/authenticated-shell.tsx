@@ -13,14 +13,23 @@ export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) 
   return (
     <div className="auth-shell" suppressHydrationWarning>
       <header className="auth-shell__header">
-        <Link className="auth-shell__brand" href="/dashboard">
-          <span>Scouting Platform</span>
-        </Link>
-        <AppNavigation role={role} />
+        <div className="auth-shell__header-inner">
+          <Link className="auth-shell__brand" href="/dashboard">
+            <span className="auth-shell__brand-mark" aria-hidden="true">
+              SP
+            </span>
+            <span className="auth-shell__brand-copy">
+              <strong>Scouting Platform</strong>
+              <small>Creator scouting workspace</small>
+            </span>
+          </Link>
 
-        <div className="auth-shell__actions">
-          <span className="auth-shell__role-badge">{role === "admin" ? "Admin" : "User"}</span>
-          <SignOutForm />
+          <AppNavigation role={role} />
+
+          <div className="auth-shell__actions">
+            <span className="auth-shell__role-badge">{role === "admin" ? "Admin" : "User"}</span>
+            <SignOutForm />
+          </div>
         </div>
       </header>
       <main className="auth-shell__content">{children}</main>
