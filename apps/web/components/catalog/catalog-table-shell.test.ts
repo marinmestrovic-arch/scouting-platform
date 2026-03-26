@@ -662,7 +662,7 @@ describe("catalog table shell view", () => {
     expect(html).toContain(">Next</button>");
   });
 
-  it("renders populated rows, detail links, and all enrichment labels", () => {
+  it("renders populated rows with the current catalog table columns", () => {
     const statuses: Array<{
       status: ChannelEnrichmentStatus;
       label: string;
@@ -749,15 +749,13 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    for (const { label, copy } of statuses) {
-      expect(html).toContain(label);
-      expect(html).toContain(copy);
-    }
-
     expect(html).toContain("value=\"space\"");
     expect(html).toContain("Pending approval");
     expect(html).toContain("href=\"/catalog/00000000-0000-0000-0000-000000000001\"");
-    expect(html).toContain("Open channel");
+    expect(html).toContain("Platforms");
+    expect(html).toContain("Country/Region");
+    expect(html).toContain("Influencer Type");
+    expect(html).toContain(">—<");
   });
 
   it("renders row selection controls and highlights selected rows", () => {

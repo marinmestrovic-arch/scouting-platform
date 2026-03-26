@@ -7,9 +7,9 @@ export default function CatalogPage() {
   return (
     <PageSection
       title="Catalog"
-      description="Legacy shortcut to the Database catalog tab. The catalog remains the canonical creator workspace for filters, selection, export, and HubSpot actions."
+      description="Browse the canonical creator catalog with full-width filters, enrichment actions, and export shortcuts."
     >
-      <DatabaseWorkspace forcedTab="catalog" showLegacyNotice />
+      <DatabaseWorkspace forcedTab="catalog" />
     </PageSection>
   );
 }

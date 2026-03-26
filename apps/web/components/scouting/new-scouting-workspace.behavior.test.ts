@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createRunMock, pushMock, useRouterMock, useStateMock } = vi.hoisted(() => ({
@@ -14,7 +14,6 @@ vi.mock("react", async () => {
   return {
     ...actual,
     useState: useStateMock,
-    useEffect: vi.fn(),
     startTransition: (callback: () => void) => callback(),
   };
 });
@@ -27,16 +26,7 @@ vi.mock("../../lib/runs-api", () => ({
   createRun: createRunMock,
 }));
 
-vi.mock("../../lib/campaign-managers-api", () => ({
-  fetchCampaignManagers: vi.fn(),
-}));
-
 import { NewScoutingWorkspace } from "./new-scouting-workspace";
-
-type NewScoutingWorkspaceElement = ReactElement<{
-  onFieldChange: (field: string, value: string) => void;
-  onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
-}>;
 
 const CAMPAIGN_MANAGER_OPTION = {
   id: "cm-uuid-001",
@@ -44,28 +34,51 @@ const CAMPAIGN_MANAGER_OPTION = {
   name: "Campaign Manager",
 };
 
+const CAMPAIGN_OPTION = {
+  id: "campaign-1",
+  name: "Sony Gaming Q2",
+  client: {
+    id: "client-1",
+    name: "Sony",
+  },
+  market: {
+    id: "market-1",
+    name: "DACH",
+  },
+  briefLink: null,
+  month: "march" as const,
+  year: 2026,
+  isActive: true,
+  createdAt: "2026-03-26T12:00:00.000Z",
+  updatedAt: "2026-03-26T12:00:00.000Z",
+};
+
 const DEFAULT_TEST_DRAFT = {
   name: "Gaming run",
   prompt: "gaming creators",
   target: "20",
-  client: "Sony",
-  market: "DACH",
+  campaignId: CAMPAIGN_OPTION.id,
   campaignManagerUserId: CAMPAIGN_MANAGER_OPTION.id,
-  briefLink: "",
-  campaignName: "Sony Gaming Q2",
-  month: "march" as const,
-  year: "2026",
-  dealOwner: "Marin",
-  dealName: "Sony Gaming Q2 Deal",
-  pipeline: "New business",
-  dealStage: "Contract sent",
-  currency: "EUR",
-  dealType: "Paid social",
-  activationType: "YouTube integration",
 };
 
-const IDLE_MESSAGE =
-  "This workspace now stores the live campaign metadata required for Dashboard filtering and HubSpot import readiness.";
+const IDLE_MESSAGE = "Pick an active campaign and start a scouting list with the minimum required input.";
+
+function findElementsByType(node: ReactNode, type: string): Array<ReactElement<Record<string, unknown>>> {
+  if (Array.isArray(node)) {
+    return node.flatMap((child) => findElementsByType(child, type));
+  }
+
+  if (!node || typeof node !== "object" || !("props" in node)) {
+    return [];
+  }
+
+  const element = node as ReactElement<Record<string, unknown>>;
+
+  return [
+    ...(element.type === type ? [element] : []),
+    ...findElementsByType(element.props.children as ReactNode, type),
+  ];
+}
 
 function renderWorkspace(options?: {
   draft?: typeof DEFAULT_TEST_DRAFT;
@@ -76,7 +89,6 @@ function renderWorkspace(options?: {
 }) {
   const setDraft = vi.fn();
   const setRequestState = vi.fn();
-  const setCampaignManagersState = vi.fn();
 
   useStateMock.mockReset();
   useRouterMock.mockReturnValue({
@@ -90,23 +102,17 @@ function renderWorkspace(options?: {
         message: IDLE_MESSAGE,
       },
       setRequestState,
-    ])
-    .mockReturnValueOnce([
-      {
-        status: "ready",
-        items: [CAMPAIGN_MANAGER_OPTION],
-        error: null,
-      },
-      setCampaignManagersState,
     ]);
 
-  const element = NewScoutingWorkspace({}) as NewScoutingWorkspaceElement;
+  const element = NewScoutingWorkspace({
+    initialCampaignManagers: [CAMPAIGN_MANAGER_OPTION],
+    initialCampaigns: [CAMPAIGN_OPTION],
+  });
 
   return {
     element,
     setDraft,
     setRequestState,
-    setCampaignManagersState,
   };
 }
 
@@ -115,7 +121,7 @@ describe("new scouting workspace behavior", () => {
     vi.clearAllMocks();
   });
 
-  it("submits all metadata fields and navigates into database runs", async () => {
+  it("submits campaign-centric metadata and navigates into the run page", async () => {
     createRunMock.mockResolvedValue({
       runId: "53adac17-f39d-4731-a61f-194150fbc431",
       status: "queued",
@@ -127,11 +133,14 @@ describe("new scouting workspace behavior", () => {
         name: "  Spring gaming outreach  ",
         prompt: "  gaming creators for DACH  ",
         target: " 25 ",
-        briefLink: "",
       },
     });
 
-    await element.props.onSubmit({
+    const form = findElementsByType(element, "form")[0] as ReactElement<{
+      onSubmit: (event: { preventDefault: () => void }) => Promise<void>;
+    }>;
+
+    await form.props.onSubmit({
       preventDefault: vi.fn(),
     });
     await Promise.resolve();
@@ -141,114 +150,67 @@ describe("new scouting workspace behavior", () => {
       query: "gaming creators for DACH",
       target: 25,
       metadata: {
-        client: "Sony",
-        market: "DACH",
+        campaignId: CAMPAIGN_OPTION.id,
         campaignManagerUserId: CAMPAIGN_MANAGER_OPTION.id,
-        briefLink: undefined,
-        campaignName: "Sony Gaming Q2",
-        month: "march",
-        year: 2026,
-        dealOwner: "Marin",
-        dealName: "Sony Gaming Q2 Deal",
-        pipeline: "New business",
-        dealStage: "Contract sent",
-        currency: "EUR",
-        dealType: "Paid social",
-        activationType: "YouTube integration",
       },
     });
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
-      message: "Creating the scouting run and opening it inside Database.",
+      message: "Creating the scouting run.",
     });
-    expect(pushMock).toHaveBeenCalledWith(
-      "/database?tab=runs&runId=53adac17-f39d-4731-a61f-194150fbc431",
-    );
+    expect(pushMock).toHaveBeenCalledWith("/runs/53adac17-f39d-4731-a61f-194150fbc431");
   });
 
-  it("clears error state when the prompt changes", () => {
-    const { element, setDraft, setRequestState } = renderWorkspace({
-      requestState: {
-        status: "error",
-        message: "Influencer List, target, and prompt are required.",
-      },
-    });
+  it("updates the prompt draft when the prompt field changes", () => {
+    const { element, setDraft } = renderWorkspace();
+    const textareas = findElementsByType(element, "textarea") as Array<
+      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
+    >;
 
-    element.props.onFieldChange("prompt", "updated prompt");
+    textareas[0]?.props.onChange({ currentTarget: { value: "updated prompt" } });
 
-    expect(setRequestState).toHaveBeenCalledWith({
-      status: "idle",
-      message: IDLE_MESSAGE,
-    });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
-      | ((draft: { name: string; prompt: string; target: string }) => {
-          name: string;
-          prompt: string;
-          target: string;
-        })
+      | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
       | undefined;
 
-    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
-      name: "Gaming run",
+    expect(updateDraft?.(DEFAULT_TEST_DRAFT)).toEqual({
+      ...DEFAULT_TEST_DRAFT,
       prompt: "updated prompt",
-      target: "20",
     });
   });
 
-  it("clears error state when the run name changes", () => {
-    const { element, setDraft, setRequestState } = renderWorkspace({
-      requestState: {
-        status: "error",
-        message: "Influencer List, target, and prompt are required.",
-      },
-    });
+  it("updates the run name draft when the name field changes", () => {
+    const { element, setDraft } = renderWorkspace();
+    const inputs = findElementsByType(element, "input") as Array<
+      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
+    >;
 
-    element.props.onFieldChange("name", "Updated run");
+    inputs[0]?.props.onChange({ currentTarget: { value: "Updated run" } });
 
-    expect(setRequestState).toHaveBeenCalledWith({
-      status: "idle",
-      message: IDLE_MESSAGE,
-    });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
-      | ((draft: { name: string; prompt: string; target: string }) => {
-          name: string;
-          prompt: string;
-          target: string;
-        })
+      | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
       | undefined;
 
-    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
+    expect(updateDraft?.(DEFAULT_TEST_DRAFT)).toEqual({
+      ...DEFAULT_TEST_DRAFT,
       name: "Updated run",
-      prompt: "gaming creators",
-      target: "20",
     });
   });
 
-  it("clears error state when the target changes", () => {
-    const { element, setDraft, setRequestState } = renderWorkspace({
-      requestState: {
-        status: "error",
-        message: "Influencer List, target, and prompt are required.",
-      },
-    });
+  it("updates the target draft when the target field changes", () => {
+    const { element, setDraft } = renderWorkspace();
+    const inputs = findElementsByType(element, "input") as Array<
+      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
+    >;
 
-    element.props.onFieldChange("target", "35");
+    inputs[1]?.props.onChange({ currentTarget: { value: "35" } });
 
-    expect(setRequestState).toHaveBeenCalledWith({
-      status: "idle",
-      message: IDLE_MESSAGE,
-    });
     const updateDraft = setDraft.mock.calls[0]?.[0] as
-      | ((draft: { name: string; prompt: string; target: string }) => {
-          name: string;
-          prompt: string;
-          target: string;
-        })
+      | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
       | undefined;
 
-    expect(updateDraft?.({ name: "Gaming run", prompt: "gaming creators", target: "20" })).toEqual({
-      name: "Gaming run",
-      prompt: "gaming creators",
+    expect(updateDraft?.(DEFAULT_TEST_DRAFT)).toEqual({
+      ...DEFAULT_TEST_DRAFT,
       target: "35",
     });
   });

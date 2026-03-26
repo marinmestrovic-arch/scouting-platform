@@ -200,25 +200,6 @@ const IDLE_HUBSPOT_PUSH_BATCH_STATE: CatalogHubspotPushBatchState = {
 
 type CatalogPaginationState = Pick<ListChannelsResponse, "page" | "pageSize" | "total">;
 
-function getEnrichmentLabel(channel: ChannelSummary): string {
-  switch (channel.enrichment.status) {
-    case "completed":
-      return "Ready";
-    case "failed":
-      return "Failed";
-    case "missing":
-      return "Missing";
-    case "queued":
-      return "Queued";
-    case "running":
-      return "Running";
-    case "stale":
-      return "Stale";
-    default:
-      return channel.enrichment.status;
-  }
-}
-
 function formatCatalogTimestamp(value: string | null): string | null {
   if (!value) {
     return null;
@@ -1407,12 +1388,15 @@ function CatalogTableResults({
                   </div>
                 </th>
                 <th scope="col">Channel</th>
-                <th scope="col">YouTube Handle</th>
-                <th scope="col">YouTube URL</th>
+                <th scope="col">Social Media Link</th>
+                <th scope="col">Platforms</th>
+                <th scope="col">Country/Region</th>
+                <th scope="col">Email</th>
+                <th scope="col">Influencer Vertical</th>
+                <th scope="col">Influencer Type</th>
                 <th scope="col">YouTube Average Views</th>
                 <th scope="col">YouTube Engagement Rate</th>
                 <th scope="col">YouTube Followers</th>
-                <th scope="col">Enrichment</th>
               </tr>
             </thead>
             <tbody>
@@ -1467,39 +1451,31 @@ function CatalogTableResults({
                       </div>
                     </td>
                     <td>
-                      <span className="catalog-table__meta">{getChannelHandle(channel)}</span>
-                    </td>
-                    <td>
-                      {channel.youtubeUrl ? (
+                      {channel.socialMediaLink ? (
                         <a
                           className="catalog-table__link"
-                          href={channel.youtubeUrl}
+                          href={channel.socialMediaLink}
                           rel="noreferrer"
                           target="_blank"
                         >
-                          Open channel
+                          Open profile
                         </a>
                       ) : (
                         <span className="catalog-table__meta">—</span>
                       )}
                     </td>
+                    <td>
+                      <span className="catalog-table__meta">
+                        {channel.platforms?.length ? channel.platforms.join(", ") : "—"}
+                      </span>
+                    </td>
+                    <td>{channel.countryRegion ?? "—"}</td>
+                    <td>{channel.email ?? "—"}</td>
+                    <td>{channel.influencerVertical ?? "—"}</td>
+                    <td>{channel.influencerType ?? "—"}</td>
                     <td>{formatChannelMetric(channel.youtubeAverageViews ?? null)}</td>
                     <td>{formatChannelEngagementRate(channel.youtubeEngagementRate ?? null)}</td>
                     <td>{formatChannelMetric(channel.youtubeFollowers ?? null)}</td>
-                    <td>
-                      <div className="catalog-table__enrichment">
-                        <span
-                          className={`catalog-table__status catalog-table__status--${channel.enrichment.status}`}
-                        >
-                          {getEnrichmentLabel(channel)}
-                        </span>
-                        <p
-                          className={`catalog-table__enrichment-copy${channel.enrichment.status === "failed" ? " catalog-table__enrichment-copy--error" : ""}`}
-                        >
-                          {getCatalogEnrichmentDetailCopy(channel.enrichment)}
-                        </p>
-                      </div>
-                    </td>
                   </tr>
                 );
               })}

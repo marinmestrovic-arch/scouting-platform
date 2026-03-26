@@ -60,6 +60,12 @@ export type ChannelSummary = {
   title: string;
   handle: string | null;
   youtubeUrl: string | null;
+  socialMediaLink: string | null;
+  platforms: string[];
+  countryRegion: string | null;
+  email: string | null;
+  influencerVertical: string | null;
+  influencerType: string | null;
   youtubeAverageViews: string | null;
   youtubeEngagementRate: number | null;
   youtubeFollowers: string | null;
@@ -170,8 +176,25 @@ const channelListSelect = {
       youtubeFollowers: true,
     },
   },
+  contacts: {
+    orderBy: {
+      createdAt: "asc",
+    },
+    take: 1,
+    select: {
+      email: true,
+    },
+  },
   enrichment: {
-    select: channelEnrichmentListSelect,
+    select: {
+      ...channelEnrichmentListSelect,
+      topics: true,
+    },
+  },
+  insights: {
+    select: {
+      audienceCountries: true,
+    },
   },
   advancedReportRequests: {
     orderBy: {
@@ -197,6 +220,15 @@ const channelDetailSelect = {
       youtubeAverageViews: true,
       youtubeEngagementRate: true,
       youtubeFollowers: true,
+    },
+  },
+  contacts: {
+    orderBy: {
+      createdAt: "asc",
+    },
+    take: 1,
+    select: {
+      email: true,
     },
   },
   enrichment: {
@@ -481,20 +513,42 @@ function toChannelSummary(channel: {
     youtubeEngagementRate: number | null;
     youtubeFollowers: bigint | null;
   } | null;
+  contacts: Array<{
+    email: string;
+  }>;
   enrichment: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
     completedAt: Date | null;
     lastError: string | null;
+    topics: Prisma.JsonValue | null;
+  } | null;
+  insights: {
+    audienceCountries: Prisma.JsonValue | null;
   } | null;
   advancedReportRequests: LatestAdvancedReportRow[];
 }): ChannelSummary {
+  const audienceCountries = toAudienceCountries(channel.insights?.audienceCountries ?? null);
+  const primaryCountry =
+    audienceCountries.slice().sort((left, right) => right.percentage - left.percentage)[0]?.countryName ?? null;
+  const topics = Array.isArray(channel.enrichment?.topics)
+    ? channel.enrichment.topics.filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      )
+    : [];
+
   return {
     id: channel.id,
     youtubeChannelId: channel.youtubeChannelId,
     title: channel.title,
     handle: channel.handle,
     youtubeUrl: channel.youtubeUrl,
+    socialMediaLink: channel.youtubeUrl,
+    platforms: ["YouTube"],
+    countryRegion: primaryCountry,
+    email: channel.contacts[0]?.email ?? null,
+    influencerVertical: topics[0] ?? null,
+    influencerType: "YouTube Creator",
     youtubeAverageViews: toNullableBigIntString(channel.metrics?.youtubeAverageViews),
     youtubeEngagementRate: channel.metrics?.youtubeEngagementRate ?? null,
     youtubeFollowers: toNullableBigIntString(channel.metrics?.youtubeFollowers),
@@ -519,6 +573,9 @@ function toChannelDetail(channel: {
     youtubeEngagementRate: number | null;
     youtubeFollowers: bigint | null;
   } | null;
+  contacts: Array<{
+    email: string;
+  }>;
   enrichment: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;

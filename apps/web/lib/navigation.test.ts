@@ -13,10 +13,11 @@ import {
 } from "./navigation";
 
 describe("navigation config", () => {
-  it("defines dashboard, new scouting, database, and admin entries", () => {
+  it("defines dashboard, new scouting, catalog, database, and admin entries", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual([
       "dashboard",
       "new-scouting",
+      "catalog",
       "database",
       "admin",
     ]);
@@ -28,6 +29,7 @@ describe("navigation config", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.href)).toEqual([
       "/dashboard",
       "/new-scouting",
+      "/catalog",
       "/database",
       "/admin",
     ]);
@@ -35,14 +37,14 @@ describe("navigation config", () => {
 
   it("stores role visibility metadata per entry", () => {
     const adminEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "admin");
-    const databaseEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "database");
+    const catalogEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "catalog");
     const adminOnlyEntry = APP_NAVIGATION_ITEMS.find((item) => item.key === "admin");
 
-    expect(databaseEntry).toBeDefined();
+    expect(catalogEntry).toBeDefined();
     expect(adminOnlyEntry).toBeDefined();
     expect(adminEntry?.visibleTo).toEqual(["admin"]);
     expect(adminEntry?.group).toBe("admin");
-    expect(isNavItemVisibleToRole(databaseEntry!, "user")).toBe(true);
+    expect(isNavItemVisibleToRole(catalogEntry!, "user")).toBe(true);
     expect(isNavItemVisibleToRole(adminOnlyEntry!, "user")).toBe(false);
   });
 
@@ -57,11 +59,13 @@ describe("navigation config", () => {
     expect(getNavigationForRole("user").map((item) => item.key)).toEqual([
       "dashboard",
       "new-scouting",
+      "catalog",
       "database",
     ]);
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual([
       "dashboard",
       "new-scouting",
+      "catalog",
       "database",
       "admin"
     ]);

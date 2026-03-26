@@ -42,34 +42,36 @@ export function DatabaseWorkspace({
         </section>
       ) : null}
 
-      <section className="database-workspace__tabs" aria-label="Database sections">
-        <button
-          className={
-            activeTab === "catalog"
-              ? "database-workspace__tab database-workspace__tab--active"
-              : "database-workspace__tab"
-          }
-          onClick={() => {
-            navigate({ tab: "catalog" });
-          }}
-          type="button"
-        >
-          Catalog
-        </button>
-        <button
-          className={
-            activeTab === "runs"
-              ? "database-workspace__tab database-workspace__tab--active"
-              : "database-workspace__tab"
-          }
-          onClick={() => {
-            navigate({ tab: "runs", runId: requestedRunId });
-          }}
-          type="button"
-        >
-          Runs
-        </button>
-      </section>
+      {forcedTab ? null : (
+        <section className="database-workspace__tabs" aria-label="Database sections">
+          <button
+            className={
+              activeTab === "catalog"
+                ? "database-workspace__tab database-workspace__tab--active"
+                : "database-workspace__tab"
+            }
+            onClick={() => {
+              navigate({ tab: "catalog" });
+            }}
+            type="button"
+          >
+            Catalog
+          </button>
+          <button
+            className={
+              activeTab === "runs"
+                ? "database-workspace__tab database-workspace__tab--active"
+                : "database-workspace__tab"
+            }
+            onClick={() => {
+              navigate({ tab: "runs", runId: requestedRunId });
+            }}
+            type="button"
+          >
+            Runs
+          </button>
+        </section>
+      )}
 
       {activeTab === "catalog" ? (
         <section className="database-workspace__panel">

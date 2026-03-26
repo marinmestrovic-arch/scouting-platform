@@ -7,10 +7,14 @@
   },
   "scripts": {
     "prepare": "husky",
+    "postinstall": "pnpm db:generate",
+    "predev": "pnpm db:generate",
     "dev": "turbo run dev --parallel",
     "dev:stack": "docker compose up -d --build",
+    "predev:web": "pnpm db:generate",
     "dev:web": "pnpm --filter @scouting-platform/web dev",
     "dev:worker": "pnpm --filter @scouting-platform/worker dev",
+    "prebuild": "pnpm db:generate",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
@@ -33,7 +37,9 @@
     "db:migrate:deploy": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:migrate:deploy",
     "db:migrate:test": "node scripts/db-migrate-test.mjs",
     "db:studio": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:studio",
-    "db:seed:admin": "sh scripts/with-local-env.sh tsx scripts/seed-admin.ts"
+    "db:seed:admin": "sh scripts/with-local-env.sh tsx scripts/seed-admin.ts",
+    "db:seed:workspace": "sh scripts/with-local-env.sh tsx scripts/seed-workspace.ts",
+    "db:reset:demo": "sh scripts/with-local-env.sh tsx scripts/reset-demo.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.23.0",

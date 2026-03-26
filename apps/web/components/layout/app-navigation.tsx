@@ -1,5 +1,8 @@
-import React from "react";
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import React from "react";
 import { getNavigationForRole, type AppRole } from "../../lib/navigation";
 
 type AppNavigationProps = Readonly<{
@@ -7,6 +10,7 @@ type AppNavigationProps = Readonly<{
 }>;
 
 export function AppNavigation({ role }: AppNavigationProps) {
+  const pathname = usePathname() ?? "";
   const navigationItems = getNavigationForRole(role);
 
   return (
@@ -14,7 +18,14 @@ export function AppNavigation({ role }: AppNavigationProps) {
       <ul className="app-nav__list">
         {navigationItems.map((item) => (
           <li key={item.key}>
-            <Link className="app-nav__link" href={item.href}>
+            <Link
+              className={
+                pathname === item.href || pathname.startsWith(`${item.href}/`)
+                  ? "app-nav__link app-nav__link--active"
+                  : "app-nav__link"
+              }
+              href={item.href}
+            >
               {item.label}
             </Link>
           </li>

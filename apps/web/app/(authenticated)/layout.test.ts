@@ -11,7 +11,8 @@ vi.mock("../../auth", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  redirect: redirectMock
+  redirect: redirectMock,
+  usePathname: () => "/dashboard",
 }));
 
 import AuthenticatedLayout from "./layout";

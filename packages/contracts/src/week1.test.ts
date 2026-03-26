@@ -11,6 +11,14 @@ import {
 
 function buildRunMetadataInput() {
   return {
+    campaignId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+    campaignManagerUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
+  };
+}
+
+function buildRunMetadataResponse() {
+  return {
+    campaignId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
     client: "Sony",
     market: "DACH",
     campaignManagerUserId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
@@ -24,12 +32,6 @@ function buildRunMetadataInput() {
     currency: "EUR",
     dealType: "Paid social",
     activationType: "YouTube integration",
-  };
-}
-
-function buildRunMetadataResponse() {
-  return {
-    ...buildRunMetadataInput(),
     briefLink: null,
     campaignManager: {
       id: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",

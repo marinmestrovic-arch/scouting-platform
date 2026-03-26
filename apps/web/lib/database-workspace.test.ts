@@ -46,6 +46,6 @@ describe("database workspace helpers", () => {
   });
 
   it("builds canonical database run detail links", () => {
-    expect(getDatabaseRunHref("run 2")).toBe("/database?tab=runs&runId=run+2");
+    expect(getDatabaseRunHref("run 2")).toBe("/runs/run%202");
   });
 });

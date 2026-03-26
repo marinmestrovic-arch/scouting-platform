@@ -10,8 +10,9 @@ describe("access control", () => {
   it("allows shared routes for both roles", () => {
     expect(canAccessNavigationKey("dashboard", "user")).toBe(true);
     expect(canAccessNavigationKey("dashboard", "admin")).toBe(true);
-    expect(canAccessNavigationKey("database", "user")).toBe(true);
+    expect(canAccessNavigationKey("catalog", "user")).toBe(true);
     expect(canAccessNavigationKey("database", "admin")).toBe(true);
+    expect(canAccessNavigationKey("database", "user")).toBe(true);
   });
 
   it("maps unknown or missing session role to user fallback", () => {
