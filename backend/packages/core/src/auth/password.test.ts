@@ -10,8 +10,10 @@ const originalCwd = process.cwd();
 function resolveAppsWebDirectory(): string {
   const candidates = [
     path.resolve(originalCwd, "frontend", "web"),
+    path.resolve(originalCwd, "..", "..", "..", "frontend", "web"),
     path.resolve(originalCwd, "..", "..", "frontend", "web"),
     path.resolve(originalCwd, "apps", "web"),
+    path.resolve(originalCwd, "..", "..", "..", "apps", "web"),
     path.resolve(originalCwd, "..", "..", "apps", "web"),
   ];
 
