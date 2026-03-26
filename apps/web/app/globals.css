@@ -106,11 +106,23 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(6, 21, 95, 0.72);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(6, 21, 95, 0.82);
   box-shadow: 0 10px 24px rgba(6, 21, 95, 0.12);
-  padding: 0.45rem 0.85rem;
+  padding: 0.6rem 1.1rem;
   backdrop-filter: blur(18px);
+}
+
+.auth-shell__brand {
+  display: inline-flex;
+  align-items: center;
+  min-width: max-content;
+  color: white;
+  font-size: var(--font-size-200);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
 }
 
 .auth-shell__actions {
@@ -134,7 +146,7 @@ a {
 
 .auth-shell__content {
   z-index: var(--z-base);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-8);
 }
 
 .auth-shell__signout {
@@ -187,18 +199,22 @@ a {
   background: rgba(255, 255, 255, 0.16);
 }
 
+.app-nav__link--active {
+  border-color: rgba(223, 244, 105, 0.5);
+  background: rgba(223, 244, 105, 0.2);
+  color: #fff;
+}
+
 .page-section {
-  max-width: 76rem;
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  border-radius: 1.25rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 252, 255, 0.94) 100%);
-  box-shadow: var(--shadow-soft);
-  padding: var(--space-6);
+  width: 100%;
+  max-width: none;
+  padding: var(--space-3) 0 var(--space-6);
 }
 
 .page-section__header {
   display: grid;
   gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .page-section__header h1 {
@@ -215,9 +231,8 @@ a {
 }
 
 .page-section__body {
-  margin-top: var(--space-5);
-  border-top: 1px solid rgba(6, 21, 95, 0.08);
-  padding-top: var(--space-5);
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .runs-page,
@@ -4574,4 +4589,220 @@ a {
   .admin-advanced-report-queue__toolbar-copy {
     margin-left: 0;
   }
+}
+.page-hero,
+.campaigns-workspace__form,
+.campaigns-workspace__filters,
+.dashboard-workspace__table-panel,
+.export-prep__defaults {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--shadow-soft);
+}
+
+.page-hero,
+.campaigns-workspace__form,
+.campaigns-workspace__filters,
+.export-prep__defaults {
+  padding: var(--space-5);
+}
+
+.dashboard-workspace__table-panel {
+  padding: var(--space-4);
+}
+
+.dashboard-workspace__table-shell,
+.campaigns-workspace__table-shell,
+.export-prep__table-shell {
+  overflow: auto;
+}
+
+.dashboard-workspace__table,
+.export-prep__table {
+  width: 100%;
+  min-width: 68rem;
+  border-collapse: collapse;
+  font-size: var(--font-size-200);
+}
+
+.dashboard-workspace__table th,
+.dashboard-workspace__table td,
+.export-prep__table th,
+.export-prep__table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.55rem 0.6rem;
+  vertical-align: middle;
+  height: 2.8rem;
+  text-align: left;
+}
+
+.dashboard-workspace__table th,
+.export-prep__table th {
+  position: sticky;
+  top: 0;
+  background: #f6f9fd;
+  z-index: 1;
+}
+
+.dashboard-workspace__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.workspace-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 21, 95, 0.18);
+  background: rgba(6, 21, 95, 0.08);
+  color: var(--color-accent);
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  padding: 0.3rem 0.65rem;
+  text-decoration: none;
+}
+
+.workspace-button--secondary {
+  background: rgba(223, 244, 105, 0.22);
+}
+
+.campaigns-workspace,
+.database-admin,
+.clients-workspace,
+.export-prep {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.database-admin__tabs {
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(6, 21, 95, 0.08);
+  width: fit-content;
+}
+
+.database-admin__tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  padding: 0.55rem 1rem;
+}
+
+.database-admin__tab--active {
+  background: white;
+  color: var(--color-accent);
+  box-shadow: 0 8px 18px rgba(6, 21, 95, 0.12);
+}
+
+.database-admin__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.database-admin__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #06155f 0%, #1843a6 100%);
+  color: white;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  padding: 0.7rem 1.2rem;
+}
+
+.database-admin__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(7, 16, 48, 0.48);
+}
+
+.database-admin__modal {
+  width: min(56rem, 100%);
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 30px 70px rgba(7, 16, 48, 0.22);
+  padding: var(--space-5);
+}
+
+.database-admin__modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.database-admin__modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+}
+
+.campaigns-workspace__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 18rem));
+  gap: var(--space-4);
+}
+
+.campaigns-workspace__form--modal {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+.campaigns-workspace__form-actions,
+.export-prep__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.export-prep__defaults-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.export-prep__defaults-grid dt {
+  font-size: var(--font-size-100);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.export-prep__defaults-grid dd {
+  margin: 0.15rem 0 0;
+  font-weight: var(--font-weight-semibold);
+}
+
+.export-prep__input {
+  width: 100%;
+  min-width: 8rem;
+}
+
+.export-prep__input--missing {
+  border-color: #cb4b4b;
+  background: #fff5f5;
 }

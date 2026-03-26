@@ -203,8 +203,59 @@ model User {
   requestedCsvExportBatches     CsvExportBatch[]        @relation("CsvExportRequestedBy")
   requestedHubspotPushBatches   HubspotPushBatch[]      @relation("HubspotPushRequestedBy")
   requestedHubspotImportBatches HubspotImportBatch[]    @relation("HubspotImportRequestedBy")
+  createdCampaigns              Campaign[]              @relation("CampaignCreatedBy")
 
   @@map("users")
+}
+
+model Client {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique
+  domain    String?    @map("domain")
+  countryRegion String? @map("country_region")
+  city      String?    @map("city")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  campaigns Campaign[]
+
+  @@index([createdAt], map: "clients_created_at_idx")
+  @@map("clients")
+}
+
+model Market {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  campaigns Campaign[]
+
+  @@index([createdAt], map: "markets_created_at_idx")
+  @@map("markets")
+}
+
+model Campaign {
+  id              String      @id @default(uuid()) @db.Uuid
+  name            String
+  clientId        String      @map("client_id") @db.Uuid
+  marketId        String      @map("market_id") @db.Uuid
+  briefLink       String?     @map("brief_link")
+  month           RunMonth
+  year            Int
+  isActive        Boolean     @default(true) @map("is_active")
+  createdByUserId String?     @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  client          Client      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  market          Market      @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  createdByUser   User?       @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  runRequests     RunRequest[]
+
+  @@unique([name, clientId, marketId, month, year], map: "campaigns_name_client_market_month_year_key")
+  @@index([clientId], map: "campaigns_client_id_idx")
+  @@index([marketId], map: "campaigns_market_id_idx")
+  @@index([isActive], map: "campaigns_is_active_idx")
+  @@index([createdAt], map: "campaigns_created_at_idx")
+  @@map("campaigns")
 }
 
 model Account {
@@ -664,6 +715,7 @@ model RunRequest {
   name              String
   query             String
   target            Int?
+  campaignId        String?          @map("campaign_id") @db.Uuid
   client            String?
   market            String?
   campaignManagerUserId String?      @map("campaign_manager_user_id") @db.Uuid
@@ -685,11 +737,13 @@ model RunRequest {
   startedAt         DateTime?        @map("started_at")
   completedAt       DateTime?        @map("completed_at")
   requestedByUser   User             @relation("RunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  campaign          Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   campaignManagerUser User?          @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
   hubspotImportBatches HubspotImportBatch[]
   results           RunResult[]
 
   @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
+  @@index([campaignId], map: "run_requests_campaign_id_idx")
   @@index([campaignManagerUserId], map: "run_requests_campaign_manager_user_id_idx")
   @@index([client], map: "run_requests_client_idx")
   @@index([market], map: "run_requests_market_idx")

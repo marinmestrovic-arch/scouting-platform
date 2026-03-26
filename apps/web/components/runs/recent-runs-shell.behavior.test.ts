@@ -40,6 +40,7 @@ type RecentRunsShellElement = ReactElement<{
 
 function buildRunMetadata() {
   return {
+    campaignId: "campaign-1",
     client: "Sony",
     market: "DACH",
     campaignManagerUserId: "3f5d07e1-2cc4-4b33-a4ed-f95d8f90c7e0",

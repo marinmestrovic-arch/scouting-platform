@@ -50,10 +50,5 @@ export function buildDatabaseWorkspaceHref(
 }
 
 export function getDatabaseRunHref(runId: string): string {
-  const params = new URLSearchParams({
-    tab: "runs",
-    runId,
-  });
-
-  return `/database?${params.toString()}`;
+  return `/runs/${encodeURIComponent(runId)}`;
 }

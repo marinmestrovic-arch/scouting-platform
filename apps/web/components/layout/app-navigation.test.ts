@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppNavigation } from "./app-navigation";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/catalog",
+}));
 
 describe("app navigation", () => {
   it("renders only shared links for user role", () => {
@@ -10,9 +14,11 @@ describe("app navigation", () => {
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain('href="/new-scouting"');
-    expect(html).toContain('href="/database"');
+    expect(html).toContain('href="/catalog"');
+    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/campaigns"');
     expect(html).not.toContain('href="/admin"');
-    expect(linkCount).toBe(3);
+    expect(linkCount).toBe(5);
   });
 
   it("renders admin link for admin role", () => {
@@ -21,8 +27,10 @@ describe("app navigation", () => {
 
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain('href="/new-scouting"');
-    expect(html).toContain('href="/database"');
+    expect(html).toContain('href="/catalog"');
+    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/campaigns"');
     expect(html).toContain('href="/admin"');
-    expect(linkCount).toBe(4);
+    expect(linkCount).toBe(6);
   });
 });

@@ -13,12 +13,22 @@ export const APP_NAVIGATION_GROUPS = [
 ] as const;
 
 export type AppNavigationGroupKey = (typeof APP_NAVIGATION_GROUPS)[number]["key"];
-export type AppNavigationKey = "dashboard" | "new-scouting" | "database" | "admin";
+export type AppNavigationKey =
+  | "dashboard"
+  | "new-scouting"
+  | "catalog"
+  | "database"
+  | "admin";
 
 export type AppNavigationItem = Readonly<{
   key: AppNavigationKey;
   group: AppNavigationGroupKey;
-  href: "/dashboard" | "/new-scouting" | "/database" | "/admin";
+  href:
+    | "/dashboard"
+    | "/new-scouting"
+    | "/catalog"
+    | "/database"
+    | "/admin";
   label: string;
   visibleTo: readonly AppRole[];
 }>;
@@ -36,6 +46,13 @@ export const APP_NAVIGATION_ITEMS: readonly AppNavigationItem[] = [
     group: "workspace",
     label: "New scouting",
     href: "/new-scouting",
+    visibleTo: ["user", "admin"]
+  },
+  {
+    key: "catalog",
+    group: "workspace",
+    label: "Catalog",
+    href: "/catalog",
     visibleTo: ["user", "admin"]
   },
   {
@@ -84,4 +101,12 @@ export function getCsvExportBatchResultHref(batchId: string): string {
 
 export function getHubspotPushBatchResultHref(batchId: string): string {
   return `/hubspot/${encodeURIComponent(batchId)}`;
+}
+
+export function getHubspotPreviewHref(runId: string): string {
+  return `/hubspot/prepare/${encodeURIComponent(runId)}`;
+}
+
+export function getCsvPreviewHref(runId: string): string {
+  return `/exports/prepare/${encodeURIComponent(runId)}`;
 }

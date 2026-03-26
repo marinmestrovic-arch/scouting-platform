@@ -2,16 +2,9 @@
 
 import type { ListRecentRunsResponse, ListRunsQuery } from "@scouting-platform/contracts";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
-import { getDatabaseRunHref } from "../../lib/database-workspace";
-import { getCsvExportBatchResultHref, getHubspotPushBatchResultHref } from "../../lib/navigation";
-import {
-  createCsvExportBatchFromRun,
-  createHubspotPushBatchFromRun,
-  RunBatchActionError,
-} from "../../lib/run-batch-actions";
+import { getCsvPreviewHref, getHubspotPreviewHref } from "../../lib/navigation";
 import {
   formatCampaignManagerLabel,
   formatNullableMetadataValue,
@@ -32,13 +25,6 @@ type DashboardFiltersState = {
   market: string;
 };
 
-type DashboardBatchActionState = {
-  action: "csv" | "hubspot" | null;
-  runId: string | null;
-  status: "idle" | "submitting" | "error";
-  message: string;
-};
-
 const INITIAL_REQUEST_STATE: DashboardRunsRequestState = {
   status: "loading",
   data: null,
@@ -51,33 +37,12 @@ const INITIAL_FILTERS_STATE: DashboardFiltersState = {
   market: "",
 };
 
-const IDLE_ACTION_STATE: DashboardBatchActionState = {
-  action: null,
-  runId: null,
-  status: "idle",
-  message: "",
-};
-
 function getDashboardRunsErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
 
   return "Unable to load dashboard runs.";
-}
-
-function getDashboardBatchActionErrorMessage(action: "csv" | "hubspot", error: unknown): string {
-  if (error instanceof RunBatchActionError) {
-    return error.message;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return action === "csv"
-    ? "Unable to create the CSV export for this run."
-    : "Unable to create the HubSpot import batch for this run.";
 }
 
 function buildRunFilters(filters: DashboardFiltersState): Partial<ListRunsQuery> {
@@ -108,12 +73,22 @@ function renderCoverageCell(resultCount: number, target: number | null) {
   );
 }
 
-export function DashboardWorkspace() {
-  const router = useRouter();
-  const [requestState, setRequestState] = useState<DashboardRunsRequestState>(INITIAL_REQUEST_STATE);
+export function DashboardWorkspace({
+  initialData,
+}: Readonly<{
+  initialData?: ListRecentRunsResponse | undefined;
+}>) {
+  const [requestState, setRequestState] = useState<DashboardRunsRequestState>(
+    initialData
+      ? {
+          status: "ready",
+          data: initialData,
+          error: null,
+        }
+      : INITIAL_REQUEST_STATE,
+  );
   const [filters, setFilters] = useState<DashboardFiltersState>(INITIAL_FILTERS_STATE);
   const [reloadToken, setReloadToken] = useState(0);
-  const [actionState, setActionState] = useState<DashboardBatchActionState>(IDLE_ACTION_STATE);
 
   useEffect(() => {
     let didCancel = false;
@@ -121,7 +96,7 @@ export function DashboardWorkspace() {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     async function loadRuns(polling = false) {
-      if (!polling) {
+      if (!polling && !initialData) {
         setRequestState(INITIAL_REQUEST_STATE);
       }
 
@@ -169,56 +144,19 @@ export function DashboardWorkspace() {
         clearTimeout(timeoutId);
       }
     };
-  }, [filters, reloadToken]);
-
-  async function handleBatchAction(runId: string, action: "csv" | "hubspot") {
-    setActionState({
-      action,
-      runId,
-      status: "submitting",
-      message:
-        action === "csv"
-          ? "Creating CSV export from this run."
-          : "Creating HubSpot import batch from this run.",
-    });
-
-    try {
-      if (action === "csv") {
-        const batch = await createCsvExportBatchFromRun(runId);
-        router.push(getCsvExportBatchResultHref(batch.id));
-        return;
-      }
-
-      const batch = await createHubspotPushBatchFromRun(runId);
-      router.push(getHubspotPushBatchResultHref(batch.id));
-    } catch (error) {
-      setActionState({
-        action,
-        runId,
-        status: "error",
-        message: getDashboardBatchActionErrorMessage(action, error),
-      });
-    }
-  }
+  }, [filters, initialData, reloadToken]);
 
   const filterOptions = requestState.status === "ready" ? requestState.data.filterOptions : null;
 
   return (
     <div className="dashboard-workspace">
-      {actionState.status === "error" ? (
-        <section className="workspace-callout workspace-callout--error" role="alert">
-          <h3>Run action failed</h3>
-          <p>{actionState.message}</p>
-        </section>
-      ) : null}
-
       <section className="dashboard-workspace__table-panel">
         <header className="dashboard-workspace__table-header">
           <div>
             <h2>Runs</h2>
             <p className="workspace-copy">
               Filter the scouting list by campaign manager, client, or market, then export the
-              run or generate a HubSpot import batch from the same saved snapshot.
+              run or open an export preparation workspace from the same saved snapshot.
             </p>
           </div>
           <button
@@ -238,9 +176,10 @@ export function DashboardWorkspace() {
             <select
               disabled={requestState.status === "loading" || !filterOptions}
               onChange={(event) => {
+                const campaignManagerUserId = event.currentTarget.value;
                 setFilters((current) => ({
                   ...current,
-                  campaignManagerUserId: event.currentTarget.value,
+                  campaignManagerUserId,
                 }));
               }}
               value={filters.campaignManagerUserId}
@@ -259,9 +198,10 @@ export function DashboardWorkspace() {
             <select
               disabled={requestState.status === "loading" || !filterOptions}
               onChange={(event) => {
+                const client = event.currentTarget.value;
                 setFilters((current) => ({
                   ...current,
-                  client: event.currentTarget.value,
+                  client,
                 }));
               }}
               value={filters.client}
@@ -280,9 +220,10 @@ export function DashboardWorkspace() {
             <select
               disabled={requestState.status === "loading" || !filterOptions}
               onChange={(event) => {
+                const market = event.currentTarget.value;
                 setFilters((current) => ({
                   ...current,
-                  market: event.currentTarget.value,
+                  market,
                 }));
               }}
               value={filters.market}
@@ -326,8 +267,6 @@ export function DashboardWorkspace() {
                 </thead>
                 <tbody>
                   {requestState.data.items.map((run) => {
-                    const isBusy = actionState.status === "submitting" && actionState.runId === run.id;
-
                     return (
                       <tr key={run.id}>
                         <td>{formatNullableMetadataValue(run.metadata.client)}</td>
@@ -348,34 +287,27 @@ export function DashboardWorkspace() {
                           )}
                         </td>
                         <td>
-                          <Link className="dashboard-workspace__list-link" href={getDatabaseRunHref(run.id)}>
+                          <Link className="dashboard-workspace__list-link" href={`/runs/${encodeURIComponent(run.id)}`}>
                             {run.name}
                           </Link>
-                          <p className="dashboard-workspace__planned-cell">{run.query}</p>
                         </td>
                         <td>{renderCoverageCell(run.resultCount, run.target)}</td>
                         <td>
                           <div className="dashboard-workspace__row-actions">
-                            <button
+                            <Link
                               className="workspace-button workspace-button--small"
-                              disabled={isBusy}
-                              onClick={() => {
-                                void handleBatchAction(run.id, "csv");
-                              }}
-                              type="button"
+                              href={getCsvPreviewHref(run.id)}
+                              target="_blank"
                             >
                               Export
-                            </button>
-                            <button
+                            </Link>
+                            <Link
                               className="workspace-button workspace-button--small workspace-button--secondary"
-                              disabled={isBusy}
-                              onClick={() => {
-                                void handleBatchAction(run.id, "hubspot");
-                              }}
-                              type="button"
+                              href={getHubspotPreviewHref(run.id)}
+                              target="_blank"
                             >
                               HubSpot
-                            </button>
+                            </Link>
                           </div>
                         </td>
                       </tr>

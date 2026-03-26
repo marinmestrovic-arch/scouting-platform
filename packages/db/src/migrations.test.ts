@@ -42,6 +42,14 @@ const week7WorkspaceMetadataHubspotImportMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260316113000_week7_workspace_metadata_hubspot_import/migration.sql",
 );
+const campaignsWorkspaceRefreshMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260326120000_campaigns_workspace_refresh/migration.sql",
+);
+const clientMetadataFieldsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260326143000_client_metadata_fields/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -178,5 +186,35 @@ describe("week 7 workspace metadata and hubspot import migration", () => {
     expect(migrationSql).toContain(
       'CREATE UNIQUE INDEX "hubspot_import_batch_rows_batch_id_channel_id_contact_email_key"',
     );
+  });
+});
+
+describe("campaigns workspace refresh migration", () => {
+  it("creates client, market, campaign tables and run campaign linkage", () => {
+    const migrationSql = readFileSync(campaignsWorkspaceRefreshMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TABLE "clients"');
+    expect(migrationSql).toContain('CREATE TABLE "markets"');
+    expect(migrationSql).toContain('CREATE TABLE "campaigns"');
+    expect(migrationSql).toContain('ALTER TABLE "run_requests"');
+    expect(migrationSql).toContain('"campaign_id" UUID');
+    expect(migrationSql).toContain('CREATE UNIQUE INDEX "clients_name_key"');
+    expect(migrationSql).toContain('CREATE UNIQUE INDEX "markets_name_key"');
+    expect(migrationSql).toContain('CREATE INDEX "campaigns_is_active_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "run_requests_campaign_id_idx"');
+    expect(migrationSql).toContain(
+      'ALTER TABLE "run_requests"\nADD CONSTRAINT "run_requests_campaign_id_fkey"',
+    );
+  });
+});
+
+describe("client metadata fields migration", () => {
+  it("adds domain, country region, and city to clients", () => {
+    const migrationSql = readFileSync(clientMetadataFieldsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('ALTER TABLE "clients"');
+    expect(migrationSql).toContain('"domain" TEXT');
+    expect(migrationSql).toContain('"country_region" TEXT');
+    expect(migrationSql).toContain('"city" TEXT');
   });
 });

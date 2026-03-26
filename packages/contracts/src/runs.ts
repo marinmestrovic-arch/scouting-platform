@@ -33,23 +33,12 @@ export const runCampaignManagerSchema = z.object({
 });
 
 export const runMetadataInputSchema = z.object({
-  client: z.string().trim().min(1).max(200),
-  market: z.string().trim().min(1).max(200),
-  campaignManagerUserId: z.uuid(),
-  briefLink: z.string().trim().url().max(2048).optional(),
-  campaignName: z.string().trim().min(1).max(200),
-  month: runMonthSchema,
-  year: z.number().int().min(2000).max(2100),
-  dealOwner: z.string().trim().min(1).max(200),
-  dealName: z.string().trim().min(1).max(200),
-  pipeline: z.string().trim().min(1).max(200),
-  dealStage: z.string().trim().min(1).max(200),
-  currency: z.string().trim().min(1).max(50),
-  dealType: z.string().trim().min(1).max(200),
-  activationType: z.string().trim().min(1).max(200),
+  campaignId: z.uuid(),
+  campaignManagerUserId: z.uuid().optional(),
 });
 
 export const runMetadataResponseSchema = z.object({
+  campaignId: z.uuid().nullable(),
   client: z.string().nullable(),
   market: z.string().nullable(),
   campaignManagerUserId: z.uuid().nullable(),

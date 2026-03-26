@@ -88,21 +88,30 @@ integration("week 3 core integration", () => {
     await prisma.$disconnect();
   });
 
-  function buildRunMetadata(campaignManagerUserId: string) {
+  async function buildRunMetadata(campaignManagerUserId: string) {
+    const client = await prisma.client.create({
+      data: {
+        name: `Client ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+      },
+    });
+    const market = await prisma.market.create({
+      data: {
+        name: `Market ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+      },
+    });
+    const campaign = await prisma.campaign.create({
+      data: {
+        name: `Spring Launch ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+        clientId: client.id,
+        marketId: market.id,
+        month: "MARCH",
+        year: 2026,
+        isActive: true,
+      },
+    });
+
     return {
-      client: "Sony",
-      market: "DACH",
-      campaignManagerUserId,
-      campaignName: "Spring Launch",
-      month: "march" as const,
-      year: 2026,
-      dealOwner: "Marin Mestrovic",
-      dealName: "Sony Launch DACH",
-      pipeline: "New business",
-      dealStage: "Contract sent",
-      currency: "EUR",
-      dealType: "Paid social",
-      activationType: "YouTube integration",
+      campaignId: campaign.id,
     };
   }
 
@@ -128,7 +137,7 @@ integration("week 3 core integration", () => {
       name: "Gaming Run",
       query: "gaming creators",
       target: 20,
-      metadata: buildRunMetadata(user.id),
+      metadata: await buildRunMetadata(user.id),
     });
 
     expect(created.status).toBe("queued");
@@ -166,7 +175,7 @@ integration("week 3 core integration", () => {
         name: "Gaming Run",
         query: "gaming creators",
         target: 20,
-        metadata: buildRunMetadata(user.id),
+        metadata: await buildRunMetadata(user.id),
       }),
     ).rejects.toMatchObject({
       code: "YOUTUBE_KEY_REQUIRED",
@@ -390,7 +399,7 @@ integration("week 3 core integration", () => {
       name: "Gaming Run",
       query: "gaming",
       target: 25,
-      metadata: buildRunMetadata(user.id),
+      metadata: await buildRunMetadata(user.id),
     });
 
     await getCore().executeRunDiscover({
@@ -520,7 +529,7 @@ integration("week 3 core integration", () => {
       name: "Second Run",
       query: "gaming",
       target: 12,
-      metadata: buildRunMetadata(user.id),
+      metadata: await buildRunMetadata(user.id),
     });
 
     await getCore().executeRunDiscover({

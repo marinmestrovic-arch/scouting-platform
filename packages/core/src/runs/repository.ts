@@ -35,6 +35,7 @@ const campaignManagerSelect = {
 } as const;
 
 const runMetadataSelect = {
+  campaignId: true,
   client: true,
   market: true,
   campaignManagerUserId: true,
@@ -113,39 +114,11 @@ function toRunMonth(month: PrismaRunMonth | null): RunMonth | null {
   }
 }
 
-function fromRunMonth(month: RunMonth): PrismaRunMonth {
-  switch (month) {
-    case "january":
-      return PrismaRunMonth.JANUARY;
-    case "february":
-      return PrismaRunMonth.FEBRUARY;
-    case "march":
-      return PrismaRunMonth.MARCH;
-    case "april":
-      return PrismaRunMonth.APRIL;
-    case "may":
-      return PrismaRunMonth.MAY;
-    case "june":
-      return PrismaRunMonth.JUNE;
-    case "july":
-      return PrismaRunMonth.JULY;
-    case "august":
-      return PrismaRunMonth.AUGUST;
-    case "september":
-      return PrismaRunMonth.SEPTEMBER;
-    case "october":
-      return PrismaRunMonth.OCTOBER;
-    case "november":
-      return PrismaRunMonth.NOVEMBER;
-    case "december":
-      return PrismaRunMonth.DECEMBER;
-  }
-}
-
 function toRunMetadata(
   runRequest: Prisma.RunRequestGetPayload<{ select: typeof runMetadataSelect }>,
 ): RunMetadataResponse {
   return {
+    campaignId: runRequest.campaignId,
     client: runRequest.client,
     market: runRequest.market,
     campaignManagerUserId: runRequest.campaignManagerUserId,
@@ -167,41 +140,6 @@ function toRunMetadata(
     currency: runRequest.currency,
     dealType: runRequest.dealType,
     activationType: runRequest.activationType,
-  };
-}
-
-function toRunMetadataCreateInput(
-  metadata: RunMetadataInput,
-): Pick<
-  Prisma.RunRequestUncheckedCreateInput,
-  | "client"
-  | "market"
-  | "briefLink"
-  | "campaignName"
-  | "month"
-  | "year"
-  | "dealOwner"
-  | "dealName"
-  | "pipeline"
-  | "dealStage"
-  | "currency"
-  | "dealType"
-  | "activationType"
-> {
-  return {
-    client: metadata.client.trim(),
-    market: metadata.market.trim(),
-    briefLink: metadata.briefLink?.trim() || null,
-    campaignName: metadata.campaignName.trim(),
-    month: fromRunMonth(metadata.month),
-    year: metadata.year,
-    dealOwner: metadata.dealOwner.trim(),
-    dealName: metadata.dealName.trim(),
-    pipeline: metadata.pipeline.trim(),
-    dealStage: metadata.dealStage.trim(),
-    currency: metadata.currency.trim(),
-    dealType: metadata.dealType.trim(),
-    activationType: metadata.activationType.trim(),
   };
 }
 
@@ -229,6 +167,114 @@ async function validateCampaignManagerUser(userId: string): Promise<void> {
       "Selected campaign manager must be an active Campaign Manager user",
     );
   }
+}
+
+async function loadRunCreationMetadata(input: {
+  campaignId: string;
+  userId: string;
+  campaignManagerUserId?: string;
+}): Promise<Pick<
+  Prisma.RunRequestUncheckedCreateInput,
+  | "campaignId"
+  | "client"
+  | "market"
+  | "campaignManagerUserId"
+  | "briefLink"
+  | "campaignName"
+  | "month"
+  | "year"
+  | "dealOwner"
+  | "dealName"
+  | "pipeline"
+  | "dealStage"
+  | "dealType"
+  | "activationType"
+>> {
+  const [campaign, user] = await Promise.all([
+    prisma.campaign.findUnique({
+      where: {
+        id: input.campaignId,
+      },
+      select: {
+        id: true,
+        name: true,
+        briefLink: true,
+        month: true,
+        year: true,
+        isActive: true,
+        client: {
+          select: {
+            name: true,
+          },
+        },
+        market: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+    prisma.user.findUnique({
+      where: {
+        id: input.userId,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        userType: true,
+      },
+    }),
+  ]);
+
+  if (!campaign || !campaign.isActive) {
+    throw new ServiceError("CAMPAIGN_NOT_FOUND", 400, "Selected campaign is not available");
+  }
+
+  if (!user) {
+    throw new ServiceError("USER_NOT_FOUND", 404, "User not found");
+  }
+
+  const campaignManagerUserId =
+    input.campaignManagerUserId ??
+    (user.userType === UserType.CAMPAIGN_MANAGER ? user.id : null);
+
+  if (campaignManagerUserId) {
+    await validateCampaignManagerUser(campaignManagerUserId);
+  }
+
+  const selectedCampaignManager = campaignManagerUserId
+    ? await prisma.user.findUnique({
+        where: {
+          id: campaignManagerUserId,
+        },
+        select: {
+          email: true,
+          name: true,
+        },
+      })
+    : null;
+
+  return {
+    campaignId: campaign.id,
+    client: campaign.client.name,
+    market: campaign.market.name,
+    campaignManagerUserId,
+    briefLink: campaign.briefLink,
+    campaignName: campaign.name,
+    month: campaign.month,
+    year: campaign.year,
+    dealOwner:
+      selectedCampaignManager?.name?.trim() ||
+      selectedCampaignManager?.email ||
+      user.name?.trim() ||
+      user.email,
+    dealName: campaign.name,
+    pipeline: "Sales Pipeline",
+    dealStage: "Scouted",
+    dealType: "",
+    activationType: "",
+  };
 }
 
 async function getCatalogCandidatesForQuery(query: string): Promise<CatalogCandidate[]> {
@@ -395,16 +441,21 @@ export async function createRunRequest(input: {
     );
   }
 
-  await validateCampaignManagerUser(input.metadata.campaignManagerUserId);
+  const runMetadata = await loadRunCreationMetadata({
+    campaignId: input.metadata.campaignId,
+    userId: input.userId,
+    ...(input.metadata.campaignManagerUserId
+      ? { campaignManagerUserId: input.metadata.campaignManagerUserId }
+      : {}),
+  });
 
   const runRequestCreateInput: Prisma.RunRequestUncheckedCreateInput = {
     requestedByUserId: input.userId,
-    campaignManagerUserId: input.metadata.campaignManagerUserId,
     name: input.name.trim(),
     query: input.query.trim(),
     target: input.target,
     status: PrismaRunRequestStatus.QUEUED,
-    ...toRunMetadataCreateInput(input.metadata),
+    ...runMetadata,
   };
 
   const runRequest = await prisma.runRequest.create({

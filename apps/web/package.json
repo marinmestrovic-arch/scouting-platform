@@ -23,7 +23,9 @@
     "vitest": "^3.0.9"
   },
   "scripts": {
+    "predev": "pnpm --filter @scouting-platform/db db:generate",
     "dev": "next dev",
+    "prebuild": "pnpm --filter @scouting-platform/db db:generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
