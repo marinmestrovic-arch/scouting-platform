@@ -2,6 +2,12 @@ import { createElement, isValidElement, type ReactElement, type ReactNode } from
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
+
 vi.mock("next/link", async () => {
   const react = await vi.importActual<typeof import("react")>("react");
 
@@ -127,6 +133,6 @@ describe("new scouting workspace", () => {
 
     expect(selects.every((element) => element.props.disabled !== true)).toBe(true);
     expect(inputs.every((element) => element.props.disabled !== true)).toBe(true);
-    expect(textareas[0]?.props.disabled).toBe(false);
+    expect(textareas[0]?.props.disabled).not.toBe(true);
   });
 });

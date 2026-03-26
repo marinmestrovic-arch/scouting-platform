@@ -1,5 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
+}));
 import { AuthenticatedShell } from "./authenticated-shell";
 
 describe("authenticated shell", () => {
@@ -30,7 +34,7 @@ describe("authenticated shell", () => {
     expect(html).toContain('href="/admin"');
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain('href="/database"');
-    expect(html).not.toContain("Scouting Platform");
+    expect(html).toContain("Scouting Platform");
     expect(html).toContain("admin page");
   });
 

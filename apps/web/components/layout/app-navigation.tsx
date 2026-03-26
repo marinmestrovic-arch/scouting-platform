@@ -10,7 +10,7 @@ type AppNavigationProps = Readonly<{
 }>;
 
 export function AppNavigation({ role }: AppNavigationProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const navigationItems = getNavigationForRole(role);
 
   return (

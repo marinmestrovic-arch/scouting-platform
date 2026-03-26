@@ -80,21 +80,31 @@ integration("week 3 API integration", () => {
     });
   }
 
-  function buildRunMetadata(campaignManagerUserId: string) {
+  async function buildRunMetadata(campaignManagerUserId: string) {
+    const client = await prisma.client.create({
+      data: {
+        name: `Client ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+      },
+    });
+    const market = await prisma.market.create({
+      data: {
+        name: `Market ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+      },
+    });
+    const campaign = await prisma.campaign.create({
+      data: {
+        name: `Spring Launch ${campaignManagerUserId.slice(0, 8)} ${Math.random()}`,
+        clientId: client.id,
+        marketId: market.id,
+        month: "MARCH",
+        year: 2026,
+        isActive: true,
+      },
+    });
+
     return {
-      client: "Sony",
-      market: "DACH",
+      campaignId: campaign.id,
       campaignManagerUserId,
-      campaignName: "Spring Launch",
-      month: "march" as const,
-      year: 2026,
-      dealOwner: "Marin Mestrovic",
-      dealName: "Sony Launch DACH",
-      pipeline: "New business",
-      dealStage: "Contract sent",
-      currency: "EUR",
-      dealType: "Paid social",
-      activationType: "YouTube integration",
     };
   }
 
@@ -110,7 +120,7 @@ integration("week 3 API integration", () => {
           name: "Run",
           query: "gaming creators",
           target: 20,
-          metadata: buildRunMetadata("6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b"),
+          metadata: await buildRunMetadata("6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b"),
         }),
       }),
     );
@@ -160,7 +170,7 @@ integration("week 3 API integration", () => {
           name: "Run 1",
           query: "gaming creators",
           target: 20,
-          metadata: buildRunMetadata(user.id),
+          metadata: await buildRunMetadata(user.id),
         }),
       }),
     );
@@ -238,6 +248,7 @@ integration("week 3 API integration", () => {
         completedAt: "2026-03-10T10:05:00.000Z",
         resultCount: 1,
         metadata: {
+          campaignId: null,
           client: null,
           market: null,
           campaignManagerUserId: null,

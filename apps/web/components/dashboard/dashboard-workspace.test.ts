@@ -117,7 +117,7 @@ describe("dashboard workspace", () => {
     expect(html).toContain("Influencer List");
     expect(html).toContain("Coverage");
     expect(html).toContain("Actions");
-    expect(html).toContain('href="/database?tab=runs&amp;runId=run-1"');
+    expect(html).toContain('href="/runs/run-1"');
     expect(html).toContain(">Gaming run<");
     expect(html).toContain(">Sony<");
     expect(html).toContain(">DACH<");

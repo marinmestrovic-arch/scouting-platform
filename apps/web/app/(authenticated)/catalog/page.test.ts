@@ -18,17 +18,16 @@ vi.mock("../../../components/database/database-workspace", () => ({
 import CatalogPage from "./page";
 
 describe("catalog page", () => {
-  it("renders the legacy database catalog shortcut", () => {
+  it("renders the catalog workspace page", () => {
     const html = renderToStaticMarkup(CatalogPage());
 
     expect(html).toContain("Catalog");
     expect(html).toContain(
-      "Legacy shortcut to the Database catalog tab. The catalog remains the canonical creator workspace for filters, selection, export, and HubSpot actions.",
+      "Browse the canonical creator catalog with full-width filters, enrichment actions, and export shortcuts.",
     );
     expect(databaseWorkspaceMock.mock.calls[0]?.[0]).toEqual({
       forcedTab: "catalog",
-      showLegacyNotice: true,
     });
-    expect(html).toContain("database-workspace:catalog:true");
+    expect(html).toContain("database-workspace:catalog:undefined");
   });
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { auth } from "../../auth";
 import { AuthenticatedShell } from "../../components/layout/authenticated-shell";
 import { getRoleFromSession, LOGIN_ROUTE } from "../../lib/access-control";
