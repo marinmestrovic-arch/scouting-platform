@@ -12,13 +12,19 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
+env:
+  POSTGRES_IMAGE: ${{ secrets.DOCKERHUB_USERNAME != '' && 'postgres:17-alpine' || 'public.ecr.aws/docker/library/postgres:17-alpine' }}
+
 jobs:
   checks:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: ${{ env.POSTGRES_IMAGE }}
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_DB: scouting_platform
           POSTGRES_USER: scouting
@@ -109,10 +115,18 @@ jobs:
       contents: read
       actions: write
     env:
+      POSTGRES_IMAGE: ${{ env.POSTGRES_IMAGE }}
       TRIVY_IMAGE: aquasec/trivy:0.58.2
     steps:
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Pull postgres image
-        run: docker pull postgres:17-alpine
+        run: docker pull "$POSTGRES_IMAGE"
 
       - name: Trivy advisory report (console)
         continue-on-error: true
@@ -124,7 +138,7 @@ jobs:
             --scanners vuln \
             --severity HIGH,CRITICAL \
             --exit-code 0 \
-            postgres:17-alpine | tee trivy-postgres.txt
+            "$POSTGRES_IMAGE" | tee trivy-postgres.txt
 
       - name: Trivy advisory report (SARIF)
         continue-on-error: true
@@ -138,7 +152,7 @@ jobs:
             --format sarif \
             --output /work/trivy-postgres.sarif \
             --exit-code 0 \
-            postgres:17-alpine
+            "$POSTGRES_IMAGE"
 
       - name: Upload advisory scan artifacts
         if: >-
