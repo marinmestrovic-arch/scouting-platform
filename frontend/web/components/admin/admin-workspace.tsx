@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
@@ -110,9 +111,9 @@ export function AdminWorkspace() {
           <div className="admin-workspace__placeholder">
             <h2>Exports</h2>
             <p>Review selected and filtered export batches from the dedicated export workspace.</p>
-            <a className="admin-workspace__link" href="/exports">
+            <Link className="admin-workspace__link" href="/exports">
               Open exports workspace
-            </a>
+            </Link>
           </div>
         </section>
       ) : null}
@@ -122,9 +123,9 @@ export function AdminWorkspace() {
           <div className="admin-workspace__placeholder">
             <h2>HubSpot</h2>
             <p>Inspect import history, row-level results, and failure details in the dedicated HubSpot workspace.</p>
-            <a className="admin-workspace__link" href="/hubspot">
+            <Link className="admin-workspace__link" href="/hubspot">
               Open HubSpot workspace
-            </a>
+            </Link>
           </div>
         </section>
       ) : null}

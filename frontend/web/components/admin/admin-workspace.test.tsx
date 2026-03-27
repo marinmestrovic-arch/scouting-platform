@@ -20,6 +20,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: useSearchParamsMock,
 }));
 
+vi.mock("next/link", () => ({
+  default: "a",
+}));
+
 vi.mock("./admin-advanced-report-queue", () => ({
   AdminAdvancedReportQueue: () => "advanced-report-queue",
 }));
