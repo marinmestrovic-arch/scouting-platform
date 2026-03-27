@@ -168,6 +168,11 @@ type CatalogTableShellViewProps = {
   onNextPage: () => void;
 };
 
+type CatalogPopoverButtonProps = Readonly<{
+  children: React.ReactNode;
+  label: React.ReactNode;
+}>;
+
 const DEFAULT_PAGE_SIZE = 20;
 export const CATALOG_ENRICHMENT_POLL_INTERVAL_MS = 3000;
 export const CATALOG_BATCH_STATUS_POLL_INTERVAL_MS = 3000;
@@ -480,6 +485,64 @@ function toTitleCase(value: string): string {
       return `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`;
     })
     .join(" ");
+}
+
+function CatalogPopoverButton({ children, label }: CatalogPopoverButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent): void {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleFocusIn(event: FocusEvent): void {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    if (!isOpen) {
+      return;
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("focusin", handleFocusIn, true);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("focusin", handleFocusIn, true);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div
+      className={`catalog-table__filter-pill${isOpen ? " catalog-table__filter-pill--open" : ""}`}
+      ref={rootRef}
+    >
+      <button
+        aria-expanded={isOpen}
+        className="catalog-table__filter-pill-trigger"
+        onClick={() => {
+          setIsOpen((current) => !current);
+        }}
+        type="button"
+      >
+        {label}
+      </button>
+      {isOpen ? children : null}
+    </div>
+  );
 }
 
 function getCsvExportBatchSnapshot(
@@ -1003,170 +1066,70 @@ export function CatalogTableShellView({
   const activeFilters = hasActiveCatalogFilters(draftFilters);
   const isSavingSegment = pendingSegmentAction === "create";
   const hasSavedSegments = savedSegments.length > 0;
+  const activeFilterCount =
+    (draftFilters.query.trim() ? 1 : 0) +
+    draftFilters.enrichmentStatus.length +
+    draftFilters.advancedReportStatus.length;
+  const hasSelection = selectedChannelIds.length > 0;
 
   return (
     <div className="catalog-table">
-      <section aria-labelledby="catalog-saved-segments-heading" className="catalog-table__segments">
-        <div className="catalog-table__segments-header">
-          <div>
-            <h2 id="catalog-saved-segments-heading">Saved segments</h2>
-            <p>Save your current catalog filters and reload them later without rebuilding the query.</p>
-          </div>
-        </div>
+      <section aria-labelledby="catalog-filter-heading" className="catalog-table__controls">
+        <h2 className="catalog-table__sr-only" id="catalog-filter-heading">
+          Catalog controls
+        </h2>
 
-        <div className="catalog-table__segments-actions">
-          <label className="catalog-table__search">
-            <span>Segment name</span>
+        <div className="catalog-table__control-row">
+          <label className="catalog-table__search catalog-table__search--primary">
             <input
-              name="segmentName"
-              onChange={(event) => {
-                onSavedSegmentNameChange(event.target.value);
-              }}
-              placeholder="Space creators"
-              suppressHydrationWarning
-              type="text"
-              value={savedSegmentName}
-            />
-          </label>
-
-          <button
-            className="catalog-table__button"
-            disabled={isSavingSegment || savedSegmentName.trim().length === 0}
-            onClick={() => {
-              void onCreateSegment();
-            }}
-            suppressHydrationWarning
-            type="button"
-          >
-            {isSavingSegment ? "Saving..." : "Save current filters"}
-          </button>
-        </div>
-
-        {savedSegmentOperationStatus.message ? (
-          <p
-            className={`catalog-table__segment-status catalog-table__segment-status--${savedSegmentOperationStatus.type}`}
-            role={savedSegmentOperationStatus.type === "error" ? "alert" : undefined}
-          >
-            {savedSegmentOperationStatus.message}
-          </p>
-        ) : null}
-
-        {savedSegmentsRequestState.status === "loading" && !hasSavedSegments ? (
-          <p className="catalog-table__feedback catalog-table__feedback--loading">
-            Loading saved segments...
-          </p>
-        ) : null}
-
-        {savedSegmentsRequestState.status === "error" ? (
-          <div className="catalog-table__feedback catalog-table__feedback--error" role="alert">
-            <p>{savedSegmentsRequestState.error}</p>
-            <button
-              className="catalog-table__button catalog-table__button--secondary"
-              onClick={onRetrySavedSegments}
-              suppressHydrationWarning
-              type="button"
-            >
-              Retry
-            </button>
-          </div>
-        ) : null}
-
-        {!hasSavedSegments && savedSegmentsRequestState.status === "ready" ? (
-          <p className="catalog-table__feedback catalog-table__feedback--empty">
-            No saved segments yet.
-          </p>
-        ) : null}
-
-        {hasSavedSegments ? (
-          <ul className="catalog-table__segment-list">
-            {savedSegments.map((segment) => {
-              const isDeletingSegment = pendingSegmentAction === `delete:${segment.id}`;
-
-              return (
-                <li className="catalog-table__segment-item" key={segment.id}>
-                  <div className="catalog-table__segment-copy">
-                    <h3>{segment.name}</h3>
-                    <p>{formatSavedSegmentSummary(segment.filters)}</p>
-                  </div>
-                  <div className="catalog-table__segment-item-actions">
-                    <button
-                      className="catalog-table__button catalog-table__button--secondary"
-                      disabled={pendingSegmentAction !== null}
-                      onClick={() => {
-                        onLoadSegment(segment);
-                      }}
-                      suppressHydrationWarning
-                      type="button"
-                    >
-                      Load
-                    </button>
-                    <button
-                      className="catalog-table__button catalog-table__button--secondary"
-                      disabled={pendingSegmentAction !== null}
-                      onClick={() => {
-                        void onDeleteSegment(segment);
-                      }}
-                      suppressHydrationWarning
-                      type="button"
-                    >
-                      {isDeletingSegment ? "Deleting..." : "Delete"}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
-
-      <section aria-labelledby="catalog-filter-heading" className="catalog-table__filters">
-        <div className="catalog-table__filters-header">
-          <div>
-            <h2 id="catalog-filter-heading">Filters</h2>
-            <p>Search the shared catalog and narrow results by current enrichment or report status.</p>
-          </div>
-          {activeFilters ? <span className="catalog-table__filters-badge">Filters active</span> : null}
-        </div>
-
-        <div className="catalog-table__filters-grid">
-          <label className="catalog-table__search">
-            <span>Search</span>
-            <input
+              aria-label="Search creators"
               name="query"
               onChange={(event) => {
                 onDraftQueryChange(event.target.value);
               }}
-              placeholder="Search title, handle, or YouTube channel ID"
+              placeholder="Search creators..."
               suppressHydrationWarning
               type="search"
               value={draftFilters.query}
             />
           </label>
 
-          <FilterCheckboxGroup
-            legend="Enrichment status"
-            onToggle={onToggleEnrichmentStatus}
-            options={ENRICHMENT_FILTER_OPTIONS}
-            selected={draftFilters.enrichmentStatus}
-          />
-
-          <FilterCheckboxGroup
-            legend="Advanced report status"
-            onToggle={onToggleAdvancedReportStatus}
-            options={ADVANCED_REPORT_FILTER_OPTIONS}
-            selected={draftFilters.advancedReportStatus}
-          />
-        </div>
-
-        <div className="catalog-table__filter-actions">
-          <button
-            className="catalog-table__button"
-            onClick={onApplyFilters}
-            suppressHydrationWarning
-            type="button"
+          <CatalogPopoverButton
+            label={
+              <>
+                Enrichment Status
+                {draftFilters.enrichmentStatus.length > 0 ? ` (${draftFilters.enrichmentStatus.length})` : ""}
+              </>
+            }
           >
-            Apply filters
-          </button>
+            <div className="catalog-table__filter-popover">
+              <FilterCheckboxGroup
+                legend="Enrichment status"
+                onToggle={onToggleEnrichmentStatus}
+                options={ENRICHMENT_FILTER_OPTIONS}
+                selected={draftFilters.enrichmentStatus}
+              />
+            </div>
+          </CatalogPopoverButton>
+
+          <CatalogPopoverButton
+            label={
+              <>
+                Report Status
+                {draftFilters.advancedReportStatus.length > 0 ? ` (${draftFilters.advancedReportStatus.length})` : ""}
+              </>
+            }
+          >
+            <div className="catalog-table__filter-popover">
+              <FilterCheckboxGroup
+                legend="Advanced report status"
+                onToggle={onToggleAdvancedReportStatus}
+                options={ADVANCED_REPORT_FILTER_OPTIONS}
+                selected={draftFilters.advancedReportStatus}
+              />
+            </div>
+          </CatalogPopoverButton>
+
           <button
             className="catalog-table__button catalog-table__button--secondary"
             disabled={!activeFilters && !hasPendingFilterChanges}
@@ -1174,10 +1137,150 @@ export function CatalogTableShellView({
             suppressHydrationWarning
             type="button"
           >
-            Reset
+            Clear
           </button>
+
+          <button
+            className="catalog-table__button"
+            onClick={onApplyFilters}
+            suppressHydrationWarning
+            type="button"
+          >
+            Apply
+          </button>
+        </div>
+
+        <div className="catalog-table__control-row catalog-table__control-row--secondary">
+          <details className="catalog-table__segments-pill">
+            <summary>
+              Segments
+              {hasSavedSegments ? ` (${savedSegments.length})` : ""}
+            </summary>
+            <div className="catalog-table__segments-popover">
+              <div className="catalog-table__segments-actions">
+                <label className="catalog-table__search">
+                  <span>Segment name</span>
+                  <input
+                    name="segmentName"
+                    onChange={(event) => {
+                      onSavedSegmentNameChange(event.target.value);
+                    }}
+                    placeholder="Space creators"
+                    suppressHydrationWarning
+                    type="text"
+                    value={savedSegmentName}
+                  />
+                </label>
+
+                <button
+                  className="catalog-table__button"
+                  disabled={isSavingSegment || savedSegmentName.trim().length === 0}
+                  onClick={() => {
+                    void onCreateSegment();
+                  }}
+                  suppressHydrationWarning
+                  type="button"
+                >
+                  {isSavingSegment ? "Saving..." : "Save"}
+                </button>
+              </div>
+
+              {savedSegmentOperationStatus.message ? (
+                <p
+                  className={`catalog-table__segment-status catalog-table__segment-status--${savedSegmentOperationStatus.type}`}
+                  role={savedSegmentOperationStatus.type === "error" ? "alert" : undefined}
+                >
+                  {savedSegmentOperationStatus.message}
+                </p>
+              ) : null}
+
+              {savedSegmentsRequestState.status === "loading" && !hasSavedSegments ? (
+                <p className="catalog-table__feedback catalog-table__feedback--loading">
+                  Loading saved segments...
+                </p>
+              ) : null}
+
+              {savedSegmentsRequestState.status === "error" ? (
+                <div className="catalog-table__feedback catalog-table__feedback--error" role="alert">
+                  <p>{savedSegmentsRequestState.error}</p>
+                  <button
+                    className="catalog-table__button catalog-table__button--secondary"
+                    onClick={onRetrySavedSegments}
+                    suppressHydrationWarning
+                    type="button"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : null}
+
+              {!hasSavedSegments && savedSegmentsRequestState.status === "ready" ? (
+                <p className="catalog-table__feedback catalog-table__feedback--empty">
+                  No saved segments yet.
+                </p>
+              ) : null}
+
+              {hasSavedSegments ? (
+                <ul className="catalog-table__segment-list">
+                  {savedSegments.map((segment) => {
+                    const isDeletingSegment = pendingSegmentAction === `delete:${segment.id}`;
+
+                    return (
+                      <li className="catalog-table__segment-item" key={segment.id}>
+                        <div className="catalog-table__segment-copy">
+                          <h3>{segment.name}</h3>
+                          <p>{formatSavedSegmentSummary(segment.filters)}</p>
+                        </div>
+                        <div className="catalog-table__segment-item-actions">
+                          <button
+                            className="catalog-table__button catalog-table__button--secondary"
+                            disabled={pendingSegmentAction !== null}
+                            onClick={() => {
+                              onLoadSegment(segment);
+                            }}
+                            suppressHydrationWarning
+                            type="button"
+                          >
+                            Load
+                          </button>
+                          <button
+                            className="catalog-table__button catalog-table__button--secondary"
+                            disabled={pendingSegmentAction !== null}
+                            onClick={() => {
+                              void onDeleteSegment(segment);
+                            }}
+                            suppressHydrationWarning
+                            type="button"
+                          >
+                            {isDeletingSegment ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+          </details>
+
+          <button
+            className="catalog-table__button"
+            disabled={!hasSelection}
+            onClick={() => {
+              void onExportSelectedChannels();
+            }}
+            suppressHydrationWarning
+            type="button"
+          >
+            {hasSelection ? `Export (${selectedChannelIds.length})` : "Export"}
+          </button>
+
           {hasPendingFilterChanges ? (
             <p className="catalog-table__filter-note">Draft changes are ready to apply.</p>
+          ) : null}
+
+          {activeFilterCount > 0 ? (
+            <p className="catalog-table__filter-note">Active filters: {activeFilterCount}</p>
           ) : null}
         </div>
       </section>
@@ -1271,71 +1374,9 @@ function CatalogTableResults({
       <div className="catalog-table__toolbar">
         <div className="catalog-table__toolbar-copy">
           <p className="catalog-table__summary">{formatChannelCountSummary(data)}</p>
-          <div className="catalog-table__selection">
-            <p aria-live="polite" className="catalog-table__selection-summary">
-              {formatCatalogSelectionSummary(selectedChannelIds.length, selectedOnPageCount)}
-            </p>
-            {hasSelection ? (
-              <div className="catalog-table__selection-actions">
-                <button
-                  className="catalog-table__button"
-                  disabled={isRequestingBatchEnrichment}
-                  onClick={() => {
-                    void onRequestSelectedEnrichment();
-                  }}
-                  suppressHydrationWarning
-                  type="button"
-                >
-                  {isRequestingBatchEnrichment
-                    ? "Requesting..."
-                    : `Enrich selected (${selectedChannelIds.length})`}
-                </button>
-                <button
-                  className="catalog-table__button"
-                  disabled={isCreatingCsvExportBatch}
-                  onClick={() => {
-                    void onExportSelectedChannels();
-                  }}
-                  suppressHydrationWarning
-                  type="button"
-                >
-                  {isCreatingCsvExportBatch
-                    ? "Exporting..."
-                    : `Export selected (${selectedChannelIds.length})`}
-                </button>
-                <button
-                  className="catalog-table__button"
-                  disabled={isCreatingHubspotPushBatch}
-                  onClick={() => {
-                    void onPushSelectedChannelsToHubspot();
-                  }}
-                  suppressHydrationWarning
-                  type="button"
-                >
-                  {isCreatingHubspotPushBatch
-                    ? "Starting push..."
-                    : `Push selected to HubSpot (${selectedChannelIds.length})`}
-                </button>
-                <button
-                  className="catalog-table__button catalog-table__button--secondary"
-                  onClick={onClearSelection}
-                  suppressHydrationWarning
-                  type="button"
-                >
-                  Clear selection
-                </button>
-              </div>
-            ) : null}
-          </div>
-          {batchEnrichmentActionState.message ? (
-            <p
-              aria-live="polite"
-              className={`catalog-table__selection-status catalog-table__selection-status--${batchEnrichmentActionState.type}`}
-              role={batchEnrichmentActionState.type === "error" ? "alert" : undefined}
-            >
-              {batchEnrichmentActionState.message}
-            </p>
-          ) : null}
+          <p aria-live="polite" className="catalog-table__selection-summary">
+            {formatCatalogSelectionSummary(selectedChannelIds.length, selectedOnPageCount)}
+          </p>
         </div>
         <div className="catalog-table__pagination">
           <button
@@ -1359,6 +1400,62 @@ function CatalogTableResults({
           </button>
         </div>
       </div>
+
+      {hasSelection ? (
+        <div className="catalog-table__selection-actions">
+          <button
+            className="catalog-table__button"
+            disabled={isRequestingBatchEnrichment}
+            onClick={() => {
+              void onRequestSelectedEnrichment();
+            }}
+            suppressHydrationWarning
+            type="button"
+          >
+            {isRequestingBatchEnrichment ? "Requesting..." : `Enrich selected (${selectedChannelIds.length})`}
+          </button>
+          <button
+            className="catalog-table__button"
+            disabled={isCreatingCsvExportBatch}
+            onClick={() => {
+              void onExportSelectedChannels();
+            }}
+            suppressHydrationWarning
+            type="button"
+          >
+            {isCreatingCsvExportBatch ? "Exporting..." : `Export selected (${selectedChannelIds.length})`}
+          </button>
+          <button
+            className="catalog-table__button catalog-table__button--secondary"
+            disabled={isCreatingHubspotPushBatch}
+            onClick={() => {
+              void onPushSelectedChannelsToHubspot();
+            }}
+            suppressHydrationWarning
+            type="button"
+          >
+            {isCreatingHubspotPushBatch ? "Starting push..." : `Push to HubSpot (${selectedChannelIds.length})`}
+          </button>
+          <button
+            className="catalog-table__button catalog-table__button--secondary"
+            onClick={onClearSelection}
+            suppressHydrationWarning
+            type="button"
+          >
+            Clear selection
+          </button>
+        </div>
+      ) : null}
+
+      {batchEnrichmentActionState.message ? (
+        <p
+          aria-live="polite"
+          className={`catalog-table__selection-status catalog-table__selection-status--${batchEnrichmentActionState.type}`}
+          role={batchEnrichmentActionState.type === "error" ? "alert" : undefined}
+        >
+          {batchEnrichmentActionState.message}
+        </p>
+      ) : null}
 
       <CatalogSelectionBatchCards
         latestCsvExportBatch={latestCsvExportBatch}

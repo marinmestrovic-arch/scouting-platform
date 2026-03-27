@@ -121,7 +121,9 @@ describe("new scouting workspace", () => {
       ],
     });
     const rendered = NewScoutingWorkspaceView(tree.props);
-    const selects = findElementsByType(rendered, "select") as Array<
+    const searchableTriggers = findElementsByType(rendered, "button").filter((element) => {
+      return (element.props as { ["data-searchable-select-trigger"]?: string })["data-searchable-select-trigger"] === "true";
+    }) as Array<
       ReactElement<{ disabled?: boolean }>
     >;
     const inputs = findElementsByType(rendered, "input") as Array<
@@ -131,7 +133,7 @@ describe("new scouting workspace", () => {
       ReactElement<{ disabled?: boolean }>
     >;
 
-    expect(selects.every((element) => element.props.disabled !== true)).toBe(true);
+    expect(searchableTriggers.every((element) => element.props.disabled !== true)).toBe(true);
     expect(inputs.every((element) => element.props.disabled !== true)).toBe(true);
     expect(textareas[0]?.props.disabled).not.toBe(true);
   });

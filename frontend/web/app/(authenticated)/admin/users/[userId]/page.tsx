@@ -39,6 +39,7 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
 
   return (
     <PageSection
+      section="Admin"
       title={user.name?.trim() || user.email}
       description={`Manage account identity and YouTube credential assignment for ${user.email}.`}
     >

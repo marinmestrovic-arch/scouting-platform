@@ -24,6 +24,7 @@ export default async function AdminImportsPage() {
 
   return (
     <PageSection
+      section="Admin"
       title="CSV Imports"
       description="Upload strict-template CSV batches and inspect row-level results without leaving the admin workspace."
     >

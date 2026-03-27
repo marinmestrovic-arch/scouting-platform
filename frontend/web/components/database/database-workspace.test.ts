@@ -73,7 +73,8 @@ describe("database workspace", () => {
 
     const html = renderToStaticMarkup(createElement(DatabaseWorkspace));
 
-    expect(html).toContain("Catalog view");
+    expect(html).not.toContain("Catalog view");
+    expect(html).not.toContain("Canonical catalog");
     expect(html).not.toContain("Available today");
     expect(catalogTableShellMock).toHaveBeenCalledTimes(1);
     expect(databaseRunsTabMock).not.toHaveBeenCalled();

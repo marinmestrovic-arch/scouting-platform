@@ -144,13 +144,13 @@ export function AdminChannelManualEditPanelView({
   return (
     <section
       aria-labelledby="channel-detail-shell-manual-edit-heading"
-      className="channel-detail-shell__panel"
+      className="channel-detail-shell__panel channel-detail-shell__panel--manual-edit"
     >
       <header>
-        <h2 id="channel-detail-shell-manual-edit-heading">Admin manual edits</h2>
+        <h2 id="channel-detail-shell-manual-edit-heading">Admin profile controls</h2>
         <p>
-          Save per-field overrides when catalog values need correction. Restoring fallback removes
-          the manual override and returns the resolved field to automated data.
+          Update the creator identity fields that need a manual override. Restoring fallback removes
+          the override and returns the profile to the resolved automated value.
         </p>
       </header>
 

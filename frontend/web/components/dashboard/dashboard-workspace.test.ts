@@ -109,7 +109,6 @@ describe("dashboard workspace", () => {
   it("renders Week 7 dashboard filters, metadata columns, and run actions", () => {
     const html = renderToStaticMarkup(createElement(DashboardWorkspace));
 
-    expect(html).toContain("Runs");
     expect(html).toContain("Campaign Manager");
     expect(html).toContain("Client");
     expect(html).toContain("Market");

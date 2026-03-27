@@ -14,8 +14,6 @@ import {
   AdminAdvancedReportQueueView,
   getAdminAdvancedReportFreshnessCopy,
   getAdminAdvancedReportStatusLabel,
-  shouldPollAdminAdvancedReportDetail,
-  shouldPollAdminAdvancedReportList,
 } from "./admin-advanced-report-queue";
 
 function buildSummary(overrides?: Partial<AdminAdvancedReportRequestSummary>): AdminAdvancedReportRequestSummary {
@@ -70,19 +68,17 @@ function buildDetail(overrides?: Partial<AdminAdvancedReportRequestDetail>): Adm
 }
 
 describe("admin advanced report queue view", () => {
-  it("renders loading state for the list and empty detail selection", () => {
+  it("renders loading state with status filter only", () => {
     const html = renderToStaticMarkup(
       createElement(AdminAdvancedReportQueueView, {
         actionState: { type: "idle", action: null, message: "" },
         decisionNoteDraft: "",
         detailState: { status: "idle", data: null, error: null },
-        isRefreshingDetail: false,
-        isRefreshingList: false,
         listState: { status: "loading", items: [], error: null },
         onApprove: vi.fn(),
+        onCloseDetail: vi.fn(),
         onDecisionNoteChange: vi.fn(),
         onReject: vi.fn(),
-        onReload: vi.fn(),
         onRetryDetail: vi.fn(),
         onRetryList: vi.fn(),
         onSelectRequest: vi.fn(),
@@ -92,27 +88,26 @@ describe("admin advanced report queue view", () => {
       }),
     );
 
-    expect(html).toContain("Approval queue");
+    expect(html).toContain("Status");
+    expect(html).toContain("Pending approval");
     expect(html).toContain("Loading advanced report requests...");
-    expect(html).toContain("Select a request");
-    expect(html).toContain('href="/admin/imports"');
-    expect(html).toContain('href="/admin/users"');
+    expect(html).not.toContain("Search requests");
+    expect(html).not.toContain("Reload queue");
+    expect(html).not.toContain("Approval queue");
   });
 
-  it("renders pending requests with decision controls and raw payload detail", () => {
+  it("renders the approvals table and a modal detail view for a pending request", () => {
     const detail = buildDetail();
     const html = renderToStaticMarkup(
       createElement(AdminAdvancedReportQueueView, {
         actionState: { type: "success", action: null, message: "Approval recorded." },
         decisionNoteDraft: "Approved for lookup.",
         detailState: { status: "ready", data: detail, error: null },
-        isRefreshingDetail: true,
-        isRefreshingList: true,
         listState: { status: "ready", items: [buildSummary()], error: null },
         onApprove: vi.fn(),
+        onCloseDetail: vi.fn(),
         onDecisionNoteChange: vi.fn(),
         onReject: vi.fn(),
-        onReload: vi.fn(),
         onRetryDetail: vi.fn(),
         onRetryList: vi.fn(),
         onSelectRequest: vi.fn(),
@@ -122,34 +117,51 @@ describe("admin advanced report queue view", () => {
       }),
     );
 
+    expect(html).toContain("Channel");
+    expect(html).toContain("Requested by");
+    expect(html).toContain("Open details");
     expect(html).toContain("Queue Channel");
-    expect(html).toContain("Pending approval");
-    expect(html).toContain("Approve request");
-    expect(html).toContain("Reject request");
-    expect(html).toContain("Refreshing queue...");
-    expect(html).toContain("Refreshing selected request...");
+    expect(html).toContain("Approval request");
+    expect(html).toContain("Approve");
+    expect(html).toContain("Reject");
     expect(html).toContain("Approved for lookup.");
     expect(html).toContain("Raw provider payload");
     expect(html).toContain("&quot;state&quot;: &quot;finished&quot;");
   });
 
-  it("renders non-pending history rows with empty state copy and recorded notes", () => {
+  it("renders empty state and non-pending detail copy correctly", () => {
     const detail = buildDetail({
       status: "completed",
       decisionNote: "Previously approved.",
     });
-    const html = renderToStaticMarkup(
+    const emptyHtml = renderToStaticMarkup(
+      createElement(AdminAdvancedReportQueueView, {
+        actionState: { type: "idle", action: null, message: "" },
+        decisionNoteDraft: "",
+        detailState: { status: "idle", data: null, error: null },
+        listState: { status: "ready", items: [], error: null },
+        onApprove: vi.fn(),
+        onCloseDetail: vi.fn(),
+        onDecisionNoteChange: vi.fn(),
+        onReject: vi.fn(),
+        onRetryDetail: vi.fn(),
+        onRetryList: vi.fn(),
+        onSelectRequest: vi.fn(),
+        onStatusFilterChange: vi.fn(),
+        selectedRequestId: null,
+        statusFilter: "completed",
+      }),
+    );
+    const detailHtml = renderToStaticMarkup(
       createElement(AdminAdvancedReportQueueView, {
         actionState: { type: "idle", action: null, message: "" },
         decisionNoteDraft: "",
         detailState: { status: "ready", data: detail, error: null },
-        isRefreshingDetail: false,
-        isRefreshingList: false,
-        listState: { status: "ready", items: [], error: null },
+        listState: { status: "ready", items: [buildSummary({ status: "completed" })], error: null },
         onApprove: vi.fn(),
+        onCloseDetail: vi.fn(),
         onDecisionNoteChange: vi.fn(),
         onReject: vi.fn(),
-        onReload: vi.fn(),
         onRetryDetail: vi.fn(),
         onRetryList: vi.fn(),
         onSelectRequest: vi.fn(),
@@ -159,9 +171,9 @@ describe("admin advanced report queue view", () => {
       }),
     );
 
-    expect(html).toContain("No completed requests found.");
-    expect(html).not.toContain("Approve request");
-    expect(html).toContain("Previously approved.");
+    expect(emptyHtml).toContain("No completed requests found.");
+    expect(detailHtml).not.toContain("Approve</button>");
+    expect(detailHtml).toContain("Previously approved.");
   });
 });
 
@@ -176,28 +188,5 @@ describe("admin advanced report queue helpers", () => {
         withinFreshWindow: true,
       }),
     ).toBe("Last completed report is fresh (12 days old).");
-  });
-
-  it("decides which list/detail states should poll", () => {
-    expect(
-      shouldPollAdminAdvancedReportList({
-        statusFilter: "pending_approval",
-        items: [],
-      }),
-    ).toBe(true);
-    expect(
-      shouldPollAdminAdvancedReportList({
-        statusFilter: "completed",
-        items: [buildSummary({ status: "completed" }), buildSummary({ status: "queued" })],
-      }),
-    ).toBe(true);
-    expect(
-      shouldPollAdminAdvancedReportList({
-        statusFilter: "completed",
-        items: [buildSummary({ status: "completed" })],
-      }),
-    ).toBe(false);
-    expect(shouldPollAdminAdvancedReportDetail(buildDetail({ status: "running" }))).toBe(true);
-    expect(shouldPollAdminAdvancedReportDetail(buildDetail({ status: "completed" }))).toBe(false);
   });
 });

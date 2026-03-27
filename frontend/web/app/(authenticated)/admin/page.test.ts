@@ -14,12 +14,8 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }));
 
-vi.mock("../../../components/admin/admin-dashboard-shell", () => ({
-  AdminDashboardShell: () => "Admin dashboard shell"
-}));
-
-vi.mock("../../../components/admin/admin-advanced-report-queue", () => ({
-  AdminAdvancedReportQueue: () => "Admin approval queue"
+vi.mock("../../../components/admin/admin-workspace", () => ({
+  AdminWorkspace: () => "Admin workspace shell"
 }));
 
 import AdminPage from "./page";
@@ -78,7 +74,7 @@ describe("admin page", () => {
     expect(result).toBeNull();
   });
 
-  it("renders admin dashboard overview and approval queue for admin role", async () => {
+  it("renders the admin workspace for admin role", async () => {
     authMock.mockResolvedValueOnce({
       user: {
         role: "admin"
@@ -90,11 +86,8 @@ describe("admin page", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Admin");
     expect(html).toContain(
-      "Triage admin-only work, catch setup gaps early, and jump into catalog, export, HubSpot, or the full HypeAuditor queue from one workspace."
+      "Review approvals, manage users, and keep the dedicated admin workflows within reach."
     );
-    expect(html).toContain("Admin dashboard shell");
-    expect(html).toContain("Admin approval queue");
-    expect(html).toContain("admin-approval-queue");
-    expect(html.indexOf("Admin dashboard shell")).toBeLessThan(html.indexOf("Admin approval queue"));
+    expect(html).toContain("Admin workspace shell");
   });
 });

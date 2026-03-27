@@ -13,6 +13,7 @@ import {
 } from "../../lib/run-metadata";
 import { fetchRecentRuns } from "../../lib/runs-api";
 import { RUN_STATUS_POLL_INTERVAL_MS, shouldPollRunStatus } from "../runs/run-presentation";
+import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type DashboardRunsRequestState =
   | { status: "loading"; data: null; error: null }
@@ -88,7 +89,6 @@ export function DashboardWorkspace({
       : INITIAL_REQUEST_STATE,
   );
   const [filters, setFilters] = useState<DashboardFiltersState>(INITIAL_FILTERS_STATE);
-  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let didCancel = false;
@@ -144,97 +144,88 @@ export function DashboardWorkspace({
         clearTimeout(timeoutId);
       }
     };
-  }, [filters, initialData, reloadToken]);
+  }, [filters, initialData]);
 
   const filterOptions = requestState.status === "ready" ? requestState.data.filterOptions : null;
+  const campaignManagerOptions: SearchableSelectOption[] = [
+    { value: "", label: "All campaign managers" },
+    ...(filterOptions?.campaignManagers.map((campaignManager) => ({
+      value: campaignManager.id,
+      label: formatCampaignManagerLabel(campaignManager),
+      keywords: [campaignManager.email],
+    })) ?? []),
+  ];
+  const clientOptions: SearchableSelectOption[] = [
+    { value: "", label: "All clients" },
+    ...(filterOptions?.clients.map((client) => ({
+      value: client,
+      label: client,
+    })) ?? []),
+  ];
+  const marketOptions: SearchableSelectOption[] = [
+    { value: "", label: "All markets" },
+    ...(filterOptions?.markets.map((market) => ({
+      value: market,
+      label: market,
+    })) ?? []),
+  ];
 
   return (
     <div className="dashboard-workspace">
       <section className="dashboard-workspace__table-panel">
-        <header className="dashboard-workspace__table-header">
-          <div>
-            <h2>Runs</h2>
-            <p className="workspace-copy">
-              Filter the scouting list by campaign manager, client, or market, then export the
-              run or open an export preparation workspace from the same saved snapshot.
-            </p>
-          </div>
-          <button
-            className="dashboard-workspace__secondary-link"
-            onClick={() => {
-              setReloadToken((current) => current + 1);
-            }}
-            type="button"
-          >
-            Refresh runs
-          </button>
-        </header>
-
         <div className="dashboard-workspace__filters">
           <label className="new-scouting__field">
             <span>Campaign Manager</span>
-            <select
+            <SearchableSelect
+              ariaLabel="Campaign Manager"
               disabled={requestState.status === "loading" || !filterOptions}
-              onChange={(event) => {
-                const campaignManagerUserId = event.currentTarget.value;
+              onChange={(campaignManagerUserId) => {
                 setFilters((current) => ({
                   ...current,
                   campaignManagerUserId,
                 }));
               }}
+              options={campaignManagerOptions}
+              placeholder="All campaign managers"
+              searchPlaceholder="Search campaign managers..."
               value={filters.campaignManagerUserId}
-            >
-              <option value="">All campaign managers</option>
-              {filterOptions?.campaignManagers.map((campaignManager) => (
-                <option key={campaignManager.id} value={campaignManager.id}>
-                  {formatCampaignManagerLabel(campaignManager)}
-                </option>
-              ))}
-            </select>
+            />
           </label>
 
           <label className="new-scouting__field">
             <span>Client</span>
-            <select
+            <SearchableSelect
+              ariaLabel="Client"
               disabled={requestState.status === "loading" || !filterOptions}
-              onChange={(event) => {
-                const client = event.currentTarget.value;
+              onChange={(client) => {
                 setFilters((current) => ({
                   ...current,
                   client,
                 }));
               }}
+              options={clientOptions}
+              placeholder="All clients"
+              searchPlaceholder="Search clients..."
               value={filters.client}
-            >
-              <option value="">All clients</option>
-              {filterOptions?.clients.map((client) => (
-                <option key={client} value={client}>
-                  {client}
-                </option>
-              ))}
-            </select>
+            />
           </label>
 
           <label className="new-scouting__field">
             <span>Market</span>
-            <select
+            <SearchableSelect
+              ariaLabel="Market"
               disabled={requestState.status === "loading" || !filterOptions}
-              onChange={(event) => {
-                const market = event.currentTarget.value;
+              onChange={(market) => {
                 setFilters((current) => ({
                   ...current,
                   market,
                 }));
               }}
+              options={marketOptions}
+              placeholder="All markets"
+              searchPlaceholder="Search markets..."
               value={filters.market}
-            >
-              <option value="">All markets</option>
-              {filterOptions?.markets.map((market) => (
-                <option key={market} value={market}>
-                  {market}
-                </option>
-              ))}
-            </select>
+            />
           </label>
         </div>
 

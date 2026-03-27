@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 import { updateAdminUserProfile, updateAdminUserYoutubeKey } from "../../lib/admin-users-api";
+import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type OperationStatus = {
   type: "idle" | "success" | "error";
@@ -54,6 +55,12 @@ export function UserAccountDetail({ user }: UserAccountDetailProps) {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [profileStatus, setProfileStatus] = useState<OperationStatus>(IDLE_OPERATION_STATUS);
   const [updateStatus, setUpdateStatus] = useState<OperationStatus>(IDLE_OPERATION_STATUS);
+  const userTypeOptions: SearchableSelectOption[] = [
+    { value: "campaign_manager", label: "Campaign Manager" },
+    { value: "campaign_lead", label: "Campaign Lead" },
+    { value: "hoc", label: "HoC" },
+    { value: "admin", label: "Admin" },
+  ];
 
   async function handleProfileSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -162,18 +169,17 @@ export function UserAccountDetail({ user }: UserAccountDetailProps) {
 
             <label className="admin-users__field">
               <span>User type</span>
-              <select
+              <SearchableSelect
+                ariaLabel="User type"
                 disabled={user.role === "admin"}
-                onChange={(event) => {
-                  setUserType(event.currentTarget.value as UserType);
+                onChange={(value) => {
+                  setUserType(value as UserType);
                 }}
+                options={userTypeOptions}
+                placeholder="Select user type"
+                searchPlaceholder="Search user types..."
                 value={user.role === "admin" ? "admin" : userType}
-              >
-                <option value="campaign_manager">Campaign Manager</option>
-                <option value="campaign_lead">Campaign Lead</option>
-                <option value="hoc">HoC</option>
-                <option value="admin">Admin</option>
-              </select>
+              />
             </label>
 
             <p className="user-account-detail__helper">

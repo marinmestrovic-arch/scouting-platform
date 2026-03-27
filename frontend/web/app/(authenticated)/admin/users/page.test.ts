@@ -1,9 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, redirectMock } = vi.hoisted(() => ({
+const { authMock, redirectMock, pushMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
-  redirectMock: vi.fn()
+  redirectMock: vi.fn(),
+  pushMock: vi.fn(),
 }));
 
 vi.mock("../../../../auth", () => ({
@@ -11,7 +12,10 @@ vi.mock("../../../../auth", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  redirect: redirectMock
+  redirect: redirectMock,
+  useRouter: () => ({
+    push: pushMock,
+  }),
 }));
 
 import AdminUsersPage from "./page";

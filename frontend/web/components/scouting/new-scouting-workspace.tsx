@@ -7,6 +7,7 @@ import React, { startTransition, useState } from "react";
 
 import { createRun } from "../../lib/runs-api";
 import { getCreateRunErrorMessage, normalizeRunDraft, normalizeRunTarget } from "../runs/create-run-shell";
+import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type NewScoutingWorkspaceProps = Readonly<{
   initialCampaigns?: CampaignSummary[] | undefined;
@@ -47,6 +48,30 @@ export function NewScoutingWorkspace({
   });
   const [requestState, setRequestState] = useState<NewScoutingRequestState>(DEFAULT_REQUEST_STATE);
   const isBusy = requestState.status === "submitting";
+  const campaignOptions: SearchableSelectOption[] = [
+    {
+      value: "",
+      label: initialCampaigns.length === 0 ? "No active campaigns available" : "Select campaign",
+      disabled: initialCampaigns.length === 0,
+    },
+    ...initialCampaigns.map((campaign) => ({
+      value: campaign.id,
+      label: `${campaign.name} · ${campaign.client.name} · ${campaign.market.name}`,
+      keywords: [campaign.name, campaign.client.name, campaign.market.name],
+    })),
+  ];
+  const campaignManagerOptions: SearchableSelectOption[] = [
+    {
+      value: "",
+      label: initialCampaignManagers.length === 0 ? "No campaign managers available" : "Select campaign manager",
+      disabled: initialCampaignManagers.length === 0,
+    },
+    ...initialCampaignManagers.map((campaignManager) => ({
+      value: campaignManager.id,
+      label: campaignManager.name?.trim() || campaignManager.email,
+      keywords: [campaignManager.email],
+    })),
+  ];
 
   function updateDraftField<Key extends keyof NewScoutingDraft>(field: Key, value: NewScoutingDraft[Key]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -110,17 +135,6 @@ export function NewScoutingWorkspace({
       ) : null}
 
       <form className="new-scouting__panel" onSubmit={handleSubmit}>
-        <div className="page-hero">
-          <div>
-            <p className="workspace-eyebrow">Campaign-based scouting</p>
-            <h2>Start a new scouting list</h2>
-            <p className="workspace-copy">
-              Campaign metadata now comes from the Campaigns database, so run creation only needs
-              the list name, campaign, target, and search prompt.
-            </p>
-          </div>
-        </div>
-
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Influencer List</span>
@@ -137,44 +151,30 @@ export function NewScoutingWorkspace({
 
           <label className="new-scouting__field">
             <span>Campaign</span>
-            <select
+            <SearchableSelect
+              ariaLabel="Campaign"
               disabled={isBusy || initialCampaigns.length === 0}
-              onChange={(event) => updateDraftField("campaignId", event.currentTarget.value)}
-              required
+              onChange={(campaignId) => updateDraftField("campaignId", campaignId)}
+              options={campaignOptions}
+              placeholder={initialCampaigns.length === 0 ? "No active campaigns available" : "Select campaign"}
+              searchPlaceholder="Search campaigns..."
               value={draft.campaignId}
-            >
-              <option value="">
-                {initialCampaigns.length === 0 ? "No active campaigns available" : "Select campaign"}
-              </option>
-              {initialCampaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name} · {campaign.client.name} · {campaign.market.name}
-                </option>
-              ))}
-            </select>
+            />
           </label>
         </div>
 
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Campaign Manager</span>
-            <select
+            <SearchableSelect
+              ariaLabel="Campaign Manager"
               disabled={isBusy || initialCampaignManagers.length === 0}
-              onChange={(event) => updateDraftField("campaignManagerUserId", event.currentTarget.value)}
-              required
+              onChange={(campaignManagerUserId) => updateDraftField("campaignManagerUserId", campaignManagerUserId)}
+              options={campaignManagerOptions}
+              placeholder={initialCampaignManagers.length === 0 ? "No campaign managers available" : "Select campaign manager"}
+              searchPlaceholder="Search campaign managers..."
               value={draft.campaignManagerUserId}
-            >
-              <option value="">
-                {initialCampaignManagers.length === 0
-                  ? "No campaign managers available"
-                  : "Select campaign manager"}
-              </option>
-              {initialCampaignManagers.map((campaignManager) => (
-                <option key={campaignManager.id} value={campaignManager.id}>
-                  {campaignManager.name?.trim() || campaignManager.email}
-                </option>
-              ))}
-            </select>
+            />
           </label>
 
           <label className="new-scouting__field">

@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 
 import { MONTH_LABELS } from "../../lib/countries";
 import { createCampaignRequest } from "../../lib/campaigns-api";
+import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type CampaignsWorkspaceProps = Readonly<{
   initialData: ListCampaignsResponse;
@@ -53,6 +54,34 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
   });
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const clientOptions: SearchableSelectOption[] = [
+    { value: "", label: "All clients" },
+    ...initialData.filterOptions.clients.map((client) => ({
+      value: client.id,
+      label: client.name,
+    })),
+  ];
+  const marketOptions: SearchableSelectOption[] = [
+    { value: "", label: "All markets" },
+    ...initialData.filterOptions.markets.map((market) => ({
+      value: market.id,
+      label: market.name,
+    })),
+  ];
+  const createClientOptions: SearchableSelectOption[] = [
+    { value: "", label: "Select client" },
+    ...initialData.filterOptions.clients.map((client) => ({
+      value: client.id,
+      label: client.name,
+    })),
+  ];
+  const createMarketOptions: SearchableSelectOption[] = [
+    { value: "", label: "Select market" },
+    ...initialData.filterOptions.markets.map((market) => ({
+      value: market.id,
+      label: market.name,
+    })),
+  ];
 
   function updateFilters(field: "clientId" | "marketId", value: string) {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -78,7 +107,24 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
     setStatus("");
 
     try {
+      if (!form.name.trim()) {
+        throw new Error("Campaign name is required.");
+      }
+
+      if (!form.clientId) {
+        throw new Error("Client is required.");
+      }
+
+      if (!form.marketId) {
+        throw new Error("Market is required.");
+      }
+
       const year = Number.parseInt(form.year, 10);
+
+      if (!Number.isFinite(year)) {
+        throw new Error("Year is required.");
+      }
+
       const created = await createCampaignRequest({
         name: form.name,
         clientId: form.clientId,
@@ -108,49 +154,43 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
 
   return (
     <div className="campaigns-workspace">
-      <section className="campaigns-workspace__filters">
+      <section className="database-records__filters">
         <label className="new-scouting__field">
           <span>Client</span>
-          <select
-            onChange={(event) => updateFilters("clientId", event.currentTarget.value)}
+          <SearchableSelect
+            ariaLabel="Client"
+            onChange={(value) => updateFilters("clientId", value)}
+            options={clientOptions}
+            placeholder="All clients"
+            searchPlaceholder="Search clients..."
             value={filters.clientId}
-          >
-            <option value="">All clients</option>
-            {initialData.filterOptions.clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
+          />
         </label>
 
         <label className="new-scouting__field">
           <span>Market</span>
-          <select
-            onChange={(event) => updateFilters("marketId", event.currentTarget.value)}
+          <SearchableSelect
+            ariaLabel="Market"
+            onChange={(value) => updateFilters("marketId", value)}
+            options={marketOptions}
+            placeholder="All markets"
+            searchPlaceholder="Search markets..."
             value={filters.marketId}
-          >
-            <option value="">All markets</option>
-            {initialData.filterOptions.markets.map((market) => (
-              <option key={market.id} value={market.id}>
-                {market.name}
-              </option>
-            ))}
-          </select>
+          />
         </label>
       </section>
 
-      {initialData.permissions.canCreate ? (
-        <div className="database-admin__header">
-          <div>
-            <h3>Campaigns</h3>
-            <p className="workspace-copy">Filter campaigns and add a new campaign from a compact modal.</p>
-          </div>
-          <button className="database-admin__cta" onClick={() => setIsCreateOpen(true)} type="button">
+      <div className="database-records__header">
+        <div>
+          <h2>Campaigns</h2>
+          <p className="workspace-copy">View and manage active campaigns in the shared database workspace.</p>
+        </div>
+        {initialData.permissions.canCreate ? (
+          <button className="database-records__cta" onClick={() => setIsCreateOpen(true)} type="button">
             Add Campaign
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {isCreateOpen ? (
         <div className="database-admin__modal-backdrop" onClick={() => setIsCreateOpen(false)} role="presentation">
@@ -183,33 +223,25 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                 </label>
                 <label className="new-scouting__field">
                   <span>Client</span>
-                  <select
-                    onChange={(event) => updateFormField("clientId", event.currentTarget.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="Client"
+                    onChange={(value) => updateFormField("clientId", value)}
+                    options={createClientOptions}
+                    placeholder="Select client"
+                    searchPlaceholder="Search clients..."
                     value={form.clientId}
-                  >
-                    <option value="">Select client</option>
-                    {initialData.filterOptions.clients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="new-scouting__field">
                   <span>Market</span>
-                  <select
-                    onChange={(event) => updateFormField("marketId", event.currentTarget.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="Market"
+                    onChange={(value) => updateFormField("marketId", value)}
+                    options={createMarketOptions}
+                    placeholder="Select market"
+                    searchPlaceholder="Search markets..."
                     value={form.marketId}
-                  >
-                    <option value="">Select market</option>
-                    {initialData.filterOptions.markets.map((market) => (
-                      <option key={market.id} value={market.id}>
-                        {market.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               </div>
               <div className="new-scouting__grid new-scouting__grid--three">
@@ -256,8 +288,8 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
         </div>
       ) : null}
 
-      <div className="campaigns-workspace__table-shell">
-        <table className="dashboard-workspace__table">
+      <div className="database-records__table-shell">
+        <table className="database-records__table">
           <thead>
             <tr>
               <th>Campaign Name</th>
@@ -272,12 +304,12 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
           <tbody>
             {filteredItems.map((campaign: CampaignSummary) => (
               <tr key={campaign.id}>
-                <td>{campaign.name}</td>
+                <td className="database-records__strong-cell">{campaign.name}</td>
                 <td>{campaign.client.name}</td>
                 <td>{campaign.market.name}</td>
                 <td>
                   {campaign.briefLink ? (
-                    <a href={campaign.briefLink} rel="noreferrer" target="_blank">
+                    <a className="database-records__link" href={campaign.briefLink} rel="noreferrer" target="_blank">
                       Open brief
                     </a>
                   ) : (
@@ -286,7 +318,11 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                 </td>
                 <td>{MONTH_LABELS[campaign.month]}</td>
                 <td>{campaign.year}</td>
-                <td>{campaign.isActive ? "Active" : "Inactive"}</td>
+                <td>
+                  <span className={campaign.isActive ? "database-records__status database-records__status--active" : "database-records__status"}>
+                    {campaign.isActive ? "Active" : "Inactive"}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>

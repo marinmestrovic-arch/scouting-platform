@@ -1,3 +1,4 @@
+import React from "react";
 import { auth } from "../../../../auth";
 import { AdminUsersManager } from "../../../../components/admin/admin-users-manager";
 import { PageSection } from "../../../../components/layout/page-section";
@@ -24,6 +25,7 @@ export default async function AdminUsersPage() {
 
   return (
     <PageSection
+      section="Admin"
       title="User Management"
       description="Create users and reset passwords for campaign managers."
     >

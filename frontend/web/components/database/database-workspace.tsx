@@ -75,16 +75,6 @@ export function DatabaseWorkspace({
 
       {activeTab === "catalog" ? (
         <section className="database-workspace__panel">
-          <header className="database-workspace__panel-header">
-            <div>
-              <p className="workspace-eyebrow">Canonical catalog</p>
-              <h2>Catalog view</h2>
-              <p className="workspace-copy">
-                Use the shared catalog filters, enrichment actions, CSV export flow, and the
-                Week 7 YouTube columns from the canonical creator database.
-              </p>
-            </div>
-          </header>
           <CatalogTableShell />
         </section>
       ) : (

@@ -26,7 +26,7 @@ describe("admin channel manual edit panel view", () => {
       }),
     );
 
-    expect(html).toContain("Admin manual edits");
+    expect(html).toContain("Admin profile controls");
     expect(html).toContain("Save override");
     expect(html).toContain("Restore fallback");
     expect(html).toContain("Leaving Handle, Thumbnail URL, or Description blank and saving");

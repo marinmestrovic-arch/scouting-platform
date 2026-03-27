@@ -6,6 +6,7 @@ import type {
   AdvancedReportRequestStatus,
 } from "@scouting-platform/contracts";
 import Link from "next/link";
+import React from "react";
 import { useEffect, useState, type ReactElement } from "react";
 
 import {
@@ -15,6 +16,7 @@ import {
   fetchAdminAdvancedReportRequests,
   rejectAdminAdvancedReportRequest,
 } from "../../lib/admin-advanced-reports-api";
+import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type AdminAdvancedReportListState = {
   status: "loading" | "error" | "ready";
@@ -41,23 +43,15 @@ type AdminAdvancedReportQueueViewProps = Readonly<{
   selectedRequestId: string | null;
   decisionNoteDraft: string;
   actionState: AdminAdvancedReportActionState;
-  isRefreshingList: boolean;
-  isRefreshingDetail: boolean;
   onStatusFilterChange: (value: AdvancedReportRequestStatus) => void;
-  onReload: () => void;
   onRetryList: () => void;
   onRetryDetail: () => void;
+  onCloseDetail: () => void;
   onSelectRequest: (requestId: string) => void;
   onDecisionNoteChange: (value: string) => void;
   onApprove: () => void | Promise<void>;
   onReject: () => void | Promise<void>;
 }>;
-
-const ACTIVE_POLLING_STATUSES = new Set<AdvancedReportRequestStatus>([
-  "approved",
-  "queued",
-  "running",
-]);
 
 const STATUS_OPTIONS: ReadonlyArray<{
   value: AdvancedReportRequestStatus;
@@ -71,6 +65,11 @@ const STATUS_OPTIONS: ReadonlyArray<{
   { value: "completed", label: "Completed" },
   { value: "failed", label: "Failed" },
 ] as const;
+
+const STATUS_SELECT_OPTIONS: SearchableSelectOption[] = STATUS_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}));
 
 const INITIAL_LIST_STATE: AdminAdvancedReportListState = {
   status: "loading",
@@ -89,8 +88,6 @@ const IDLE_ACTION_STATE: AdminAdvancedReportActionState = {
   action: null,
   message: "",
 };
-
-export const ADMIN_ADVANCED_REPORT_POLL_INTERVAL_MS = 3000;
 
 function normalizeErrorMessage(error: unknown, fallbackMessage: string): string {
   if (error instanceof Error && error.message) {
@@ -145,30 +142,30 @@ export function getAdminAdvancedReportFreshnessCopy(
   return `Last completed report is outside the 120-day review window (${lastCompletedReport.ageDays} days old).`;
 }
 
-function getAdminAdvancedReportListSnippet(
+function getAdminAdvancedReportListStatusCopy(
   request: Pick<AdminAdvancedReportRequestSummary, "decisionNote" | "lastError" | "status">,
 ): string {
   if (request.lastError) {
-    return `Last error: ${request.lastError}`;
+    return request.lastError;
   }
 
   if (request.decisionNote) {
-    return `Decision note: ${request.decisionNote}`;
+    return request.decisionNote;
   }
 
   if (request.status === "pending_approval") {
-    return "Awaiting admin review.";
+    return "Awaiting review";
   }
 
   if (request.status === "approved") {
-    return "Approved and waiting for worker queueing.";
+    return "Approved";
   }
 
   if (request.status === "queued" || request.status === "running") {
-    return "Worker execution is in progress.";
+    return "In progress";
   }
 
-  return "No additional review notes recorded.";
+  return "No note";
 }
 
 function getAdminAdvancedReportEmptyStateCopy(statusFilter: AdvancedReportRequestStatus): string {
@@ -177,27 +174,6 @@ function getAdminAdvancedReportEmptyStateCopy(statusFilter: AdvancedReportReques
   }
 
   return `No ${getAdminAdvancedReportStatusLabel(statusFilter).toLowerCase()} requests found.`;
-}
-
-export function shouldPollAdminAdvancedReportList(input: {
-  statusFilter: AdvancedReportRequestStatus;
-  items: readonly Pick<AdminAdvancedReportRequestSummary, "status">[];
-}): boolean {
-  if (input.statusFilter === "pending_approval") {
-    return true;
-  }
-
-  return input.items.some((item) => ACTIVE_POLLING_STATUSES.has(item.status));
-}
-
-export function shouldPollAdminAdvancedReportDetail(
-  request: Pick<AdminAdvancedReportRequestDetail, "status"> | null,
-): boolean {
-  if (!request) {
-    return false;
-  }
-
-  return ACTIVE_POLLING_STATUSES.has(request.status);
 }
 
 function getListErrorMessage(error: unknown): string {
@@ -226,25 +202,10 @@ function getDecisionErrorMessage(error: unknown): string {
 
 function getDecisionSuccessMessage(action: "approve" | "reject"): string {
   if (action === "approve") {
-    return "Approval recorded. The request has moved forward for worker processing.";
+    return "Approval recorded.";
   }
 
-  return "Rejection recorded. The request has been removed from the pending queue.";
-}
-
-function resolveNextSelectedRequestId(
-  currentRequestId: string | null,
-  items: readonly AdminAdvancedReportRequestSummary[],
-): string | null {
-  if (items.length === 0) {
-    return null;
-  }
-
-  if (currentRequestId && items.some((item) => item.id === currentRequestId)) {
-    return currentRequestId;
-  }
-
-  return items[0]?.id ?? null;
+  return "Rejection recorded.";
 }
 
 function serializeRawPayload(value: unknown): string {
@@ -255,19 +216,8 @@ function serializeRawPayload(value: unknown): string {
   }
 }
 
-function renderDetailState(
-  props: AdminAdvancedReportQueueViewProps,
-): ReactElement {
-  const { detailState, decisionNoteDraft, actionState, isRefreshingDetail } = props;
-
-  if (detailState.status === "idle") {
-    return (
-      <div className="admin-advanced-report-queue__empty-state">
-        <h2>Select a request</h2>
-        <p>Pick a request from the queue to review its metadata, freshness, and raw payload.</p>
-      </div>
-    );
-  }
+function renderDetailContent(props: AdminAdvancedReportQueueViewProps): ReactElement {
+  const { detailState, decisionNoteDraft, actionState } = props;
 
   if (detailState.status === "loading") {
     return (
@@ -300,33 +250,28 @@ function renderDetailState(
 
   return (
     <div className="admin-advanced-report-queue__detail-stack">
-      <header className="admin-advanced-report-queue__detail-header">
+      <header className="database-admin__modal-header">
         <div>
-          <p className="admin-advanced-report-queue__eyebrow">Selected request</p>
-          <h2>{request.channel.title}</h2>
+          <p className="workspace-eyebrow">Approval request</p>
+          <h3>{request.channel.title}</h3>
           <p className="admin-advanced-report-queue__detail-meta">
             <code>{request.channel.youtubeChannelId}</code>
           </p>
         </div>
+        <button className="database-admin__modal-close" onClick={props.onCloseDetail} type="button">
+          Close
+        </button>
+      </header>
+
+      <div className="admin-advanced-report-queue__detail-header">
         <span
           className={`admin-advanced-report-queue__status admin-advanced-report-queue__status--${request.status}`}
         >
           {getAdminAdvancedReportStatusLabel(request.status)}
         </span>
-      </header>
-
-      <div className="admin-advanced-report-queue__detail-links">
-        <Link
-          className="admin-advanced-report-queue__link"
-          href={`/catalog/${request.channel.id}`}
-        >
+        <Link className="admin-advanced-report-queue__link" href={`/catalog/${request.channel.id}`}>
           Open channel detail
         </Link>
-        {isRefreshingDetail ? (
-          <p className="admin-advanced-report-queue__inline-note" role="status">
-            Refreshing selected request...
-          </p>
-        ) : null}
       </div>
 
       <div className="admin-advanced-report-queue__callout">
@@ -337,9 +282,7 @@ function renderDetailState(
       <dl className="admin-advanced-report-queue__details">
         <div>
           <dt>Request ID</dt>
-          <dd>
-            <code>{request.id}</code>
-          </dd>
+          <dd><code>{request.id}</code></dd>
         </div>
         <div>
           <dt>Requested by</dt>
@@ -375,7 +318,7 @@ function renderDetailState(
         <section className="admin-advanced-report-queue__panel">
           <header className="admin-advanced-report-queue__panel-header">
             <h3>Decision</h3>
-            <p>Approval actions stay non-optimistic and only update from the server response.</p>
+            <p>Review the request and record the decision from this dialog.</p>
           </header>
 
           <label className="admin-advanced-report-queue__field">
@@ -398,7 +341,7 @@ function renderDetailState(
               }}
               type="button"
             >
-              {isSubmittingApproval ? "Approving..." : "Approve request"}
+              {isSubmittingApproval ? "Approving..." : "Approve"}
             </button>
             <button
               className="admin-advanced-report-queue__button admin-advanced-report-queue__button--secondary"
@@ -408,7 +351,7 @@ function renderDetailState(
               }}
               type="button"
             >
-              {isSubmittingRejection ? "Rejecting..." : "Reject request"}
+              {isSubmittingRejection ? "Rejecting..." : "Reject"}
             </button>
           </div>
         </section>
@@ -442,149 +385,124 @@ function renderDetailState(
   );
 }
 
-export function AdminAdvancedReportQueueView(
-  props: AdminAdvancedReportQueueViewProps,
-): ReactElement {
-  const { listState, selectedRequestId, statusFilter, isRefreshingList } = props;
+export function AdminAdvancedReportQueueView(props: AdminAdvancedReportQueueViewProps): ReactElement {
+  const { listState, selectedRequestId, statusFilter } = props;
+  const isDetailOpen = selectedRequestId !== null;
 
   return (
     <div className="admin-advanced-report-queue">
-      <div className="admin-advanced-report-queue__toolbar">
-        <div className="admin-advanced-report-queue__filters">
-          <label className="admin-advanced-report-queue__field">
-            <span>Show status</span>
-            <select
-              onChange={(event) => {
-                props.onStatusFilterChange(event.target.value as AdvancedReportRequestStatus);
-              }}
-              value={statusFilter}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="admin-advanced-report-queue__button admin-advanced-report-queue__button--secondary"
-            onClick={props.onReload}
-            type="button"
-          >
-            Reload queue
-          </button>
-        </div>
-
-        <div className="admin-advanced-report-queue__toolbar-copy">
-          <Link className="admin-advanced-report-queue__link" href="/admin/imports">
-            CSV imports
-          </Link>
-          <Link className="admin-advanced-report-queue__link" href="/admin/users">
-            User management
-          </Link>
-          {isRefreshingList ? (
-            <p className="admin-advanced-report-queue__inline-note" role="status">
-              Refreshing queue...
-            </p>
-          ) : null}
-        </div>
+      <div className="admin-advanced-report-queue__controls">
+        <label className="admin-advanced-report-queue__field">
+          <span>Status</span>
+          <SearchableSelect
+            ariaLabel="Status"
+            onChange={(value) => {
+              props.onStatusFilterChange(value as AdvancedReportRequestStatus);
+            }}
+            options={STATUS_SELECT_OPTIONS}
+            placeholder="Select status"
+            searchPlaceholder="Search statuses..."
+            value={statusFilter}
+          />
+        </label>
       </div>
 
-      <div className="admin-advanced-report-queue__layout">
-        <section className="admin-advanced-report-queue__panel" aria-labelledby="admin-advanced-report-queue-list-heading">
-          <header className="admin-advanced-report-queue__panel-header">
-            <h2 id="admin-advanced-report-queue-list-heading">Approval queue</h2>
-            <p>Pending requests stay oldest-first. History filters let admins inspect finished decisions and worker outcomes.</p>
-          </header>
+      {listState.status === "loading" ? (
+        <div className="admin-advanced-report-queue__feedback admin-advanced-report-queue__feedback--loading">
+          <p>Loading advanced report requests...</p>
+        </div>
+      ) : null}
 
-          {listState.status === "loading" ? (
-            <div className="admin-advanced-report-queue__feedback admin-advanced-report-queue__feedback--loading">
-              <p>Loading advanced report requests...</p>
-            </div>
-          ) : null}
+      {listState.status === "error" ? (
+        <div className="admin-advanced-report-queue__feedback admin-advanced-report-queue__feedback--error" role="alert">
+          <p>{listState.error ?? "Unable to load advanced report requests."}</p>
+          <button
+            className="admin-advanced-report-queue__button admin-advanced-report-queue__button--secondary"
+            onClick={props.onRetryList}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
 
-          {listState.status === "error" ? (
-            <div className="admin-advanced-report-queue__feedback admin-advanced-report-queue__feedback--error" role="alert">
-              <p>{listState.error ?? "Unable to load advanced report requests."}</p>
-              <button
-                className="admin-advanced-report-queue__button admin-advanced-report-queue__button--secondary"
-                onClick={props.onRetryList}
-                type="button"
-              >
-                Retry queue
-              </button>
-            </div>
-          ) : null}
+      {listState.status === "ready" && listState.items.length === 0 ? (
+        <div className="admin-advanced-report-queue__empty-state">
+          <h3>No requests</h3>
+          <p>{getAdminAdvancedReportEmptyStateCopy(statusFilter)}</p>
+        </div>
+      ) : null}
 
-          {listState.status === "ready" && listState.items.length === 0 ? (
-            <div className="admin-advanced-report-queue__empty-state">
-              <h3>No requests</h3>
-              <p>{getAdminAdvancedReportEmptyStateCopy(statusFilter)}</p>
-            </div>
-          ) : null}
-
-          {listState.status === "ready" && listState.items.length > 0 ? (
-            <ul className="admin-advanced-report-queue__list">
-              {listState.items.map((request) => {
-                const isSelected = request.id === selectedRequestId;
-
-                return (
-                  <li key={request.id}>
+      {listState.status === "ready" && listState.items.length > 0 ? (
+        <div className="admin-advanced-report-queue__table-shell">
+          <table className="admin-advanced-report-queue__table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Requested by</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Last completed report</th>
+                <th>Note / error</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {listState.items.map((request) => (
+                <tr className="admin-advanced-report-queue__table-row" key={request.id}>
+                  <td className="admin-advanced-report-queue__primary-cell">
+                    <div className="admin-advanced-report-queue__channel-cell">
+                      <span>{request.channel.title}</span>
+                      <code>{request.channel.youtubeChannelId}</code>
+                    </div>
+                  </td>
+                  <td>{request.requestedBy.email}</td>
+                  <td>
+                    <span
+                      className={`admin-advanced-report-queue__status admin-advanced-report-queue__status--${request.status}`}
+                    >
+                      {getAdminAdvancedReportStatusLabel(request.status)}
+                    </span>
+                  </td>
+                  <td>{formatTimestamp(request.createdAt)}</td>
+                  <td>{getAdminAdvancedReportFreshnessCopy(request.lastCompletedReport)}</td>
+                  <td>{getAdminAdvancedReportListStatusCopy(request)}</td>
+                  <td>
                     <button
-                      className={`admin-advanced-report-queue__list-item${isSelected ? " admin-advanced-report-queue__list-item--selected" : ""}`}
+                      className="admin-advanced-report-queue__button admin-advanced-report-queue__button--secondary"
                       onClick={() => {
                         props.onSelectRequest(request.id);
                       }}
                       type="button"
                     >
-                      <div className="admin-advanced-report-queue__list-item-header">
-                        <div>
-                          <h3>{request.channel.title}</h3>
-                          <p>
-                            <code>{request.channel.youtubeChannelId}</code>
-                          </p>
-                        </div>
-                        <span
-                          className={`admin-advanced-report-queue__status admin-advanced-report-queue__status--${request.status}`}
-                        >
-                          {getAdminAdvancedReportStatusLabel(request.status)}
-                        </span>
-                      </div>
-
-                      <dl className="admin-advanced-report-queue__list-details">
-                        <div>
-                          <dt>Requested by</dt>
-                          <dd>{request.requestedBy.email}</dd>
-                        </div>
-                        <div>
-                          <dt>Created</dt>
-                          <dd>{formatTimestamp(request.createdAt)}</dd>
-                        </div>
-                      </dl>
-
-                      <p className="admin-advanced-report-queue__list-copy">
-                        {getAdminAdvancedReportFreshnessCopy(request.lastCompletedReport)}
-                      </p>
-                      <p className="admin-advanced-report-queue__list-copy">
-                        {getAdminAdvancedReportListSnippet(request)}
-                      </p>
+                      Open details
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </section>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
-        <section className="admin-advanced-report-queue__panel" aria-labelledby="admin-advanced-report-queue-detail-heading">
-          <header className="admin-advanced-report-queue__panel-header">
-            <h2 id="admin-advanced-report-queue-detail-heading">Request detail</h2>
-            <p>Inspect request metadata, freshness context, and the raw payload reserved for admins.</p>
-          </header>
-
-          {renderDetailState(props)}
-        </section>
-      </div>
+      {isDetailOpen ? (
+        <div className="database-admin__modal-backdrop" onClick={props.onCloseDetail} role="presentation">
+          <div
+            aria-labelledby="admin-approval-detail-title"
+            aria-modal="true"
+            className="database-admin__modal admin-advanced-report-queue__modal"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            role="dialog"
+          >
+            <div id="admin-approval-detail-title" className="admin-advanced-report-queue__sr-only">
+              Approval request detail
+            </div>
+            {renderDetailContent(props)}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -598,20 +516,12 @@ export function AdminAdvancedReportQueue() {
   const [actionState, setActionState] = useState<AdminAdvancedReportActionState>(IDLE_ACTION_STATE);
   const [listReloadToken, setListReloadToken] = useState(0);
   const [detailReloadToken, setDetailReloadToken] = useState(0);
-  const [isRefreshingList, setIsRefreshingList] = useState(false);
-  const [isRefreshingDetail, setIsRefreshingDetail] = useState(false);
 
   useEffect(() => {
     const abortController = new AbortController();
-    const keepCurrentListVisible = listState.status === "ready";
+    setListState(INITIAL_LIST_STATE);
 
-    if (!keepCurrentListVisible) {
-      setListState(INITIAL_LIST_STATE);
-    } else {
-      setIsRefreshingList(true);
-    }
-
-    async function loadRequests(): Promise<void> {
+    void (async () => {
       try {
         const items = await fetchAdminAdvancedReportRequests(
           { status: statusFilter },
@@ -627,18 +537,6 @@ export function AdminAdvancedReportQueue() {
           items,
           error: null,
         });
-
-        const nextSelectedRequestId = resolveNextSelectedRequestId(selectedRequestId, items);
-
-        if (nextSelectedRequestId !== selectedRequestId) {
-          setSelectedRequestId(nextSelectedRequestId);
-          setActionState(IDLE_ACTION_STATE);
-
-          if (nextSelectedRequestId === null) {
-            setDecisionNoteDraft("");
-            setDetailState(INITIAL_DETAIL_STATE);
-          }
-        }
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -649,17 +547,8 @@ export function AdminAdvancedReportQueue() {
           items: [],
           error: getListErrorMessage(error),
         });
-        setSelectedRequestId(null);
-        setDetailState(INITIAL_DETAIL_STATE);
-        setDecisionNoteDraft("");
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsRefreshingList(false);
-        }
       }
-    }
-
-    void loadRequests();
+    })();
 
     return () => {
       abortController.abort();
@@ -670,29 +559,19 @@ export function AdminAdvancedReportQueue() {
     if (!selectedRequestId) {
       setDetailState(INITIAL_DETAIL_STATE);
       setDecisionNoteDraft("");
-      setIsRefreshingDetail(false);
       return;
     }
 
-    const requestId = selectedRequestId;
-
     const abortController = new AbortController();
-    const keepCurrentDetailVisible =
-      detailState.status === "ready" && detailState.data?.id === requestId;
+    setDetailState({
+      status: "loading",
+      data: null,
+      error: null,
+    });
 
-    if (!keepCurrentDetailVisible) {
-      setDetailState({
-        status: "loading",
-        data: null,
-        error: null,
-      });
-    } else {
-      setIsRefreshingDetail(true);
-    }
-
-    async function loadRequestDetail(): Promise<void> {
+    void (async () => {
       try {
-        const detail = await fetchAdminAdvancedReportRequestDetail(requestId, abortController.signal);
+        const detail = await fetchAdminAdvancedReportRequestDetail(selectedRequestId, abortController.signal);
 
         if (abortController.signal.aborted) {
           return;
@@ -714,50 +593,13 @@ export function AdminAdvancedReportQueue() {
           data: null,
           error: getDetailErrorMessage(error),
         });
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsRefreshingDetail(false);
-        }
       }
-    }
-
-    void loadRequestDetail();
+    })();
 
     return () => {
       abortController.abort();
     };
   }, [selectedRequestId, detailReloadToken]);
-
-  useEffect(() => {
-    const shouldPollList =
-      listState.status === "ready" &&
-      shouldPollAdminAdvancedReportList({
-        statusFilter,
-        items: listState.items,
-      });
-    const shouldPollDetail =
-      detailState.status === "ready" &&
-      statusFilter !== "pending_approval" &&
-      shouldPollAdminAdvancedReportDetail(detailState.data);
-
-    if (!shouldPollList && !shouldPollDetail) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      if (shouldPollList) {
-        setListReloadToken((current) => current + 1);
-      }
-
-      if (shouldPollDetail) {
-        setDetailReloadToken((current) => current + 1);
-      }
-    }, ADMIN_ADVANCED_REPORT_POLL_INTERVAL_MS);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [statusFilter, listState, detailState]);
 
   function handleStatusFilterChange(nextStatus: AdvancedReportRequestStatus): void {
     if (nextStatus === statusFilter) {
@@ -765,26 +607,12 @@ export function AdminAdvancedReportQueue() {
     }
 
     setStatusFilter(nextStatus);
-    setListState(INITIAL_LIST_STATE);
-    setDetailState(INITIAL_DETAIL_STATE);
     setSelectedRequestId(null);
     setDecisionNoteDraft("");
     setActionState(IDLE_ACTION_STATE);
-    setIsRefreshingList(false);
-    setIsRefreshingDetail(false);
-  }
-
-  function handleReload(): void {
-    setActionState(IDLE_ACTION_STATE);
-    setListReloadToken((current) => current + 1);
-
-    if (selectedRequestId) {
-      setDetailReloadToken((current) => current + 1);
-    }
   }
 
   function handleRetryList(): void {
-    setListState(INITIAL_LIST_STATE);
     setListReloadToken((current) => current + 1);
   }
 
@@ -793,27 +621,14 @@ export function AdminAdvancedReportQueue() {
       return;
     }
 
-    setDetailState({
-      status: "loading",
-      data: null,
-      error: null,
-    });
     setDetailReloadToken((current) => current + 1);
   }
 
-  function handleSelectRequest(requestId: string): void {
-    if (requestId === selectedRequestId) {
-      return;
-    }
-
-    setSelectedRequestId(requestId);
-    setDetailState({
-      status: "loading",
-      data: null,
-      error: null,
-    });
+  function handleCloseDetail(): void {
+    setSelectedRequestId(null);
     setDecisionNoteDraft("");
     setActionState(IDLE_ACTION_STATE);
+    setDetailState(INITIAL_DETAIL_STATE);
   }
 
   async function handleDecision(action: "approve" | "reject"): Promise<void> {
@@ -857,11 +672,6 @@ export function AdminAdvancedReportQueue() {
         action,
         message: getDecisionErrorMessage(error),
       });
-
-      if (error instanceof AdminAdvancedReportApiError && error.status === 409) {
-        setListReloadToken((current) => current + 1);
-        setDetailReloadToken((current) => current + 1);
-      }
     }
   }
 
@@ -870,16 +680,17 @@ export function AdminAdvancedReportQueue() {
       actionState={actionState}
       decisionNoteDraft={decisionNoteDraft}
       detailState={detailState}
-      isRefreshingDetail={isRefreshingDetail}
-      isRefreshingList={isRefreshingList}
       listState={listState}
       onApprove={() => handleDecision("approve")}
+      onCloseDetail={handleCloseDetail}
       onDecisionNoteChange={setDecisionNoteDraft}
       onReject={() => handleDecision("reject")}
-      onReload={handleReload}
       onRetryDetail={handleRetryDetail}
       onRetryList={handleRetryList}
-      onSelectRequest={handleSelectRequest}
+      onSelectRequest={(requestId) => {
+        setSelectedRequestId(requestId);
+        setActionState(IDLE_ACTION_STATE);
+      }}
       onStatusFilterChange={handleStatusFilterChange}
       selectedRequestId={selectedRequestId}
       statusFilter={statusFilter}

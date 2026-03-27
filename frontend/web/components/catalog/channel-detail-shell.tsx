@@ -9,8 +9,7 @@ import type {
   ChannelEstimatedPrice,
 } from "@scouting-platform/contracts";
 import Image from "next/image";
-import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ApiRequestError,
@@ -18,7 +17,6 @@ import {
   requestChannelAdvancedReport,
   requestChannelEnrichment,
 } from "../../lib/channels-api";
-import { AdminChannelManualEditPanel } from "./admin-channel-manual-edit-panel";
 
 type ChannelDetailShellProps = Readonly<{
   channelId: string;
@@ -64,6 +62,19 @@ type ChannelDetailShellViewProps = ChannelDetailShellProps & {
   onRequestAdvancedReport: () => void | Promise<void>;
   onChannelUpdated?: (channel: ChannelDetail) => void;
 };
+
+type StatusPopoverTagProps = Readonly<{
+  title: string;
+  summary: string;
+  statusClassName: string;
+  body: string;
+  actionLabel: string;
+  actionBusyLabel?: string;
+  actionVariant?: "primary" | "secondary";
+  disabled: boolean;
+  actionState: ChannelRequestActionState;
+  onAction: () => void;
+}>;
 
 const INITIAL_REQUEST_STATE: ChannelDetailRequestState = {
   status: "loading",
@@ -298,66 +309,6 @@ export function getAdvancedReportActionLabel(status: ChannelAdvancedReportStatus
   }
 
   return "Request fresh report";
-}
-
-function getEnrichmentFeedbackTitle(status: ChannelEnrichmentStatus): string {
-  if (status === "missing") {
-    return "No enrichment requested";
-  }
-
-  if (status === "queued") {
-    return "Refresh queued";
-  }
-
-  if (status === "running") {
-    return "Refresh running";
-  }
-
-  if (status === "failed") {
-    return "Refresh failed";
-  }
-
-  if (status === "stale") {
-    return "Refresh recommended";
-  }
-
-  return "Latest enrichment ready";
-}
-
-function getAdvancedReportFeedbackTitle(status: ChannelAdvancedReportStatus): string {
-  if (status === "missing") {
-    return "No report requested";
-  }
-
-  if (status === "pending_approval") {
-    return "Awaiting approval";
-  }
-
-  if (status === "approved") {
-    return "Approval recorded";
-  }
-
-  if (status === "queued") {
-    return "Report queued";
-  }
-
-  if (status === "running") {
-    return "Report running";
-  }
-
-  if (status === "failed") {
-    return "Last report failed";
-  }
-
-  if (status === "rejected") {
-    return "Request rejected";
-  }
-
-  if (status === "stale") {
-    return "Refresh recommended";
-  }
-
-  return "Latest report ready";
 }
 
 export function getEnrichmentStatusMessage(
@@ -600,25 +551,120 @@ export function mergeChannelAdvancedReport(
   };
 }
 
+function StatusPopoverTag({
+  title,
+  summary,
+  statusClassName,
+  body,
+  actionLabel,
+  actionBusyLabel = "Requesting...",
+  actionVariant = "primary",
+  disabled,
+  actionState,
+  onAction,
+}: StatusPopoverTagProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function isOutsidePopover(target: EventTarget | null): boolean {
+      return target instanceof Node && !rootRef.current?.contains(target);
+    }
+
+    function handlePointerDown(event: MouseEvent | PointerEvent | TouchEvent): void {
+      if (isOutsidePopover(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleFocusIn(event: FocusEvent): void {
+      if (isOutsidePopover(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    if (!isOpen) {
+      return;
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("focusin", handleFocusIn, true);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("focusin", handleFocusIn, true);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="channel-detail-shell__status-popover" ref={rootRef}>
+      <button
+        aria-expanded={isOpen}
+        className={statusClassName}
+        onClick={() => {
+          setIsOpen((current) => !current);
+        }}
+        type="button"
+      >
+        {summary}
+      </button>
+
+      {isOpen ? (
+        <div className="channel-detail-shell__status-popover-panel">
+          <h3 className="channel-detail-shell__subheading">{title}</h3>
+          <p className="channel-detail-shell__body-copy">{body}</p>
+          <button
+            className={`channel-detail-shell__button channel-detail-shell__button--tag${
+              actionVariant === "secondary" ? " channel-detail-shell__button--secondary" : ""
+            }`}
+            disabled={disabled}
+            onClick={() => {
+              onAction();
+              setIsOpen(false);
+            }}
+            type="button"
+          >
+            {actionState.type === "submitting" ? actionBusyLabel : actionLabel}
+          </button>
+          {actionState.message ? (
+            <p
+              className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionState.type} channel-detail-shell__action-status--inline`}
+              role={actionState.type === "error" ? "alert" : "status"}
+            >
+              {actionState.message}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function renderReadyState(
   channel: ChannelDetail,
   options: {
-    canManageManualEdits: boolean;
     enrichmentActionState: ChannelEnrichmentActionState;
     advancedReportActionState: ChannelAdvancedReportActionState;
     onRequestEnrichment: () => void | Promise<void>;
     onRequestAdvancedReport: () => void | Promise<void>;
-    onChannelUpdated?: (channel: ChannelDetail) => void;
   },
 ) {
+  const enrichmentActionStatus = options.enrichmentActionState;
+  const advancedReportActionStatus = options.advancedReportActionState;
   const isEnrichmentBusy =
     options.enrichmentActionState.type === "submitting" ||
     shouldPollEnrichmentStatus(channel.enrichment.status);
-  const enrichmentActionStatus = options.enrichmentActionState;
   const isAdvancedReportBusy =
     options.advancedReportActionState.type === "submitting" ||
     shouldPollAdvancedReportStatus(channel.advancedReport.status);
-  const advancedReportActionStatus = options.advancedReportActionState;
 
   return (
     <>
@@ -646,57 +692,56 @@ function renderReadyState(
             <h2 id="channel-detail-shell-heading">{channel.title}</h2>
             <p className="channel-detail-shell__handle">{getChannelHandle(channel)}</p>
             <p className="channel-detail-shell__description">{getChannelDescription(channel)}</p>
+            <div className="channel-detail-shell__hero-controls">
+              <div className="channel-detail-shell__status-row">
+                <StatusPopoverTag
+                  actionLabel={getEnrichmentActionLabel(channel.enrichment.status)}
+                  actionState={enrichmentActionStatus}
+                  body={getEnrichmentStatusMessage(channel.enrichment)}
+                  disabled={isEnrichmentBusy}
+                  onAction={() => {
+                    void options.onRequestEnrichment();
+                  }}
+                  statusClassName={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
+                  summary={`Enrichment: ${getEnrichmentStatusLabel(channel.enrichment.status)}`}
+                  title="Enrichment"
+                />
 
-            <div className="channel-detail-shell__status-row">
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
-              >
-                Enrichment: {getEnrichmentStatusLabel(channel.enrichment.status)}
-              </span>
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
-              >
-                Advanced report: {getAdvancedReportStatusLabel(channel.advancedReport.status)}
-              </span>
+                <StatusPopoverTag
+                  actionLabel={getAdvancedReportActionLabel(channel.advancedReport.status)}
+                  actionState={advancedReportActionStatus}
+                  actionVariant="secondary"
+                  body={getAdvancedReportStatusMessage(channel)}
+                  disabled={isAdvancedReportBusy}
+                  onAction={() => {
+                    void options.onRequestAdvancedReport();
+                  }}
+                  statusClassName={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
+                  summary={`Advanced report: ${getAdvancedReportStatusLabel(channel.advancedReport.status)}`}
+                  title="Advanced report"
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <dl className="channel-detail-shell__route-meta">
-          <div>
-            <dt>Catalog record ID</dt>
-            <dd>
-              <code>{channel.id}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>YouTube channel ID</dt>
-            <dd>
-              <code>{channel.youtubeChannelId}</code>
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      <div className="channel-detail-shell__grid">
-        <section
-          aria-labelledby="channel-detail-shell-catalog-metadata-heading"
-          className="channel-detail-shell__panel"
-        >
-          <header>
-            <h2 id="channel-detail-shell-catalog-metadata-heading">Catalog metadata</h2>
-            <p>The detail page reflects the resolved catalog profile that the rest of the app reads.</p>
-          </header>
-
-          <dl className="channel-detail-shell__details">
+        <div className="channel-detail-shell__hero-side">
+          <dl className="channel-detail-shell__route-meta">
             <div>
-              <dt>Handle</dt>
-              <dd>{getChannelHandle(channel)}</dd>
+              <dt>Catalog record ID</dt>
+              <dd>
+                <code>{channel.id}</code>
+              </dd>
             </div>
             <div>
-              <dt>Thumbnail</dt>
-              <dd>{channel.thumbnailUrl ? "Available" : "Missing"}</dd>
+              <dt>YouTube channel ID</dt>
+              <dd>
+                <code>{channel.youtubeChannelId}</code>
+              </dd>
             </div>
+          </dl>
+
+          <dl className="channel-detail-shell__details channel-detail-shell__details--compact">
             <div>
               <dt>Created</dt>
               <dd>{formatIsoTimestamp(channel.createdAt)}</dd>
@@ -705,302 +750,246 @@ function renderReadyState(
               <dt>Last updated</dt>
               <dd>{formatIsoTimestamp(channel.updatedAt)}</dd>
             </div>
-          </dl>
-        </section>
-
-        <section
-          aria-labelledby="channel-detail-shell-enrichment-heading"
-          className="channel-detail-shell__panel"
-        >
-          <header>
-            <h2 id="channel-detail-shell-enrichment-heading">Enrichment</h2>
-            <p>Request or refresh LLM enrichment here and keep the current result visible while new work runs.</p>
-          </header>
-
-          <div
-            className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.enrichment.status}`}
-          >
-            <h3 className="channel-detail-shell__subheading">
-              {getEnrichmentFeedbackTitle(channel.enrichment.status)}
-            </h3>
-            <p className="channel-detail-shell__body-copy">
-              {getEnrichmentStatusMessage(channel.enrichment)}
-            </p>
-          </div>
-
-          <div className="channel-detail-shell__actions">
-            <button
-              className="channel-detail-shell__button"
-              disabled={isEnrichmentBusy}
-              onClick={() => {
-                void options.onRequestEnrichment();
-              }}
-              type="button"
-            >
-              {options.enrichmentActionState.type === "submitting"
-                ? "Requesting..."
-                : getEnrichmentActionLabel(channel.enrichment.status)}
-            </button>
-          </div>
-
-          {enrichmentActionStatus.message ? (
-            <div className="channel-detail-shell__request-feedback">
-              <p
-                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${enrichmentActionStatus.type}`}
-                role={enrichmentActionStatus.type === "error" ? "alert" : "status"}
-              >
-                {enrichmentActionStatus.message}
-              </p>
-            </div>
-          ) : null}
-
-          <dl className="channel-detail-shell__details">
             <div>
-              <dt>Status</dt>
-              <dd>{getEnrichmentStatusLabel(channel.enrichment.status)}</dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>{formatIsoTimestamp(channel.enrichment.updatedAt)}</dd>
-            </div>
-            <div>
-              <dt>Completed</dt>
-              <dd>{formatIsoTimestamp(channel.enrichment.completedAt)}</dd>
-            </div>
-            <div>
-              <dt>Confidence</dt>
+              <dt>Enrichment confidence</dt>
               <dd>{formatConfidence(channel.enrichment.confidence)}</dd>
             </div>
-            {channel.enrichment.lastError ? (
+            <div>
+              <dt>Report freshness</dt>
+              <dd>{getLastCompletedReportSummary(channel)}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section aria-labelledby="channel-detail-shell-profile-heading" className="channel-detail-shell__panel">
+        <header>
+          <h2 id="channel-detail-shell-profile-heading">Creator profile</h2>
+          <p>
+            One full-width profile view that combines the resolved catalog identity, enrichment
+            output, and advanced report context in a single review flow.
+          </p>
+        </header>
+
+        <div className="channel-detail-shell__profile-grid">
+          <div className="channel-detail-shell__profile-block">
+            <h3 className="channel-detail-shell__subheading">Resolved profile</h3>
+            <dl className="channel-detail-shell__details">
+              <div>
+                <dt>Handle</dt>
+                <dd>{getChannelHandle(channel)}</dd>
+              </div>
+              <div>
+                <dt>Thumbnail</dt>
+                <dd>{channel.thumbnailUrl ? "Available" : "Missing"}</dd>
+              </div>
+              <div>
+                <dt>Description</dt>
+                <dd>{getChannelDescription(channel)}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="channel-detail-shell__profile-block">
+            <h3 className="channel-detail-shell__subheading">Enrichment summary</h3>
+            <dl className="channel-detail-shell__details">
+              <div>
+                <dt>Status</dt>
+                <dd>{getEnrichmentStatusLabel(channel.enrichment.status)}</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>{formatIsoTimestamp(channel.enrichment.updatedAt)}</dd>
+              </div>
+              <div>
+                <dt>Completed</dt>
+                <dd>{formatIsoTimestamp(channel.enrichment.completedAt)}</dd>
+              </div>
+              {channel.enrichment.lastError ? (
+                <div>
+                  <dt>Last error</dt>
+                  <dd>{channel.enrichment.lastError}</dd>
+                </div>
+              ) : null}
+            </dl>
+
+            <div className="channel-detail-shell__stack">
+              <div>
+                <h4 className="channel-detail-shell__subheading">Summary</h4>
+                <p className="channel-detail-shell__body-copy">
+                  {channel.enrichment.summary ?? "No enrichment summary is available yet."}
+                </p>
+              </div>
+              <div>
+                <h4 className="channel-detail-shell__subheading">Topics</h4>
+                {channel.enrichment.topics?.length ? (
+                  <ul className="channel-detail-shell__tag-list">
+                    {channel.enrichment.topics.map((topic) => (
+                      <li key={topic}>{topic}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="channel-detail-shell__body-copy">
+                    No enrichment topics are available yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="channel-detail-shell__profile-block">
+            <h3 className="channel-detail-shell__subheading">Advanced report context</h3>
+            <dl className="channel-detail-shell__details">
+              <div>
+                <dt>Status</dt>
+                <dd>{getAdvancedReportStatusLabel(channel.advancedReport.status)}</dd>
+              </div>
+              <div>
+                <dt>Active request ID</dt>
+                <dd>{channel.advancedReport.requestId ?? EMPTY_VALUE}</dd>
+              </div>
+              <div>
+                <dt>Requested</dt>
+                <dd>{formatIsoTimestamp(channel.advancedReport.requestedAt)}</dd>
+              </div>
+              <div>
+                <dt>Reviewed</dt>
+                <dd>{formatIsoTimestamp(channel.advancedReport.reviewedAt)}</dd>
+              </div>
+              <div>
+                <dt>Completed</dt>
+                <dd>{formatIsoTimestamp(channel.advancedReport.completedAt)}</dd>
+              </div>
               <div>
                 <dt>Last error</dt>
-                <dd>{channel.enrichment.lastError}</dd>
+                <dd>{channel.advancedReport.lastError ?? EMPTY_VALUE}</dd>
               </div>
-            ) : null}
-          </dl>
+            </dl>
 
-          <div className="channel-detail-shell__stack">
-            <div>
-              <h3 className="channel-detail-shell__subheading">Summary</h3>
-              <p className="channel-detail-shell__body-copy">
-                {channel.enrichment.summary ?? "No enrichment summary is available yet."}
-              </p>
+            <div className="channel-detail-shell__stack">
+              <div>
+                <h4 className="channel-detail-shell__subheading">Decision note</h4>
+                <p className="channel-detail-shell__body-copy">
+                  {channel.advancedReport.decisionNote ??
+                    "No approval decision has been recorded yet."}
+                </p>
+              </div>
+              <div>
+                <h4 className="channel-detail-shell__subheading">Brand fit notes</h4>
+                <p className="channel-detail-shell__body-copy">
+                  {channel.enrichment.brandFitNotes ?? "No brand fit notes are available yet."}
+                </p>
+              </div>
+              <div>
+                <h4 className="channel-detail-shell__subheading">Freshness</h4>
+                <p className="channel-detail-shell__body-copy">
+                  {getLastCompletedReportSummary(channel)}
+                </p>
+              </div>
             </div>
+          </div>
+        </div>
+      </section>
 
-            <div>
-              <h3 className="channel-detail-shell__subheading">Topics</h3>
-              {channel.enrichment.topics?.length ? (
-                <ul className="channel-detail-shell__tag-list">
-                  {channel.enrichment.topics.map((topic) => (
-                    <li key={topic}>{topic}</li>
+      <section
+        aria-labelledby="channel-detail-shell-insights-heading"
+        className="channel-detail-shell__panel"
+      >
+        <header>
+          <h2 id="channel-detail-shell-insights-heading">Audience and commercial insights</h2>
+          <p>
+            HypeAuditor-derived audience composition and pricing context stays in one full-width
+            section so the creator can be reviewed without switching between tabs.
+          </p>
+        </header>
+
+        {hasAudienceInsights(channel) ? (
+          <div className="channel-detail-shell__insights-grid">
+            <div className="channel-detail-shell__insight-block">
+              <h3 className="channel-detail-shell__subheading">Audience countries</h3>
+              {channel.insights.audienceCountries.length ? (
+                <ul className="channel-detail-shell__list">
+                  {channel.insights.audienceCountries.map((country) => (
+                    <li key={`${country.countryCode}-${country.countryName}`}>
+                      <span>{country.countryName}</span>
+                      <span>{formatPercent(country.percentage)}</span>
+                    </li>
                   ))}
                 </ul>
               ) : (
-                <p className="channel-detail-shell__body-copy">No enrichment topics are available yet.</p>
+                <p className="channel-detail-shell__body-copy">No audience country data yet.</p>
               )}
             </div>
 
-            <div>
-              <h3 className="channel-detail-shell__subheading">Brand fit notes</h3>
-              <p className="channel-detail-shell__body-copy">
-                {channel.enrichment.brandFitNotes ?? "No brand fit notes are available yet."}
-              </p>
+            <div className="channel-detail-shell__insight-block">
+              <h3 className="channel-detail-shell__subheading">Gender and age</h3>
+              {channel.insights.audienceGenderAge.length ? (
+                <ul className="channel-detail-shell__list">
+                  {channel.insights.audienceGenderAge.map((segment) => (
+                    <li key={`${segment.gender}-${segment.ageRange}`}>
+                      <span>{`${segment.gender}, ${segment.ageRange}`}</span>
+                      <span>{formatPercent(segment.percentage)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="channel-detail-shell__body-copy">No gender or age data yet.</p>
+              )}
+            </div>
+
+            <div className="channel-detail-shell__insight-block">
+              <h3 className="channel-detail-shell__subheading">Interests</h3>
+              {channel.insights.audienceInterests.length ? (
+                <ul className="channel-detail-shell__list">
+                  {channel.insights.audienceInterests.map((interest) => (
+                    <li key={interest.label}>
+                      <span>{interest.label}</span>
+                      <span>{formatInterestScore(interest.score)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="channel-detail-shell__body-copy">No audience interest data yet.</p>
+              )}
+            </div>
+
+            <div className="channel-detail-shell__insight-block">
+              <h3 className="channel-detail-shell__subheading">Commercial signals</h3>
+              <dl className="channel-detail-shell__details">
+                <div>
+                  <dt>Estimated price</dt>
+                  <dd>{formatEstimatedPrice(channel.insights.estimatedPrice)}</dd>
+                </div>
+              </dl>
+
+              <h3 className="channel-detail-shell__subheading">Brand mentions</h3>
+              {channel.insights.brandMentions.length ? (
+                <ul className="channel-detail-shell__tag-list">
+                  {channel.insights.brandMentions.map((brand) => (
+                    <li key={brand.brandName}>{brand.brandName}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="channel-detail-shell__body-copy">
+                  No brand mentions are available yet.
+                </p>
+              )}
             </div>
           </div>
-        </section>
-
-        <section
-          aria-labelledby="channel-detail-shell-advanced-report-heading"
-          className="channel-detail-shell__panel"
-        >
-          <header>
-            <h2 id="channel-detail-shell-advanced-report-heading">Advanced report</h2>
-            <p>
-              Request or refresh HypeAuditor data here and keep the current audience insights
-              visible while approval and worker steps finish.
-            </p>
-          </header>
-
-          <div
-            className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.advancedReport.status}`}
-          >
-            <h3 className="channel-detail-shell__subheading">
-              {getAdvancedReportFeedbackTitle(channel.advancedReport.status)}
-            </h3>
-            <p className="channel-detail-shell__body-copy">
-              {getAdvancedReportStatusMessage(channel)}
-            </p>
-          </div>
-
-          <div className="channel-detail-shell__actions">
-            <button
-              className="channel-detail-shell__button"
-              disabled={isAdvancedReportBusy}
-              onClick={() => {
-                void options.onRequestAdvancedReport();
-              }}
-              type="button"
-            >
-              {options.advancedReportActionState.type === "submitting"
-                ? "Requesting..."
-                : getAdvancedReportActionLabel(channel.advancedReport.status)}
-            </button>
-          </div>
-
-          {advancedReportActionStatus.message ? (
-            <div className="channel-detail-shell__request-feedback">
-              <p
-                className={`channel-detail-shell__action-status channel-detail-shell__action-status--${advancedReportActionStatus.type}`}
-                role={advancedReportActionStatus.type === "error" ? "alert" : "status"}
-              >
-                {advancedReportActionStatus.message}
-              </p>
-            </div>
-          ) : null}
-
-          <dl className="channel-detail-shell__details">
-            <div>
-              <dt>Status</dt>
-              <dd>{getAdvancedReportStatusLabel(channel.advancedReport.status)}</dd>
-            </div>
-            <div>
-              <dt>Active request ID</dt>
-              <dd>{channel.advancedReport.requestId ?? EMPTY_VALUE}</dd>
-            </div>
-            <div>
-              <dt>Requested</dt>
-              <dd>{formatIsoTimestamp(channel.advancedReport.requestedAt)}</dd>
-            </div>
-            <div>
-              <dt>Reviewed</dt>
-              <dd>{formatIsoTimestamp(channel.advancedReport.reviewedAt)}</dd>
-            </div>
-            <div>
-              <dt>Completed</dt>
-              <dd>{formatIsoTimestamp(channel.advancedReport.completedAt)}</dd>
-            </div>
-            <div>
-              <dt>Last error</dt>
-              <dd>{channel.advancedReport.lastError ?? EMPTY_VALUE}</dd>
-            </div>
-          </dl>
-
-          <div className="channel-detail-shell__stack">
-            <div>
-              <h3 className="channel-detail-shell__subheading">Decision note</h3>
-              <p className="channel-detail-shell__body-copy">
-                {channel.advancedReport.decisionNote ?? "No approval decision has been recorded yet."}
-              </p>
-            </div>
-
-            <div>
-              <h3 className="channel-detail-shell__subheading">Freshness</h3>
-              <p className="channel-detail-shell__body-copy">{getLastCompletedReportSummary(channel)}</p>
-            </div>
-          </div>
-        </section>
-
-        <section
-          aria-labelledby="channel-detail-shell-insights-heading"
-          className="channel-detail-shell__panel"
-        >
-          <header>
-            <h2 id="channel-detail-shell-insights-heading">Audience insights</h2>
-            <p>Available HypeAuditor-derived audience and commercial context appears here when present.</p>
-          </header>
-
-          {hasAudienceInsights(channel) ? (
-            <div className="channel-detail-shell__insights-grid">
-              <div className="channel-detail-shell__insight-block">
-                <h3 className="channel-detail-shell__subheading">Audience countries</h3>
-                {channel.insights.audienceCountries.length ? (
-                  <ul className="channel-detail-shell__list">
-                    {channel.insights.audienceCountries.map((country) => (
-                      <li key={`${country.countryCode}-${country.countryName}`}>
-                        <span>{country.countryName}</span>
-                        <span>{formatPercent(country.percentage)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="channel-detail-shell__body-copy">No audience country data yet.</p>
-                )}
-              </div>
-
-              <div className="channel-detail-shell__insight-block">
-                <h3 className="channel-detail-shell__subheading">Gender and age</h3>
-                {channel.insights.audienceGenderAge.length ? (
-                  <ul className="channel-detail-shell__list">
-                    {channel.insights.audienceGenderAge.map((segment) => (
-                      <li key={`${segment.gender}-${segment.ageRange}`}>
-                        <span>{`${segment.gender}, ${segment.ageRange}`}</span>
-                        <span>{formatPercent(segment.percentage)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="channel-detail-shell__body-copy">No gender or age data yet.</p>
-                )}
-              </div>
-
-              <div className="channel-detail-shell__insight-block">
-                <h3 className="channel-detail-shell__subheading">Interests</h3>
-                {channel.insights.audienceInterests.length ? (
-                  <ul className="channel-detail-shell__list">
-                    {channel.insights.audienceInterests.map((interest) => (
-                      <li key={interest.label}>
-                        <span>{interest.label}</span>
-                        <span>{formatInterestScore(interest.score)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="channel-detail-shell__body-copy">No audience interest data yet.</p>
-                )}
-              </div>
-
-              <div className="channel-detail-shell__insight-block">
-                <h3 className="channel-detail-shell__subheading">Commercial signals</h3>
-                <dl className="channel-detail-shell__details">
-                  <div>
-                    <dt>Estimated price</dt>
-                    <dd>{formatEstimatedPrice(channel.insights.estimatedPrice)}</dd>
-                  </div>
-                </dl>
-
-                <h3 className="channel-detail-shell__subheading">Brand mentions</h3>
-                {channel.insights.brandMentions.length ? (
-                  <ul className="channel-detail-shell__tag-list">
-                    {channel.insights.brandMentions.map((brand) => (
-                      <li key={brand.brandName}>{brand.brandName}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="channel-detail-shell__body-copy">No brand mentions are available yet.</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="channel-detail-shell__body-copy">
-              No audience insight data is available for this channel yet.
-            </p>
-          )}
-        </section>
-
-        {options.canManageManualEdits && options.onChannelUpdated ? (
-          <AdminChannelManualEditPanel channel={channel} onChannelUpdated={options.onChannelUpdated} />
-        ) : null}
-      </div>
+        ) : (
+          <p className="channel-detail-shell__body-copy">
+            No audience insight data is available for this channel yet.
+          </p>
+        )}
+      </section>
     </>
   );
 }
 
 export function ChannelDetailShellView({
   advancedReportActionState,
-  canManageManualEdits,
   channelId,
   enrichmentActionState,
-  onChannelUpdated,
   onRequestAdvancedReport,
   onRequestEnrichment,
   onRetry,
@@ -1008,10 +997,6 @@ export function ChannelDetailShellView({
 }: ChannelDetailShellViewProps) {
   return (
     <div className="channel-detail-shell">
-      <Link className="channel-detail-shell__back-link" href="/catalog">
-        Back to catalog
-      </Link>
-
       {requestState.status === "loading" ? (
         <p className="channel-detail-shell__feedback channel-detail-shell__feedback--loading">
           Loading channel details...
@@ -1039,11 +1024,9 @@ export function ChannelDetailShellView({
       {requestState.status === "ready"
         ? renderReadyState(requestState.data, {
             advancedReportActionState,
-            canManageManualEdits: canManageManualEdits ?? false,
             enrichmentActionState,
             onRequestAdvancedReport,
             onRequestEnrichment,
-            ...(onChannelUpdated ? { onChannelUpdated } : {}),
           })
         : null}
     </div>
