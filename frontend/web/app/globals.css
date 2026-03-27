@@ -6086,7 +6086,7 @@ body {
   cursor: pointer;
   font: inherit;
   font-size: 0.96rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: normal;
   padding: 0.8rem 0.95rem;
   text-align: left;
@@ -6184,7 +6184,7 @@ body {
   cursor: pointer;
   font: inherit;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: normal;
   padding: 0.7rem 0.8rem;
   text-align: left;
@@ -6225,7 +6225,7 @@ body {
 .new-scouting__grid .new-scouting__field span,
 .admin-users__field span {
   font-size: 0.92rem;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: normal;
   text-transform: none;
 }
