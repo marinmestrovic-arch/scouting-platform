@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, redirectMock } = vi.hoisted(() => ({
+const { authMock, prefetchMock, redirectMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  prefetchMock: vi.fn(),
   redirectMock: vi.fn()
 }));
 
@@ -13,6 +14,9 @@ vi.mock("../../auth", () => ({
 vi.mock("next/navigation", () => ({
   redirect: redirectMock,
   usePathname: () => "/dashboard",
+  useRouter: () => ({
+    prefetch: prefetchMock,
+  }),
 }));
 
 import AuthenticatedLayout from "./layout";

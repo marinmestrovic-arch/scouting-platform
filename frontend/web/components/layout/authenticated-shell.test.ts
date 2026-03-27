@@ -1,15 +1,23 @@
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const { prefetchMock } = vi.hoisted(() => ({
+  prefetchMock: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
+  useRouter: () => ({
+    prefetch: prefetchMock,
+  }),
 }));
 import { AuthenticatedShell } from "./authenticated-shell";
 
 describe("authenticated shell", () => {
   it("renders shared shell chrome with user-visible navigation", () => {
     const html = renderToStaticMarkup(
-      AuthenticatedShell({
+      createElement(AuthenticatedShell, {
         role: "user",
         children: "catalog page"
       })
@@ -25,7 +33,7 @@ describe("authenticated shell", () => {
 
   it("shows admin navigation entry for admin role", () => {
     const html = renderToStaticMarkup(
-      AuthenticatedShell({
+      createElement(AuthenticatedShell, {
         role: "admin",
         children: "admin page"
       })
