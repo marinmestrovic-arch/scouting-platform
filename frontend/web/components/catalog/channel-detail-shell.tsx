@@ -514,67 +514,6 @@ function getAdvancedReportRequestSuccessMessage(
     : "Advanced report request recorded. This page refreshes automatically while approval and worker status change.";
 }
 
-type SmartPrimaryAction =
-  | {
-      kind: "enrichment" | "advancedReport";
-      label: string;
-      disabled: boolean;
-    }
-  | {
-      kind: "none";
-      label: string;
-      disabled: true;
-    };
-
-function getSmartPrimaryAction(channel: ChannelDetail): SmartPrimaryAction {
-  if (shouldPollEnrichmentStatus(channel.enrichment.status)) {
-    return {
-      kind: "enrichment",
-      label: getEnrichmentActionLabel(channel.enrichment.status),
-      disabled: true,
-    };
-  }
-
-  if (
-    channel.enrichment.status === "missing" ||
-    channel.enrichment.status === "failed" ||
-    channel.enrichment.status === "stale"
-  ) {
-    return {
-      kind: "enrichment",
-      label: getEnrichmentActionLabel(channel.enrichment.status),
-      disabled: false,
-    };
-  }
-
-  if (shouldPollAdvancedReportStatus(channel.advancedReport.status)) {
-    return {
-      kind: "advancedReport",
-      label: getAdvancedReportActionLabel(channel.advancedReport.status),
-      disabled: true,
-    };
-  }
-
-  if (
-    channel.advancedReport.status === "missing" ||
-    channel.advancedReport.status === "failed" ||
-    channel.advancedReport.status === "rejected" ||
-    channel.advancedReport.status === "stale"
-  ) {
-    return {
-      kind: "advancedReport",
-      label: getAdvancedReportActionLabel(channel.advancedReport.status),
-      disabled: false,
-    };
-  }
-
-  return {
-    kind: "none",
-    label: "Profile up to date",
-    disabled: true,
-  };
-}
-
 export function mergeChannelEnrichment(
   channel: ChannelDetail,
   enrichment: ChannelEnrichmentDetail,
@@ -617,13 +556,13 @@ function renderReadyState(
   const onChannelUpdated = options.onChannelUpdated;
   const canRenderAdminManualEdits =
     options.canManageManualEdits && typeof onChannelUpdated === "function";
-  const smartPrimaryAction = getSmartPrimaryAction(channel);
-  const isPrimaryActionSubmitting =
-    (smartPrimaryAction.kind === "enrichment" &&
-      options.enrichmentActionState.type === "submitting") ||
-    (smartPrimaryAction.kind === "advancedReport" &&
-      options.advancedReportActionState.type === "submitting");
-  const primaryActionFeedback =
+  const isEnrichmentBusy =
+    options.enrichmentActionState.type === "submitting" ||
+    shouldPollEnrichmentStatus(channel.enrichment.status);
+  const isAdvancedReportBusy =
+    options.advancedReportActionState.type === "submitting" ||
+    shouldPollAdvancedReportStatus(channel.advancedReport.status);
+  const actionFeedback =
     enrichmentActionStatus.message || advancedReportActionStatus.message
       ? {
           type: (enrichmentActionStatus.message
@@ -632,21 +571,6 @@ function renderReadyState(
           message: enrichmentActionStatus.message || advancedReportActionStatus.message,
         }
       : null;
-  const primaryActionContextMessage =
-    smartPrimaryAction.kind === "enrichment"
-      ? getEnrichmentStatusMessage(channel.enrichment)
-      : getAdvancedReportStatusMessage(channel);
-
-  function handleSmartPrimaryAction(): void {
-    if (smartPrimaryAction.kind === "enrichment") {
-      void options.onRequestEnrichment();
-      return;
-    }
-
-    if (smartPrimaryAction.kind === "advancedReport") {
-      void options.onRequestAdvancedReport();
-    }
-  }
 
   return (
     <>
@@ -690,22 +614,35 @@ function renderReadyState(
 
               <div className="channel-detail-shell__toolbar">
                 <button
-                  className="channel-detail-shell__button"
-                  disabled={smartPrimaryAction.disabled || isPrimaryActionSubmitting}
-                  onClick={handleSmartPrimaryAction}
+                  className="channel-detail-shell__button channel-detail-shell__button--tag"
+                  disabled={isEnrichmentBusy}
+                  onClick={() => {
+                    void options.onRequestEnrichment();
+                  }}
                   type="button"
                 >
-                  {isPrimaryActionSubmitting ? "Requesting..." : smartPrimaryAction.label}
+                  {options.enrichmentActionState.type === "submitting"
+                    ? "Requesting..."
+                    : getEnrichmentActionLabel(channel.enrichment.status)}
                 </button>
-                <p className="channel-detail-shell__body-copy channel-detail-shell__body-copy--inline">
-                  {primaryActionContextMessage}
-                </p>
-                {primaryActionFeedback ? (
+                <button
+                  className="channel-detail-shell__button channel-detail-shell__button--tag channel-detail-shell__button--secondary"
+                  disabled={isAdvancedReportBusy}
+                  onClick={() => {
+                    void options.onRequestAdvancedReport();
+                  }}
+                  type="button"
+                >
+                  {options.advancedReportActionState.type === "submitting"
+                    ? "Requesting..."
+                    : getAdvancedReportActionLabel(channel.advancedReport.status)}
+                </button>
+                {actionFeedback ? (
                   <p
-                    className={`channel-detail-shell__action-status channel-detail-shell__action-status--${primaryActionFeedback.type} channel-detail-shell__action-status--inline`}
-                    role={primaryActionFeedback.type === "error" ? "alert" : "status"}
+                    className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionFeedback.type} channel-detail-shell__action-status--inline`}
+                    role={actionFeedback.type === "error" ? "alert" : "status"}
                   >
-                    {primaryActionFeedback.message}
+                    {actionFeedback.message}
                   </p>
                 ) : null}
               </div>

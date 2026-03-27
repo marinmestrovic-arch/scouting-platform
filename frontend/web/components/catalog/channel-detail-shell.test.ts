@@ -221,11 +221,9 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Creator profile");
     expect(html).not.toContain("Catalog metadata");
     expect(html).toContain("Enrichment: Ready");
-    expect(html).toContain("Profile up to date");
+    expect(html).toContain("Refresh enrichment");
     expect(html).toContain("Advanced report: Completed");
-    expect(html).toContain(
-      "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
-    );
+    expect(html).toContain("Request another report");
     expect(html).toContain("Weekly coverage of launch systems and creator strategy.");
     expect(html).toContain("Creator focused on launches and industry analysis.");
     expect(html).toContain("Last completed report is fresh (12 days old).");
@@ -239,25 +237,18 @@ describe("channel detail shell view", () => {
     const scenarios: Array<{
       status: ChannelEnrichmentStatus;
       actionLabel: string;
-      statusCopy: string;
     }> = [
       {
         status: "missing",
         actionLabel: "Enrich now",
-        statusCopy:
-          "No enrichment has been requested yet. Queue one when you want a generated summary, topics, and brand fit notes.",
       },
       {
         status: "failed",
         actionLabel: "Retry enrichment",
-        statusCopy:
-          "Last enrichment attempt failed: OpenAI enrichment request failed. The last successful enrichment stays visible below while you decide whether to retry.",
       },
       {
         status: "stale",
         actionLabel: "Refresh enrichment",
-        statusCopy:
-          "This enrichment is stale because the channel changed or the freshness window expired. The last successful result stays visible below until you refresh it.",
       },
     ];
 
@@ -267,7 +258,7 @@ describe("channel detail shell view", () => {
       });
 
       expect(html).toContain(scenario.actionLabel);
-      expect(html).toContain(scenario.statusCopy);
+      expect(html).toContain("Request another report");
     }
   });
 
@@ -280,15 +271,9 @@ describe("channel detail shell view", () => {
     });
 
     expect(queuedHtml).toContain("Enrichment queued");
-    expect(queuedHtml).toContain(
-      "This page refreshes automatically while the worker waits to start, and the previous result stays visible below until the refresh finishes.",
-    );
     expect(queuedHtml).toContain("disabled=\"\"");
 
     expect(runningHtml).toContain("Enrichment running");
-    expect(runningHtml).toContain(
-      "This page refreshes automatically while processing continues, and the previous result stays visible below until the new result is stored.",
-    );
     expect(runningHtml).toContain("disabled=\"\"");
   });
 
@@ -321,31 +306,22 @@ describe("channel detail shell view", () => {
     const scenarios: Array<{
       status: ChannelAdvancedReportStatus;
       actionLabel: string;
-      statusCopy: string;
     }> = [
       {
         status: "missing",
         actionLabel: "Request advanced report",
-        statusCopy:
-          "No HypeAuditor report has been requested yet. Queue one when you need audience and commercial insights beyond the catalog profile.",
       },
       {
         status: "failed",
         actionLabel: "Retry request",
-        statusCopy:
-          "Last advanced report attempt failed: HypeAuditor request failed. The last stored audience insights stay visible below while you decide whether to request another report.",
       },
       {
         status: "rejected",
         actionLabel: "Request again",
-        statusCopy:
-          "The last request was rejected during admin review: Budget denied. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.",
       },
       {
         status: "stale",
         actionLabel: "Request fresh report",
-        statusCopy:
-          "The last completed advanced report is outside the 120-day review window. Request a fresh report when you need updated audience and commercial insights, and the last stored insights remain visible below until a newer report completes.",
       },
     ];
 
@@ -355,20 +331,17 @@ describe("channel detail shell view", () => {
       });
 
       expect(html).toContain(scenario.actionLabel);
-      expect(html).toContain(scenario.statusCopy);
+      expect(html).toContain("Refresh enrichment");
     }
   });
 
-  it("renders a disabled up-to-date action when enrichment and advanced report are fresh", () => {
+  it("renders both direct action pills when enrichment and advanced report are fresh", () => {
     const html = renderReadyView({
       channel: createAdvancedReportScenario("completed"),
     });
 
-    expect(html).toContain("Profile up to date");
-    expect(html).toContain(
-      "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
-    );
-    expect(html).toContain("disabled=\"\"");
+    expect(html).toContain("Refresh enrichment");
+    expect(html).toContain("Request another report");
   });
 
   it("renders disabled busy actions for pending and active advanced report states", () => {
@@ -380,15 +353,9 @@ describe("channel detail shell view", () => {
     });
 
     expect(pendingApprovalHtml).toContain("Pending approval");
-    expect(pendingApprovalHtml).toContain(
-      "This request is waiting for admin approval. This page refreshes automatically while approval status changes, and the last stored audience insights stay visible below.",
-    );
     expect(pendingApprovalHtml).toContain("disabled=\"\"");
 
     expect(runningHtml).toContain("Report running");
-    expect(runningHtml).toContain(
-      "The advanced report is running in the background. This page refreshes automatically while processing continues, and the last stored audience insights stay visible below until a newer report completes.",
-    );
     expect(runningHtml).toContain("disabled=\"\"");
   });
 

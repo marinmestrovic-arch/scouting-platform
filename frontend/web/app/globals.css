@@ -3390,6 +3390,7 @@ a {
   width: fit-content;
   color: var(--color-accent);
   font-weight: var(--font-weight-semibold);
+  margin-bottom: 0.35rem;
   text-decoration: none;
 }
 
@@ -6736,15 +6737,15 @@ body {
 }
 
 .channel-detail-shell__toolbar .channel-detail-shell__button {
-  min-width: 12.5rem;
+  min-width: 0;
+}
+
+.channel-detail-shell__button--tag {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.95rem;
 }
 
 .channel-detail-shell__action-status--inline {
-  margin: 0;
-  max-width: 42rem;
-}
-
-.channel-detail-shell__body-copy--inline {
   margin: 0;
   max-width: 42rem;
 }
