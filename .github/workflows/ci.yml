@@ -105,6 +105,9 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule'
     continue-on-error: true
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     env:
       TRIVY_IMAGE: aquasec/trivy:0.58.2
     steps:
@@ -138,7 +141,12 @@ jobs:
             postgres:17-alpine
 
       - name: Upload advisory scan artifacts
-        if: always()
+        if: >-
+          always() &&
+          (
+            github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository
+          )
         uses: actions/upload-artifact@v4
         with:
           name: postgres-image-trivy-${{ github.run_id }}-${{ github.run_attempt }}
