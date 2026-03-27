@@ -5,7 +5,6 @@ import React from "react";
 
 import { AdminAdvancedReportQueue } from "./admin-advanced-report-queue";
 import { AdminCsvImportManager } from "./admin-csv-import-manager";
-import { AdminDashboardShell } from "./admin-dashboard-shell";
 import { AdminUsersManager } from "./admin-users-manager";
 
 type AdminWorkspaceTab = "approvals" | "imports" | "users" | "exports" | "hubspot";
@@ -87,8 +86,7 @@ export function AdminWorkspace() {
       </div>
 
       {activeTab === "approvals" ? (
-        <div className="admin-workspace__stack" key={`approvals-${refreshKey}`}>
-          <AdminDashboardShell />
+        <div className="admin-workspace__panel" key={`approvals-${refreshKey}`}>
           <div id="admin-approval-queue">
             <AdminAdvancedReportQueue />
           </div>

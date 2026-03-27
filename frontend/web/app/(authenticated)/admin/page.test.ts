@@ -86,7 +86,7 @@ describe("admin page", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(html).toContain("Admin");
     expect(html).toContain(
-      "Triage admin-only work, manage imports, users, and the HypeAuditor approval queue from one workspace."
+      "Review approvals, manage users, and keep the dedicated admin workflows within reach."
     );
     expect(html).toContain("Admin workspace shell");
   });

@@ -27,7 +27,7 @@ export default async function AdminPage() {
     <PageSection
       section="Admin"
       title="Admin"
-      description="Triage admin-only work, manage imports, users, and the HypeAuditor approval queue from one workspace."
+      description="Review approvals, manage users, and keep the dedicated admin workflows within reach."
     >
       <AdminWorkspace />
     </PageSection>
