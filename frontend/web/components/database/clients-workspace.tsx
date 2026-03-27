@@ -166,7 +166,7 @@ export function ClientsWorkspace({ initialData }: ClientsWorkspaceProps) {
           <tbody>
             {items.map((client) => (
               <tr key={client.id}>
-                <td>{client.name}</td>
+                <td className="database-records__strong-cell">{client.name}</td>
                 <td className="database-records__muted-cell">{client.domain || "—"}</td>
                 <td>{client.countryRegion || "—"}</td>
                 <td>{client.city || "—"}</td>
