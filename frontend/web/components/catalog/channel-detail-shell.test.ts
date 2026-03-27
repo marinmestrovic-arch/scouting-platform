@@ -218,6 +218,8 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Back to catalog");
     expect(html).toContain("Orbital Deep Dive");
     expect(html).toContain("@orbitaldeepdive");
+    expect(html).toContain("Creator profile");
+    expect(html).not.toContain("Catalog metadata");
     expect(html).toContain("Enrichment: Ready");
     expect(html).toContain("Latest enrichment ready");
     expect(html).toContain("Refresh enrichment");
@@ -431,7 +433,7 @@ describe("channel detail shell view", () => {
       }),
     );
 
-    expect(html).toContain("Admin manual edits");
+    expect(html).toContain("Admin profile controls");
     expect(html).toContain("Save override");
     expect(html).toContain("Restore fallback");
   });
