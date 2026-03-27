@@ -43,7 +43,13 @@ export function DatabaseAdminWorkspace({
         </button>
       </section>
 
-      {activeTab === "clients" ? <ClientsWorkspace initialData={clients} /> : <CampaignsWorkspace initialData={campaigns} />}
+      <section className="database-admin__panel">
+        {activeTab === "clients" ? (
+          <ClientsWorkspace initialData={clients} />
+        ) : (
+          <CampaignsWorkspace initialData={campaigns} />
+        )}
+      </section>
     </div>
   );
 }

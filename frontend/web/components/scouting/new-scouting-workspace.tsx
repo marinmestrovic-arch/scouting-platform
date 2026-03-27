@@ -110,17 +110,6 @@ export function NewScoutingWorkspace({
       ) : null}
 
       <form className="new-scouting__panel" onSubmit={handleSubmit}>
-        <div className="page-hero">
-          <div>
-            <p className="workspace-eyebrow">Campaign-based scouting</p>
-            <h2>Start a new scouting list</h2>
-            <p className="workspace-copy">
-              Campaign metadata now comes from the Campaigns database, so run creation only needs
-              the list name, campaign, target, and search prompt.
-            </p>
-          </div>
-        </div>
-
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Influencer List</span>

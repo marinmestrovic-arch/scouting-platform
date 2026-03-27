@@ -64,17 +64,17 @@ export function ClientsWorkspace({ initialData }: ClientsWorkspaceProps) {
 
   return (
     <div className="clients-workspace">
-      {initialData.permissions.canCreate ? (
-        <div className="database-admin__header">
-          <div>
-            <h3>Clients</h3>
-            <p className="workspace-copy">Browse client records and add a new client without leaving the table.</p>
-          </div>
-          <button className="database-admin__cta" onClick={() => setIsCreateOpen(true)} type="button">
+      <div className="database-records__header">
+        <div>
+          <h2>Clients</h2>
+          <p className="workspace-copy">Browse client records and add a new client without leaving the table.</p>
+        </div>
+        {initialData.permissions.canCreate ? (
+          <button className="database-records__cta" onClick={() => setIsCreateOpen(true)} type="button">
             Add Client
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {isCreateOpen ? (
         <div className="database-admin__modal-backdrop" onClick={() => setIsCreateOpen(false)} role="presentation">
@@ -153,8 +153,8 @@ export function ClientsWorkspace({ initialData }: ClientsWorkspaceProps) {
         </div>
       ) : null}
 
-      <div className="campaigns-workspace__table-shell">
-        <table className="dashboard-workspace__table">
+      <div className="database-records__table-shell">
+        <table className="database-records__table">
           <thead>
             <tr>
               <th>Client name</th>
@@ -167,7 +167,7 @@ export function ClientsWorkspace({ initialData }: ClientsWorkspaceProps) {
             {items.map((client) => (
               <tr key={client.id}>
                 <td>{client.name}</td>
-                <td>{client.domain || "—"}</td>
+                <td className="database-records__muted-cell">{client.domain || "—"}</td>
                 <td>{client.countryRegion || "—"}</td>
                 <td>{client.city || "—"}</td>
               </tr>

@@ -552,9 +552,9 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    expect(html).toContain("Saved segments");
-    expect(html).toContain("Filters");
-    expect(html).toContain("Apply filters");
+    expect(html).toContain("Segments");
+    expect(html).toContain("Enrichment Status");
+    expect(html).toContain("Apply");
     expect(html).toContain("Loading channels...");
   });
 
@@ -587,7 +587,7 @@ describe("catalog table shell view", () => {
       },
     );
 
-    expect(html).toContain("Save current filters");
+    expect(html).toContain(">Save</button>");
     expect(html).toContain("Space creators");
     expect(html).toContain("Search: space");
     expect(html).toContain("Enrichment: Ready");
@@ -654,7 +654,7 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    expect(html).toContain("Filters active");
+    expect(html).toContain("Active filters: 3");
     expect(html).toContain("0 channels");
     expect(html).toContain("No channels match the current filters.");
     expect(html).toContain("Page 1");
@@ -795,7 +795,7 @@ describe("catalog table shell view", () => {
 
     expect(html).toContain("Enrich selected (2)");
     expect(html).toContain("Export selected (2)");
-    expect(html).toContain("Push selected to HubSpot (2)");
+    expect(html).toContain("Push to HubSpot (2)");
     expect(html).toContain(
       "Queued 2 channels for enrichment. The table refreshes automatically while jobs run.",
     );

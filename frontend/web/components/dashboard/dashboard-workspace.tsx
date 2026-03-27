@@ -88,7 +88,6 @@ export function DashboardWorkspace({
       : INITIAL_REQUEST_STATE,
   );
   const [filters, setFilters] = useState<DashboardFiltersState>(INITIAL_FILTERS_STATE);
-  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let didCancel = false;
@@ -144,32 +143,13 @@ export function DashboardWorkspace({
         clearTimeout(timeoutId);
       }
     };
-  }, [filters, initialData, reloadToken]);
+  }, [filters, initialData]);
 
   const filterOptions = requestState.status === "ready" ? requestState.data.filterOptions : null;
 
   return (
     <div className="dashboard-workspace">
       <section className="dashboard-workspace__table-panel">
-        <header className="dashboard-workspace__table-header">
-          <div>
-            <h2>Runs</h2>
-            <p className="workspace-copy">
-              Filter the scouting list by campaign manager, client, or market, then export the
-              run or open an export preparation workspace from the same saved snapshot.
-            </p>
-          </div>
-          <button
-            className="dashboard-workspace__secondary-link"
-            onClick={() => {
-              setReloadToken((current) => current + 1);
-            }}
-            type="button"
-          >
-            Refresh runs
-          </button>
-        </header>
-
         <div className="dashboard-workspace__filters">
           <label className="new-scouting__field">
             <span>Campaign Manager</span>

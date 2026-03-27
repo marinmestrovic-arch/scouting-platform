@@ -1,7 +1,6 @@
 import React from "react";
 import { auth } from "../../../auth";
-import { AdminDashboardShell } from "../../../components/admin/admin-dashboard-shell";
-import { AdminAdvancedReportQueue } from "../../../components/admin/admin-advanced-report-queue";
+import { AdminWorkspace } from "../../../components/admin/admin-workspace";
 import { PageSection } from "../../../components/layout/page-section";
 import {
   canAccessNavigationKey,
@@ -28,14 +27,9 @@ export default async function AdminPage() {
     <PageSection
       section="Admin"
       title="Admin"
-      description="Triage admin-only work, catch setup gaps early, and jump into catalog, export, HubSpot, or the full HypeAuditor queue from one workspace."
+      description="Triage admin-only work, manage imports, users, and the HypeAuditor approval queue from one workspace."
     >
-      <div className="admin-page__stack">
-        <AdminDashboardShell />
-        <div className="admin-page__queue" id="admin-approval-queue">
-          <AdminAdvancedReportQueue />
-        </div>
-      </div>
+      <AdminWorkspace />
     </PageSection>
   );
 }

@@ -108,7 +108,7 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
 
   return (
     <div className="campaigns-workspace">
-      <section className="campaigns-workspace__filters">
+      <section className="database-records__filters">
         <label className="new-scouting__field">
           <span>Client</span>
           <select
@@ -140,17 +140,17 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
         </label>
       </section>
 
-      {initialData.permissions.canCreate ? (
-        <div className="database-admin__header">
-          <div>
-            <h3>Campaigns</h3>
-            <p className="workspace-copy">Filter campaigns and add a new campaign from a compact modal.</p>
-          </div>
-          <button className="database-admin__cta" onClick={() => setIsCreateOpen(true)} type="button">
+      <div className="database-records__header">
+        <div>
+          <h2>Campaigns</h2>
+          <p className="workspace-copy">View and manage active campaigns in the shared database workspace.</p>
+        </div>
+        {initialData.permissions.canCreate ? (
+          <button className="database-records__cta" onClick={() => setIsCreateOpen(true)} type="button">
             Add Campaign
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {isCreateOpen ? (
         <div className="database-admin__modal-backdrop" onClick={() => setIsCreateOpen(false)} role="presentation">
@@ -256,8 +256,8 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
         </div>
       ) : null}
 
-      <div className="campaigns-workspace__table-shell">
-        <table className="dashboard-workspace__table">
+      <div className="database-records__table-shell">
+        <table className="database-records__table">
           <thead>
             <tr>
               <th>Campaign Name</th>
@@ -272,12 +272,12 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
           <tbody>
             {filteredItems.map((campaign: CampaignSummary) => (
               <tr key={campaign.id}>
-                <td>{campaign.name}</td>
+                <td className="database-records__strong-cell">{campaign.name}</td>
                 <td>{campaign.client.name}</td>
                 <td>{campaign.market.name}</td>
                 <td>
                   {campaign.briefLink ? (
-                    <a href={campaign.briefLink} rel="noreferrer" target="_blank">
+                    <a className="database-records__link" href={campaign.briefLink} rel="noreferrer" target="_blank">
                       Open brief
                     </a>
                   ) : (
@@ -286,7 +286,11 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                 </td>
                 <td>{MONTH_LABELS[campaign.month]}</td>
                 <td>{campaign.year}</td>
-                <td>{campaign.isActive ? "Active" : "Inactive"}</td>
+                <td>
+                  <span className={campaign.isActive ? "database-records__status database-records__status--active" : "database-records__status"}>
+                    {campaign.isActive ? "Active" : "Inactive"}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
