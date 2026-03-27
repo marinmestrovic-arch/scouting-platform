@@ -214,16 +214,12 @@ describe("channel detail shell view", () => {
   it("renders the live channel detail layout for a resolved channel", () => {
     const html = renderReadyView();
 
-    expect(html).toContain('href="/catalog"');
-    expect(html).toContain("Back to catalog");
     expect(html).toContain("Orbital Deep Dive");
     expect(html).toContain("@orbitaldeepdive");
     expect(html).toContain("Creator profile");
     expect(html).not.toContain("Catalog metadata");
     expect(html).toContain("Enrichment: Ready");
-    expect(html).toContain("Refresh enrichment");
     expect(html).toContain("Advanced report: Completed");
-    expect(html).toContain("Request another report");
     expect(html).toContain("Weekly coverage of launch systems and creator strategy.");
     expect(html).toContain("Creator focused on launches and industry analysis.");
     expect(html).toContain("Last completed report is fresh (12 days old).");
@@ -233,22 +229,22 @@ describe("channel detail shell view", () => {
     expect(html.match(/>Last error</g)?.length ?? 0).toBe(1);
   });
 
-  it("renders status-specific enrichment actions for requestable states", () => {
+  it("renders enrichment status tags for requestable states", () => {
     const scenarios: Array<{
       status: ChannelEnrichmentStatus;
-      actionLabel: string;
+      statusLabel: string;
     }> = [
       {
         status: "missing",
-        actionLabel: "Enrich now",
+        statusLabel: "Enrichment: Missing",
       },
       {
         status: "failed",
-        actionLabel: "Retry enrichment",
+        statusLabel: "Enrichment: Failed",
       },
       {
         status: "stale",
-        actionLabel: "Refresh enrichment",
+        statusLabel: "Enrichment: Stale",
       },
     ];
 
@@ -257,12 +253,11 @@ describe("channel detail shell view", () => {
         channel: createEnrichmentScenario(scenario.status),
       });
 
-      expect(html).toContain(scenario.actionLabel);
-      expect(html).toContain("Request another report");
+      expect(html).toContain(scenario.statusLabel);
     }
   });
 
-  it("renders disabled busy actions for queued and running enrichment states", () => {
+  it("renders busy enrichment status tags for queued and running states", () => {
     const queuedHtml = renderReadyView({
       channel: createEnrichmentScenario("queued"),
     });
@@ -270,14 +265,11 @@ describe("channel detail shell view", () => {
       channel: createEnrichmentScenario("running"),
     });
 
-    expect(queuedHtml).toContain("Enrichment queued");
-    expect(queuedHtml).toContain("disabled=\"\"");
-
-    expect(runningHtml).toContain("Enrichment running");
-    expect(runningHtml).toContain("disabled=\"\"");
+    expect(queuedHtml).toContain("Enrichment: Queued");
+    expect(runningHtml).toContain("Enrichment: Running");
   });
 
-  it("renders enrichment action feedback messages", () => {
+  it("keeps enrichment request feedback out of the closed default view", () => {
     const successHtml = renderReadyView({
       channel: createEnrichmentScenario("missing"),
       enrichmentActionState: {
@@ -294,34 +286,30 @@ describe("channel detail shell view", () => {
       },
     });
 
-    expect(successHtml).toContain(
-      "Enrichment request recorded. This page refreshes automatically while the worker runs, and the current result stays visible below until the refresh completes.",
-    );
-    expect(successHtml).toContain("role=\"status\"");
-    expect(busyHtml).toContain("Requesting...");
-    expect(busyHtml).toContain("disabled=\"\"");
+    expect(successHtml).not.toContain("Enrichment request recorded.");
+    expect(busyHtml).not.toContain("Requesting...");
   });
 
-  it("renders status-specific advanced report actions for requestable states", () => {
+  it("renders advanced report status tags for requestable states", () => {
     const scenarios: Array<{
       status: ChannelAdvancedReportStatus;
-      actionLabel: string;
+      statusLabel: string;
     }> = [
       {
         status: "missing",
-        actionLabel: "Request advanced report",
+        statusLabel: "Advanced report: Missing",
       },
       {
         status: "failed",
-        actionLabel: "Retry request",
+        statusLabel: "Advanced report: Failed",
       },
       {
         status: "rejected",
-        actionLabel: "Request again",
+        statusLabel: "Advanced report: Rejected",
       },
       {
         status: "stale",
-        actionLabel: "Request fresh report",
+        statusLabel: "Advanced report: Stale",
       },
     ];
 
@@ -330,21 +318,20 @@ describe("channel detail shell view", () => {
         channel: createAdvancedReportScenario(scenario.status),
       });
 
-      expect(html).toContain(scenario.actionLabel);
-      expect(html).toContain("Refresh enrichment");
+      expect(html).toContain(scenario.statusLabel);
     }
   });
 
-  it("renders both direct action pills when enrichment and advanced report are fresh", () => {
+  it("renders both status tags when enrichment and advanced report are fresh", () => {
     const html = renderReadyView({
       channel: createAdvancedReportScenario("completed"),
     });
 
-    expect(html).toContain("Refresh enrichment");
-    expect(html).toContain("Request another report");
+    expect(html).toContain("Enrichment: Ready");
+    expect(html).toContain("Advanced report: Completed");
   });
 
-  it("renders disabled busy actions for pending and active advanced report states", () => {
+  it("renders busy advanced report status tags for pending and active states", () => {
     const pendingApprovalHtml = renderReadyView({
       channel: createAdvancedReportScenario("pending_approval"),
     });
@@ -352,14 +339,11 @@ describe("channel detail shell view", () => {
       channel: createAdvancedReportScenario("running"),
     });
 
-    expect(pendingApprovalHtml).toContain("Pending approval");
-    expect(pendingApprovalHtml).toContain("disabled=\"\"");
-
-    expect(runningHtml).toContain("Report running");
-    expect(runningHtml).toContain("disabled=\"\"");
+    expect(pendingApprovalHtml).toContain("Advanced report: Pending Approval");
+    expect(runningHtml).toContain("Advanced report: Running");
   });
 
-  it("renders advanced report action feedback messages", () => {
+  it("keeps advanced report request feedback out of the closed default view", () => {
     const successHtml = renderReadyView({
       channel: createAdvancedReportScenario("missing"),
       advancedReportActionState: {
@@ -376,12 +360,8 @@ describe("channel detail shell view", () => {
       },
     });
 
-    expect(successHtml).toContain(
-      "Advanced report request recorded. This page refreshes automatically while approval and worker status change, and the current audience insights stay visible below until a newer report completes.",
-    );
-    expect(successHtml).toContain("role=\"status\"");
-    expect(busyHtml).toContain("Requesting...");
-    expect(busyHtml).toContain("disabled=\"\"");
+    expect(successHtml).not.toContain("Advanced report request recorded.");
+    expect(busyHtml).not.toContain("Requesting...");
   });
 
   it("renders the admin manual edit panel when manual edit controls are enabled", () => {

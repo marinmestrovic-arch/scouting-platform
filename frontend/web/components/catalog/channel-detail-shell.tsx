@@ -9,8 +9,7 @@ import type {
   ChannelEstimatedPrice,
 } from "@scouting-platform/contracts";
 import Image from "next/image";
-import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ApiRequestError,
@@ -64,6 +63,19 @@ type ChannelDetailShellViewProps = ChannelDetailShellProps & {
   onRequestAdvancedReport: () => void | Promise<void>;
   onChannelUpdated?: (channel: ChannelDetail) => void;
 };
+
+type StatusPopoverTagProps = Readonly<{
+  title: string;
+  summary: string;
+  statusClassName: string;
+  body: string;
+  actionLabel: string;
+  actionBusyLabel?: string;
+  actionVariant?: "primary" | "secondary";
+  disabled: boolean;
+  actionState: ChannelRequestActionState;
+  onAction: () => void;
+}>;
 
 const INITIAL_REQUEST_STATE: ChannelDetailRequestState = {
   status: "loading",
@@ -540,6 +552,83 @@ export function mergeChannelAdvancedReport(
   };
 }
 
+function StatusPopoverTag({
+  title,
+  summary,
+  statusClassName,
+  body,
+  actionLabel,
+  actionBusyLabel = "Requesting...",
+  actionVariant = "primary",
+  disabled,
+  actionState,
+  onAction,
+}: StatusPopoverTagProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent): void {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (!isOpen) {
+      return;
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="channel-detail-shell__status-popover" ref={rootRef}>
+      <button
+        aria-expanded={isOpen}
+        className={statusClassName}
+        onClick={() => {
+          setIsOpen((current) => !current);
+        }}
+        type="button"
+      >
+        {summary}
+      </button>
+
+      {isOpen ? (
+        <div className="channel-detail-shell__status-popover-panel">
+          <h3 className="channel-detail-shell__subheading">{title}</h3>
+          <p className="channel-detail-shell__body-copy">{body}</p>
+          <button
+            className={`channel-detail-shell__button channel-detail-shell__button--tag${
+              actionVariant === "secondary" ? " channel-detail-shell__button--secondary" : ""
+            }`}
+            disabled={disabled}
+            onClick={() => {
+              onAction();
+              setIsOpen(false);
+            }}
+            type="button"
+          >
+            {actionState.type === "submitting" ? actionBusyLabel : actionLabel}
+          </button>
+          {actionState.message ? (
+            <p
+              className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionState.type} channel-detail-shell__action-status--inline`}
+              role={actionState.type === "error" ? "alert" : "status"}
+            >
+              {actionState.message}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function renderReadyState(
   channel: ChannelDetail,
   options: {
@@ -591,73 +680,32 @@ function renderReadyState(
             <p className="channel-detail-shell__description">{getChannelDescription(channel)}</p>
             <div className="channel-detail-shell__hero-controls">
               <div className="channel-detail-shell__status-row">
-                <details className="channel-detail-shell__status-popover">
-                  <summary
-                    className={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
-                  >
-                    Enrichment: {getEnrichmentStatusLabel(channel.enrichment.status)}
-                  </summary>
-                  <div className="channel-detail-shell__status-popover-panel">
-                    <h3 className="channel-detail-shell__subheading">Enrichment</h3>
-                    <p className="channel-detail-shell__body-copy">
-                      {getEnrichmentStatusMessage(channel.enrichment)}
-                    </p>
-                    <button
-                      className="channel-detail-shell__button channel-detail-shell__button--tag"
-                      disabled={isEnrichmentBusy}
-                      onClick={() => {
-                        void options.onRequestEnrichment();
-                      }}
-                      type="button"
-                    >
-                      {options.enrichmentActionState.type === "submitting"
-                        ? "Requesting..."
-                        : getEnrichmentActionLabel(channel.enrichment.status)}
-                    </button>
-                    {enrichmentActionStatus.message ? (
-                      <p
-                        className={`channel-detail-shell__action-status channel-detail-shell__action-status--${enrichmentActionStatus.type} channel-detail-shell__action-status--inline`}
-                        role={enrichmentActionStatus.type === "error" ? "alert" : "status"}
-                      >
-                        {enrichmentActionStatus.message}
-                      </p>
-                    ) : null}
-                  </div>
-                </details>
+                <StatusPopoverTag
+                  actionLabel={getEnrichmentActionLabel(channel.enrichment.status)}
+                  actionState={enrichmentActionStatus}
+                  body={getEnrichmentStatusMessage(channel.enrichment)}
+                  disabled={isEnrichmentBusy}
+                  onAction={() => {
+                    void options.onRequestEnrichment();
+                  }}
+                  statusClassName={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
+                  summary={`Enrichment: ${getEnrichmentStatusLabel(channel.enrichment.status)}`}
+                  title="Enrichment"
+                />
 
-                <details className="channel-detail-shell__status-popover">
-                  <summary
-                    className={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
-                  >
-                    Advanced report: {getAdvancedReportStatusLabel(channel.advancedReport.status)}
-                  </summary>
-                  <div className="channel-detail-shell__status-popover-panel">
-                    <h3 className="channel-detail-shell__subheading">Advanced report</h3>
-                    <p className="channel-detail-shell__body-copy">
-                      {getAdvancedReportStatusMessage(channel)}
-                    </p>
-                    <button
-                      className="channel-detail-shell__button channel-detail-shell__button--tag channel-detail-shell__button--secondary"
-                      disabled={isAdvancedReportBusy}
-                      onClick={() => {
-                        void options.onRequestAdvancedReport();
-                      }}
-                      type="button"
-                    >
-                      {options.advancedReportActionState.type === "submitting"
-                        ? "Requesting..."
-                        : getAdvancedReportActionLabel(channel.advancedReport.status)}
-                    </button>
-                    {advancedReportActionStatus.message ? (
-                      <p
-                        className={`channel-detail-shell__action-status channel-detail-shell__action-status--${advancedReportActionStatus.type} channel-detail-shell__action-status--inline`}
-                        role={advancedReportActionStatus.type === "error" ? "alert" : "status"}
-                      >
-                        {advancedReportActionStatus.message}
-                      </p>
-                    ) : null}
-                  </div>
-                </details>
+                <StatusPopoverTag
+                  actionLabel={getAdvancedReportActionLabel(channel.advancedReport.status)}
+                  actionState={advancedReportActionStatus}
+                  actionVariant="secondary"
+                  body={getAdvancedReportStatusMessage(channel)}
+                  disabled={isAdvancedReportBusy}
+                  onAction={() => {
+                    void options.onRequestAdvancedReport();
+                  }}
+                  statusClassName={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
+                  summary={`Advanced report: ${getAdvancedReportStatusLabel(channel.advancedReport.status)}`}
+                  title="Advanced report"
+                />
               </div>
             </div>
           </div>
@@ -941,10 +989,6 @@ export function ChannelDetailShellView({
 }: ChannelDetailShellViewProps) {
   return (
     <div className="channel-detail-shell">
-      <Link className="channel-detail-shell__back-link" href="/catalog">
-        Back to catalog
-      </Link>
-
       {requestState.status === "loading" ? (
         <p className="channel-detail-shell__feedback channel-detail-shell__feedback--loading">
           Loading channel details...
