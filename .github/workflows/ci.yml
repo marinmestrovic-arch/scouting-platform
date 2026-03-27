@@ -12,16 +12,13 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
-env:
-  POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres:17-alpine
-
 jobs:
   checks:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: ${{ env.POSTGRES_IMAGE }}
+        image: postgres:17-alpine
         env:
           POSTGRES_DB: scouting_platform
           POSTGRES_USER: scouting
@@ -112,11 +109,10 @@ jobs:
       contents: read
       actions: write
     env:
-      POSTGRES_IMAGE: ${{ env.POSTGRES_IMAGE }}
       TRIVY_IMAGE: aquasec/trivy:0.58.2
     steps:
       - name: Pull postgres image
-        run: docker pull "$POSTGRES_IMAGE"
+        run: docker pull postgres:17-alpine
 
       - name: Trivy advisory report (console)
         continue-on-error: true
@@ -128,7 +124,7 @@ jobs:
             --scanners vuln \
             --severity HIGH,CRITICAL \
             --exit-code 0 \
-            "$POSTGRES_IMAGE" | tee trivy-postgres.txt
+            postgres:17-alpine | tee trivy-postgres.txt
 
       - name: Trivy advisory report (SARIF)
         continue-on-error: true
@@ -142,7 +138,7 @@ jobs:
             --format sarif \
             --output /work/trivy-postgres.sarif \
             --exit-code 0 \
-            "$POSTGRES_IMAGE"
+            postgres:17-alpine
 
       - name: Upload advisory scan artifacts
         if: >-
