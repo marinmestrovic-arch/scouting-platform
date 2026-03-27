@@ -2,7 +2,7 @@ import {
   AdvancedReportRequestStatus as PrismaAdvancedReportRequestStatus,
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
   ChannelManualOverrideField as PrismaChannelManualOverrideField,
-  type Prisma,
+  Prisma,
 } from "@prisma/client";
 import {
   channelAudienceCountrySchema,
@@ -26,7 +26,10 @@ import {
   resolveChannelAdvancedReportStatus,
 } from "../approvals/status";
 import { ServiceError } from "../errors";
-import { resolveChannelEnrichmentStatus } from "../enrichment/status";
+import {
+  CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS,
+  resolveChannelEnrichmentStatus,
+} from "../enrichment/status";
 
 export type ListChannelsInput = {
   page: number;
@@ -604,6 +607,125 @@ function toChannelDetail(channel: {
 }
 
 type ChannelDbClient = Prisma.TransactionClient | typeof prisma;
+type ChannelListIdRow = {
+  id: string;
+};
+type ChannelCountRow = {
+  total: bigint;
+};
+
+function buildChannelListSearchWhereSql(query: string | undefined): Prisma.Sql {
+  if (!query) {
+    return Prisma.empty;
+  }
+
+  const normalizedQuery = `%${query}%`;
+
+  return Prisma.sql`
+    AND (
+      c.title ILIKE ${normalizedQuery}
+      OR c.handle ILIKE ${normalizedQuery}
+      OR c.youtube_channel_id ILIKE ${normalizedQuery}
+    )
+  `;
+}
+
+function buildChannelListResolvedStatusWhereSql(input: {
+  enrichmentStatus?: ContractChannelEnrichmentStatus[];
+  advancedReportStatus?: ChannelAdvancedReportStatus[];
+}): Prisma.Sql {
+  const now = new Date();
+  const enrichmentStaleThreshold = new Date(
+    now.getTime() - CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const advancedReportFreshThreshold = new Date(
+    now.getTime() - 120 * 24 * 60 * 60 * 1000,
+  );
+  const enrichmentStatusFilter =
+    input.enrichmentStatus && input.enrichmentStatus.length > 0
+      ? Prisma.sql`
+          AND (
+            CASE
+              WHEN ce.channel_id IS NULL THEN 'missing'
+              WHEN ce.status::text = 'stale' THEN 'stale'
+              WHEN ce.status::text = 'completed'
+                AND (
+                  ce.completed_at IS NULL
+                  OR c.updated_at > ce.completed_at
+                  OR ce.completed_at <= ${enrichmentStaleThreshold}
+                ) THEN 'stale'
+              WHEN ce.status::text = 'completed' THEN 'completed'
+              WHEN ce.status::text = 'running' THEN 'running'
+              WHEN ce.status::text = 'failed' THEN 'failed'
+              ELSE 'queued'
+            END
+          ) = ANY(ARRAY[${Prisma.join(input.enrichmentStatus)}]::text[])
+        `
+      : Prisma.empty;
+  const advancedReportStatusFilter =
+    input.advancedReportStatus && input.advancedReportStatus.length > 0
+      ? Prisma.sql`
+          AND (
+            CASE
+              WHEN latest_arr.status IS NULL THEN 'missing'
+              WHEN latest_arr.status = 'completed'
+                AND (
+                  latest_arr.completed_at IS NULL
+                  OR latest_arr.completed_at <= ${advancedReportFreshThreshold}
+                ) THEN 'stale'
+              ELSE latest_arr.status
+            END
+          ) = ANY(ARRAY[${Prisma.join(input.advancedReportStatus)}]::text[])
+        `
+      : Prisma.empty;
+
+  return Prisma.sql`${enrichmentStatusFilter} ${advancedReportStatusFilter}`;
+}
+
+async function listChannelIdsForResolvedFilters(input: ListChannelsInput): Promise<{
+  ids: string[];
+  total: number;
+}> {
+  const query = input.query?.trim();
+  const skip = (input.page - 1) * input.pageSize;
+  const searchWhereSql = buildChannelListSearchWhereSql(query);
+  const resolvedStatusWhereSql = buildChannelListResolvedStatusWhereSql(input);
+  const baseSql = Prisma.sql`
+    FROM channels c
+    LEFT JOIN channel_enrichments ce
+      ON ce.channel_id = c.id
+    LEFT JOIN LATERAL (
+      SELECT
+        arr.status::text AS status,
+        arr.completed_at
+      FROM advanced_report_requests arr
+      WHERE arr.channel_id = c.id
+      ORDER BY arr.created_at DESC, arr.id DESC
+      LIMIT 1
+    ) latest_arr ON true
+    WHERE 1 = 1
+    ${searchWhereSql}
+    ${resolvedStatusWhereSql}
+  `;
+  const [countRows, idRows] = await prisma.$transaction([
+    prisma.$queryRaw<ChannelCountRow[]>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS total
+      ${baseSql}
+    `),
+    prisma.$queryRaw<ChannelListIdRow[]>(Prisma.sql`
+      SELECT c.id
+      ${baseSql}
+      ORDER BY c.created_at DESC, c.id DESC
+      OFFSET ${skip}
+      LIMIT ${input.pageSize}
+    `),
+  ]);
+
+  return {
+    ids: idRows.map((row) => row.id),
+    total: Number(countRows[0]?.total ?? 0n),
+  };
+}
 
 async function getLatestCompletedAdvancedReport(
   dbClient: ChannelDbClient,
@@ -668,23 +790,34 @@ export async function listChannels(input: ListChannelsInput): Promise<{
     : undefined;
 
   if (hasResolvedStatusFilters) {
+    const { ids, total } = await listChannelIdsForResolvedFilters(input);
+
+    if (ids.length === 0) {
+      return {
+        items: [],
+        total,
+        page: input.page,
+        pageSize: input.pageSize,
+      };
+    }
+
     const channels = await prisma.channel.findMany({
-      orderBy: {
-        createdAt: "desc",
+      where: {
+        id: {
+          in: ids,
+        },
       },
       select: channelListSelect,
-      ...(where ? { where } : {}),
     });
-
-    const filtered = channels
-      .map((channel) => toChannelSummary(channel))
-      .filter((channel) => matchesChannelFilters(channel, input));
-    const start = (input.page - 1) * input.pageSize;
-    const end = start + input.pageSize;
+    const channelsById = new Map(channels.map((channel) => [channel.id, channel]));
+    const orderedItems = ids
+      .map((id) => channelsById.get(id))
+      .filter((channel): channel is typeof channels[number] => Boolean(channel))
+      .map((channel) => toChannelSummary(channel));
 
     return {
-      items: filtered.slice(start, end),
-      total: filtered.length,
+      items: orderedItems,
+      total,
       page: input.page,
       pageSize: input.pageSize,
     };
@@ -713,25 +846,6 @@ export async function listChannels(input: ListChannelsInput): Promise<{
     pageSize: input.pageSize,
   };
 }
-
-function matchesChannelFilters(channel: ChannelSummary, input: ListChannelsInput): boolean {
-  if (
-    input.enrichmentStatus?.length &&
-    !input.enrichmentStatus.includes(channel.enrichment.status)
-  ) {
-    return false;
-  }
-
-  if (
-    input.advancedReportStatus?.length &&
-    !input.advancedReportStatus.includes(channel.advancedReport.status)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
 export async function getChannelById(id: string): Promise<ChannelDetail | null> {
   const [channel, lastCompletedReport] = await Promise.all([
     prisma.channel.findUnique({

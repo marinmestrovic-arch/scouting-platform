@@ -18,7 +18,7 @@ import type {
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 
 import {
   requestChannelEnrichmentBatch,
@@ -75,6 +75,8 @@ export {
 
 type CatalogTableShellProps = {
   pageSize?: number;
+  initialData?: ListChannelsResponse;
+  initialSavedSegments?: SegmentResponse[];
 };
 
 type CatalogTableRequestState =
@@ -1030,6 +1032,80 @@ function CatalogSelectionBatchCards({
   );
 }
 
+const CatalogTableRow = memo(function CatalogTableRow({
+  channel,
+  isSelected,
+  onToggle,
+}: {
+  channel: ChannelSummary;
+  isSelected: boolean;
+  onToggle: (channelId: string) => void;
+}) {
+  return (
+    <tr
+      className={isSelected ? "catalog-table__row catalog-table__row--selected" : "catalog-table__row"}
+      key={channel.id}
+    >
+      <td className="catalog-table__select-cell">
+        <input
+          aria-label={`Select ${channel.title}`}
+          checked={isSelected}
+          onChange={() => {
+            onToggle(channel.id);
+          }}
+          suppressHydrationWarning
+          type="checkbox"
+        />
+      </td>
+      <td>
+        <div className="catalog-table__identity">
+          {channel.thumbnailUrl ? (
+            <Image
+              alt={`${channel.title} thumbnail`}
+              className="catalog-table__thumbnail"
+              height={48}
+              src={channel.thumbnailUrl}
+              unoptimized
+              width={48}
+            />
+          ) : (
+            <div className="catalog-table__thumbnail catalog-table__thumbnail--fallback" aria-hidden="true">
+              {getIdentityFallback(channel)}
+            </div>
+          )}
+          <div className="catalog-table__identity-copy">
+            <Link className="catalog-table__title catalog-table__link" href={`/catalog/${channel.id}`}>
+              {channel.title}
+            </Link>
+            <p className="catalog-table__meta">{getChannelHandle(channel)}</p>
+          </div>
+        </div>
+      </td>
+      <td>
+        {channel.socialMediaLink ? (
+          <a className="catalog-table__link" href={channel.socialMediaLink} rel="noreferrer" target="_blank">
+            Open profile
+          </a>
+        ) : (
+          <span className="catalog-table__meta">—</span>
+        )}
+      </td>
+      <td>
+        <span className="catalog-table__meta">
+          {channel.platforms?.length ? channel.platforms.join(", ") : "—"}
+        </span>
+      </td>
+      <td>{channel.countryRegion ?? "—"}</td>
+      <td>{channel.email ?? "—"}</td>
+      <td>{channel.influencerVertical ?? "—"}</td>
+      <td>{channel.influencerType ?? "—"}</td>
+      <td>{formatChannelMetric(channel.youtubeAverageViews ?? null)}</td>
+      <td>{formatChannelEngagementRate(channel.youtubeEngagementRate ?? null)}</td>
+      <td>{formatChannelMetric(channel.youtubeFollowers ?? null)}</td>
+    </tr>
+  );
+});
+
 export function CatalogTableShellView({
   draftFilters,
   requestState,
@@ -1497,85 +1573,14 @@ function CatalogTableResults({
               </tr>
             </thead>
             <tbody>
-              {data.items.map((channel) => {
-                const isSelected = selectedChannelIds.includes(channel.id);
-
-                return (
-                  <tr
-                    className={
-                      isSelected
-                        ? "catalog-table__row catalog-table__row--selected"
-                        : "catalog-table__row"
-                    }
-                    key={channel.id}
-                  >
-                    <td className="catalog-table__select-cell">
-                      <input
-                        aria-label={`Select ${channel.title}`}
-                        checked={isSelected}
-                        onChange={() => {
-                          onToggleChannelSelection(channel.id);
-                        }}
-                        suppressHydrationWarning
-                        type="checkbox"
-                      />
-                    </td>
-                    <td>
-                      <div className="catalog-table__identity">
-                        {channel.thumbnailUrl ? (
-                          <Image
-                            alt={`${channel.title} thumbnail`}
-                            className="catalog-table__thumbnail"
-                            height={48}
-                            src={channel.thumbnailUrl}
-                            unoptimized
-                            width={48}
-                          />
-                        ) : (
-                          <div
-                            className="catalog-table__thumbnail catalog-table__thumbnail--fallback"
-                            aria-hidden="true"
-                          >
-                            {getIdentityFallback(channel)}
-                          </div>
-                        )}
-                        <div className="catalog-table__identity-copy">
-                          <Link className="catalog-table__title catalog-table__link" href={`/catalog/${channel.id}`}>
-                            {channel.title}
-                          </Link>
-                          <p className="catalog-table__meta">{getChannelHandle(channel)}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      {channel.socialMediaLink ? (
-                        <a
-                          className="catalog-table__link"
-                          href={channel.socialMediaLink}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          Open profile
-                        </a>
-                      ) : (
-                        <span className="catalog-table__meta">—</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="catalog-table__meta">
-                        {channel.platforms?.length ? channel.platforms.join(", ") : "—"}
-                      </span>
-                    </td>
-                    <td>{channel.countryRegion ?? "—"}</td>
-                    <td>{channel.email ?? "—"}</td>
-                    <td>{channel.influencerVertical ?? "—"}</td>
-                    <td>{channel.influencerType ?? "—"}</td>
-                    <td>{formatChannelMetric(channel.youtubeAverageViews ?? null)}</td>
-                    <td>{formatChannelEngagementRate(channel.youtubeEngagementRate ?? null)}</td>
-                    <td>{formatChannelMetric(channel.youtubeFollowers ?? null)}</td>
-                  </tr>
-                );
-              })}
+              {data.items.map((channel) => (
+                <CatalogTableRow
+                  channel={channel}
+                  isSelected={selectedChannelIds.includes(channel.id)}
+                  key={channel.id}
+                  onToggle={onToggleChannelSelection}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -1584,24 +1589,43 @@ function CatalogTableResults({
   );
 }
 
-export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTableShellProps) {
+export function CatalogTableShell({
+  pageSize = DEFAULT_PAGE_SIZE,
+  initialData,
+  initialSavedSegments,
+}: CatalogTableShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const appliedState = parseCatalogUrlState(searchParams);
   const appliedStateKey = buildCatalogSearchParams(appliedState).toString();
   const [draftFilters, setDraftFilters] = useState<CatalogFiltersState>(appliedState.filters);
-  const [requestState, setRequestState] = useState<CatalogTableRequestState>({
-    status: "loading",
-    data: null,
-    error: null,
-  });
+  const [requestState, setRequestState] = useState<CatalogTableRequestState>(
+    initialData
+      ? {
+          status: "ready",
+          data: initialData,
+          error: null,
+        }
+      : {
+          status: "loading",
+          data: null,
+          error: null,
+        },
+  );
   const [reloadToken, setReloadToken] = useState(0);
-  const [savedSegments, setSavedSegments] = useState<SegmentResponse[]>([]);
-  const [savedSegmentsRequestState, setSavedSegmentsRequestState] = useState<SavedSegmentsRequestState>({
-    status: "loading",
-    error: null,
-  });
+  const [savedSegments, setSavedSegments] = useState<SegmentResponse[]>(initialSavedSegments ?? []);
+  const [savedSegmentsRequestState, setSavedSegmentsRequestState] = useState<SavedSegmentsRequestState>(
+    initialSavedSegments
+      ? {
+          status: "ready",
+          error: null,
+        }
+      : {
+          status: "loading",
+          error: null,
+        },
+  );
   const [savedSegmentsReloadToken, setSavedSegmentsReloadToken] = useState(0);
   const [savedSegmentName, setSavedSegmentName] = useState("");
   const [savedSegmentOperationStatus, setSavedSegmentOperationStatus] =
@@ -1618,7 +1642,13 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
   const [latestHubspotPushBatchReloadToken, setLatestHubspotPushBatchReloadToken] = useState(0);
 
   useEffect(() => {
-    setDraftFilters(appliedState.filters);
+    setDraftFilters((current) => {
+      if (areCatalogFiltersEqual(current, appliedState.filters)) {
+        return current;
+      }
+
+      return appliedState.filters;
+    });
   }, [appliedStateKey]);
 
   useEffect(() => {
@@ -1637,12 +1667,13 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
         ? { advancedReportStatus: appliedState.filters.advancedReportStatus }
         : {}),
     };
+    const canReuseInitialData = reloadToken === 0 && !!initialData;
 
     async function loadChannels(polling = false): Promise<void> {
       const abortController = new AbortController();
       activeAbortController = abortController;
 
-      if (!polling) {
+      if (!polling && !canReuseInitialData) {
         setRequestState({
           status: "loading",
           data: null,
@@ -1651,7 +1682,12 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
       }
 
       try {
-        const data = await fetchChannels(requestInput, abortController.signal);
+        const data =
+          canReuseInitialData && !polling ? initialData : await fetchChannels(requestInput, abortController.signal);
+
+        if (!data) {
+          return;
+        }
 
         if (didCancel || abortController.signal.aborted) {
           return;
@@ -1694,15 +1730,30 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
         clearTimeout(timeoutId);
       }
     };
-  }, [appliedStateKey, pageSize, reloadToken]);
+  }, [appliedStateKey, initialData, pageSize, reloadToken]);
 
   useEffect(() => {
     const abortController = new AbortController();
+    const canReuseInitialSavedSegments = savedSegmentsReloadToken === 0 && !!initialSavedSegments;
 
-    setSavedSegmentsRequestState({
-      status: "loading",
-      error: null,
-    });
+    if (!canReuseInitialSavedSegments) {
+      setSavedSegmentsRequestState({
+        status: "loading",
+        error: null,
+      });
+    } else {
+      setSavedSegments(sortSavedSegments(initialSavedSegments));
+      setSavedSegmentsRequestState({
+        status: "ready",
+        error: null,
+      });
+    }
+
+    if (canReuseInitialSavedSegments) {
+      return () => {
+        abortController.abort();
+      };
+    }
 
     void fetchSavedSegments(abortController.signal)
       .then((items) => {
@@ -1730,7 +1781,7 @@ export function CatalogTableShell({ pageSize = DEFAULT_PAGE_SIZE }: CatalogTable
     return () => {
       abortController.abort();
     };
-  }, [savedSegmentsReloadToken]);
+  }, [initialSavedSegments, savedSegmentsReloadToken]);
 
   useEffect(() => {
     const batchId = latestCsvExportBatch.summary?.id ?? latestCsvExportBatch.detail?.id;

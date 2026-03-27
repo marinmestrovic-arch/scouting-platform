@@ -1,5 +1,6 @@
 "use client";
 
+import type { ListChannelsResponse, SegmentResponse } from "@scouting-platform/contracts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
@@ -14,11 +15,15 @@ import { DatabaseRunsTab } from "./database-runs-tab";
 type DatabaseWorkspaceProps = Readonly<{
   forcedTab?: DatabaseTab;
   showLegacyNotice?: boolean;
+  initialCatalogData?: ListChannelsResponse;
+  initialSavedSegments?: SegmentResponse[];
 }>;
 
 export function DatabaseWorkspace({
   forcedTab,
   showLegacyNotice = false,
+  initialCatalogData,
+  initialSavedSegments,
 }: DatabaseWorkspaceProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -75,7 +80,10 @@ export function DatabaseWorkspace({
 
       {activeTab === "catalog" ? (
         <section className="database-workspace__panel">
-          <CatalogTableShell />
+          <CatalogTableShell
+            {...(initialCatalogData ? { initialData: initialCatalogData } : {})}
+            {...(initialSavedSegments ? { initialSavedSegments } : {})}
+          />
         </section>
       ) : (
         <DatabaseRunsTab

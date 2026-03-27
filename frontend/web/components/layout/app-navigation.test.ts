@@ -1,14 +1,22 @@
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { AppNavigation } from "./app-navigation";
 
+const { prefetchMock } = vi.hoisted(() => ({
+  prefetchMock: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/catalog",
+  useRouter: () => ({
+    prefetch: prefetchMock,
+  }),
 }));
 
 describe("app navigation", () => {
   it("renders only shared links for user role", () => {
-    const html = renderToStaticMarkup(AppNavigation({ role: "user" }));
+    const html = renderToStaticMarkup(createElement(AppNavigation, { role: "user" }));
     const linkCount = (html.match(/class="app-nav__link(?: app-nav__link--active)?"/g) ?? []).length;
 
     expect(html).toContain('aria-label="Primary navigation"');
@@ -21,7 +29,7 @@ describe("app navigation", () => {
   });
 
   it("renders admin link for admin role", () => {
-    const html = renderToStaticMarkup(AppNavigation({ role: "admin" }));
+    const html = renderToStaticMarkup(createElement(AppNavigation, { role: "admin" }));
     const linkCount = (html.match(/class="app-nav__link(?: app-nav__link--active)?"/g) ?? []).length;
 
     expect(html).toContain('href="/dashboard"');

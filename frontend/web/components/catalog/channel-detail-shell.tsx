@@ -21,6 +21,7 @@ import {
 type ChannelDetailShellProps = Readonly<{
   channelId: string;
   canManageManualEdits?: boolean;
+  initialData?: ChannelDetail | null;
 }>;
 
 type ChannelDetailRequestState =
@@ -1033,9 +1034,23 @@ export function ChannelDetailShellView({
   );
 }
 
-export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelDetailShellProps) {
+export function ChannelDetailShell({
+  channelId,
+  canManageManualEdits,
+  initialData,
+}: ChannelDetailShellProps) {
   const isManualEditEnabled = canManageManualEdits ?? false;
-  const [requestState, setRequestState] = useState<ChannelDetailRequestState>(INITIAL_REQUEST_STATE);
+  const [requestState, setRequestState] = useState<ChannelDetailRequestState>(
+    initialData
+      ? {
+          status: "ready",
+          data: initialData,
+          error: null,
+        }
+      : initialData === null
+        ? NOT_FOUND_REQUEST_STATE
+        : INITIAL_REQUEST_STATE,
+  );
   const [reloadToken, setReloadToken] = useState(0);
   const [enrichmentActionState, setEnrichmentActionState] = useState<ChannelEnrichmentActionState>(
     IDLE_ENRICHMENT_ACTION_STATE,
@@ -1047,16 +1062,25 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
     let didCancel = false;
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const canReuseInitialData = reloadToken === 0 && !!initialData;
 
     async function loadChannel(polling = false) {
-      if (!polling && requestState.status !== "ready") {
+      if (!polling && !canReuseInitialData) {
         setRequestState(INITIAL_REQUEST_STATE);
       }
 
       try {
-        const channel = await fetchChannelDetail(channelId, abortController.signal);
+        const channel =
+          canReuseInitialData && !polling
+            ? initialData
+            : await fetchChannelDetail(channelId, abortController.signal);
 
         if (didCancel) {
+          return;
+        }
+
+        if (!channel) {
+          setRequestState(NOT_FOUND_REQUEST_STATE);
           return;
         }
 
@@ -1081,7 +1105,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
           return;
         }
 
-        if (polling && requestState.status === "ready") {
+        if (polling) {
           return;
         }
 
@@ -1103,7 +1127,7 @@ export function ChannelDetailShell({ channelId, canManageManualEdits }: ChannelD
         clearTimeout(timeoutId);
       }
     };
-  }, [channelId, reloadToken]);
+  }, [channelId, initialData, reloadToken]);
 
   useEffect(() => {
     setEnrichmentActionState(IDLE_ENRICHMENT_ACTION_STATE);

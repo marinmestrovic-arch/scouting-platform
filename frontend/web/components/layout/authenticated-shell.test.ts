@@ -1,18 +1,33 @@
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const { prefetchMock } = vi.hoisted(() => ({
+  prefetchMock: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
+  useRouter: () => ({
+    prefetch: prefetchMock,
+  }),
 }));
 import { AuthenticatedShell } from "./authenticated-shell";
+
+type AuthenticatedShellCreateElementProps = {
+  role: "user" | "admin";
+  children?: ReactNode;
+};
+
+const AuthenticatedShellForCreateElement =
+  AuthenticatedShell as unknown as (props: AuthenticatedShellCreateElementProps) => ReactNode;
 
 describe("authenticated shell", () => {
   it("renders shared shell chrome with user-visible navigation", () => {
     const html = renderToStaticMarkup(
-      AuthenticatedShell({
+      createElement(AuthenticatedShellForCreateElement, {
         role: "user",
-        children: "catalog page"
-      })
+      }, "catalog page")
     );
 
     expect(html).toContain('href="/dashboard"');
@@ -25,10 +40,9 @@ describe("authenticated shell", () => {
 
   it("shows admin navigation entry for admin role", () => {
     const html = renderToStaticMarkup(
-      AuthenticatedShell({
+      createElement(AuthenticatedShellForCreateElement, {
         role: "admin",
-        children: "admin page"
-      })
+      }, "admin page")
     );
 
     expect(html).toContain('href="/admin"');

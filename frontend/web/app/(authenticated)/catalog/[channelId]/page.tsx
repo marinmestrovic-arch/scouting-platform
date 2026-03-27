@@ -1,3 +1,4 @@
+import { getChannelById } from "@scouting-platform/core";
 import { auth } from "../../../../auth";
 import { ChannelDetailShell } from "../../../../components/catalog/channel-detail-shell";
 import { getRoleFromSession } from "../../../../lib/access-control";
@@ -10,6 +11,13 @@ export default async function CatalogChannelDetailPage({ params }: CatalogChanne
   const session = await auth();
   const { channelId } = await params;
   const canManageManualEdits = getRoleFromSession(session) === "admin";
+  const initialData = await getChannelById(channelId);
 
-  return <ChannelDetailShell channelId={channelId} canManageManualEdits={canManageManualEdits} />;
+  return (
+    <ChannelDetailShell
+      canManageManualEdits={canManageManualEdits}
+      channelId={channelId}
+      initialData={initialData}
+    />
+  );
 }

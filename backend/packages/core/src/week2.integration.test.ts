@@ -537,4 +537,98 @@ integration("week 2 core integration", () => {
     });
     expect(combined.items.map((item) => item.youtubeChannelId)).toEqual(["UC_COMBINED"]);
   });
+
+  it("paginates resolved status filters without loading unrelated pages into the result", async () => {
+    const requester = await prisma.user.create({
+      data: {
+        email: "pagination@example.com",
+        name: "Pagination",
+        role: Role.USER,
+        passwordHash: "bootstrap-hash",
+        isActive: true,
+      },
+    });
+
+    const newest = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_FAILED_NEWEST",
+        title: "Newest failed channel",
+      },
+    });
+    const middle = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_FAILED_MIDDLE",
+        title: "Middle failed channel",
+      },
+    });
+    const oldest = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_FAILED_OLDEST",
+        title: "Oldest failed channel",
+      },
+    });
+
+    await prisma.channelEnrichment.createMany({
+      data: [
+        {
+          channelId: newest.id,
+          status: ChannelEnrichmentStatus.FAILED,
+          requestedByUserId: requester.id,
+          requestedAt: new Date("2026-03-11T12:00:00.000Z"),
+          lastError: "quota",
+        },
+        {
+          channelId: middle.id,
+          status: ChannelEnrichmentStatus.FAILED,
+          requestedByUserId: requester.id,
+          requestedAt: new Date("2026-03-10T12:00:00.000Z"),
+          lastError: "quota",
+        },
+        {
+          channelId: oldest.id,
+          status: ChannelEnrichmentStatus.FAILED,
+          requestedByUserId: requester.id,
+          requestedAt: new Date("2026-03-09T12:00:00.000Z"),
+          lastError: "quota",
+        },
+      ],
+    });
+
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET created_at = ${new Date("2026-03-11T12:00:00.000Z")}
+      WHERE id = ${newest.id}::uuid
+    `;
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET created_at = ${new Date("2026-03-10T12:00:00.000Z")}
+      WHERE id = ${middle.id}::uuid
+    `;
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET created_at = ${new Date("2026-03-09T12:00:00.000Z")}
+      WHERE id = ${oldest.id}::uuid
+    `;
+
+    const firstPage = await core.listChannels({
+      page: 1,
+      pageSize: 2,
+      enrichmentStatus: ["failed"],
+    });
+    const secondPage = await core.listChannels({
+      page: 2,
+      pageSize: 2,
+      enrichmentStatus: ["failed"],
+    });
+
+    expect(firstPage.total).toBe(3);
+    expect(firstPage.items.map((item) => item.youtubeChannelId)).toEqual([
+      "UC_FAILED_NEWEST",
+      "UC_FAILED_MIDDLE",
+    ]);
+    expect(secondPage.total).toBe(3);
+    expect(secondPage.items.map((item) => item.youtubeChannelId)).toEqual([
+      "UC_FAILED_OLDEST",
+    ]);
+  });
 });
