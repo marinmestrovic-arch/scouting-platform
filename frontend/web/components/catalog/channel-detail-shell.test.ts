@@ -221,12 +221,11 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Creator profile");
     expect(html).not.toContain("Catalog metadata");
     expect(html).toContain("Enrichment: Ready");
-    expect(html).toContain("Latest enrichment ready");
-    expect(html).toContain("Refresh enrichment");
-    expect(html).toContain("Enrichment is ready. The latest stored result is visible below.");
+    expect(html).toContain("Profile up to date");
     expect(html).toContain("Advanced report: Completed");
-    expect(html).toContain("Latest report ready");
-    expect(html).toContain("Request another report");
+    expect(html).toContain(
+      "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
+    );
     expect(html).toContain("Weekly coverage of launch systems and creator strategy.");
     expect(html).toContain("Creator focused on launches and industry analysis.");
     expect(html).toContain("Last completed report is fresh (12 days old).");
@@ -295,6 +294,7 @@ describe("channel detail shell view", () => {
 
   it("renders enrichment action feedback messages", () => {
     const successHtml = renderReadyView({
+      channel: createEnrichmentScenario("missing"),
       enrichmentActionState: {
         type: "success",
         message:
@@ -302,6 +302,7 @@ describe("channel detail shell view", () => {
       },
     });
     const busyHtml = renderReadyView({
+      channel: createEnrichmentScenario("missing"),
       enrichmentActionState: {
         type: "submitting",
         message: "",
@@ -341,12 +342,6 @@ describe("channel detail shell view", () => {
           "The last request was rejected during admin review: Budget denied. You can submit a new request when you still need refreshed audience and commercial insights, and the last stored insights remain visible below.",
       },
       {
-        status: "completed",
-        actionLabel: "Request another report",
-        statusCopy:
-          "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
-      },
-      {
         status: "stale",
         actionLabel: "Request fresh report",
         statusCopy:
@@ -362,6 +357,18 @@ describe("channel detail shell view", () => {
       expect(html).toContain(scenario.actionLabel);
       expect(html).toContain(scenario.statusCopy);
     }
+  });
+
+  it("renders a disabled up-to-date action when enrichment and advanced report are fresh", () => {
+    const html = renderReadyView({
+      channel: createAdvancedReportScenario("completed"),
+    });
+
+    expect(html).toContain("Profile up to date");
+    expect(html).toContain(
+      "HypeAuditor insights are ready. The latest stored audience and commercial signals remain visible below, and you can request another report whenever you need a fresh snapshot.",
+    );
+    expect(html).toContain("disabled=\"\"");
   });
 
   it("renders disabled busy actions for pending and active advanced report states", () => {
@@ -387,6 +394,7 @@ describe("channel detail shell view", () => {
 
   it("renders advanced report action feedback messages", () => {
     const successHtml = renderReadyView({
+      channel: createAdvancedReportScenario("missing"),
       advancedReportActionState: {
         type: "success",
         message:
@@ -394,6 +402,7 @@ describe("channel detail shell view", () => {
       },
     });
     const busyHtml = renderReadyView({
+      channel: createAdvancedReportScenario("missing"),
       advancedReportActionState: {
         type: "submitting",
         message: "",

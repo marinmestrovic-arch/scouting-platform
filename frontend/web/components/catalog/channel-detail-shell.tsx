@@ -300,66 +300,6 @@ export function getAdvancedReportActionLabel(status: ChannelAdvancedReportStatus
   return "Request fresh report";
 }
 
-function getEnrichmentFeedbackTitle(status: ChannelEnrichmentStatus): string {
-  if (status === "missing") {
-    return "No enrichment requested";
-  }
-
-  if (status === "queued") {
-    return "Refresh queued";
-  }
-
-  if (status === "running") {
-    return "Refresh running";
-  }
-
-  if (status === "failed") {
-    return "Refresh failed";
-  }
-
-  if (status === "stale") {
-    return "Refresh recommended";
-  }
-
-  return "Latest enrichment ready";
-}
-
-function getAdvancedReportFeedbackTitle(status: ChannelAdvancedReportStatus): string {
-  if (status === "missing") {
-    return "No report requested";
-  }
-
-  if (status === "pending_approval") {
-    return "Awaiting approval";
-  }
-
-  if (status === "approved") {
-    return "Approval recorded";
-  }
-
-  if (status === "queued") {
-    return "Report queued";
-  }
-
-  if (status === "running") {
-    return "Report running";
-  }
-
-  if (status === "failed") {
-    return "Last report failed";
-  }
-
-  if (status === "rejected") {
-    return "Request rejected";
-  }
-
-  if (status === "stale") {
-    return "Refresh recommended";
-  }
-
-  return "Latest report ready";
-}
-
 export function getEnrichmentStatusMessage(
   enrichment: Pick<
     ChannelEnrichmentDetail,
@@ -574,6 +514,67 @@ function getAdvancedReportRequestSuccessMessage(
     : "Advanced report request recorded. This page refreshes automatically while approval and worker status change.";
 }
 
+type SmartPrimaryAction =
+  | {
+      kind: "enrichment" | "advancedReport";
+      label: string;
+      disabled: boolean;
+    }
+  | {
+      kind: "none";
+      label: string;
+      disabled: true;
+    };
+
+function getSmartPrimaryAction(channel: ChannelDetail): SmartPrimaryAction {
+  if (shouldPollEnrichmentStatus(channel.enrichment.status)) {
+    return {
+      kind: "enrichment",
+      label: getEnrichmentActionLabel(channel.enrichment.status),
+      disabled: true,
+    };
+  }
+
+  if (
+    channel.enrichment.status === "missing" ||
+    channel.enrichment.status === "failed" ||
+    channel.enrichment.status === "stale"
+  ) {
+    return {
+      kind: "enrichment",
+      label: getEnrichmentActionLabel(channel.enrichment.status),
+      disabled: false,
+    };
+  }
+
+  if (shouldPollAdvancedReportStatus(channel.advancedReport.status)) {
+    return {
+      kind: "advancedReport",
+      label: getAdvancedReportActionLabel(channel.advancedReport.status),
+      disabled: true,
+    };
+  }
+
+  if (
+    channel.advancedReport.status === "missing" ||
+    channel.advancedReport.status === "failed" ||
+    channel.advancedReport.status === "rejected" ||
+    channel.advancedReport.status === "stale"
+  ) {
+    return {
+      kind: "advancedReport",
+      label: getAdvancedReportActionLabel(channel.advancedReport.status),
+      disabled: false,
+    };
+  }
+
+  return {
+    kind: "none",
+    label: "Profile up to date",
+    disabled: true,
+  };
+}
+
 export function mergeChannelEnrichment(
   channel: ChannelDetail,
   enrichment: ChannelEnrichmentDetail,
@@ -611,17 +612,41 @@ function renderReadyState(
     onChannelUpdated?: (channel: ChannelDetail) => void;
   },
 ) {
-  const isEnrichmentBusy =
-    options.enrichmentActionState.type === "submitting" ||
-    shouldPollEnrichmentStatus(channel.enrichment.status);
   const enrichmentActionStatus = options.enrichmentActionState;
-  const isAdvancedReportBusy =
-    options.advancedReportActionState.type === "submitting" ||
-    shouldPollAdvancedReportStatus(channel.advancedReport.status);
   const advancedReportActionStatus = options.advancedReportActionState;
   const onChannelUpdated = options.onChannelUpdated;
   const canRenderAdminManualEdits =
     options.canManageManualEdits && typeof onChannelUpdated === "function";
+  const smartPrimaryAction = getSmartPrimaryAction(channel);
+  const isPrimaryActionSubmitting =
+    (smartPrimaryAction.kind === "enrichment" &&
+      options.enrichmentActionState.type === "submitting") ||
+    (smartPrimaryAction.kind === "advancedReport" &&
+      options.advancedReportActionState.type === "submitting");
+  const primaryActionFeedback =
+    enrichmentActionStatus.message || advancedReportActionStatus.message
+      ? {
+          type: (enrichmentActionStatus.message
+            ? enrichmentActionStatus.type
+            : advancedReportActionStatus.type) as "idle" | "success" | "error" | "submitting",
+          message: enrichmentActionStatus.message || advancedReportActionStatus.message,
+        }
+      : null;
+  const primaryActionContextMessage =
+    smartPrimaryAction.kind === "enrichment"
+      ? getEnrichmentStatusMessage(channel.enrichment)
+      : getAdvancedReportStatusMessage(channel);
+
+  function handleSmartPrimaryAction(): void {
+    if (smartPrimaryAction.kind === "enrichment") {
+      void options.onRequestEnrichment();
+      return;
+    }
+
+    if (smartPrimaryAction.kind === "advancedReport") {
+      void options.onRequestAdvancedReport();
+    }
+  }
 
   return (
     <>
@@ -649,17 +674,41 @@ function renderReadyState(
             <h2 id="channel-detail-shell-heading">{channel.title}</h2>
             <p className="channel-detail-shell__handle">{getChannelHandle(channel)}</p>
             <p className="channel-detail-shell__description">{getChannelDescription(channel)}</p>
-            <div className="channel-detail-shell__status-row">
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
-              >
-                Enrichment: {getEnrichmentStatusLabel(channel.enrichment.status)}
-              </span>
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
-              >
-                Advanced report: {getAdvancedReportStatusLabel(channel.advancedReport.status)}
-              </span>
+            <div className="channel-detail-shell__hero-controls">
+              <div className="channel-detail-shell__status-row">
+                <span
+                  className={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
+                >
+                  Enrichment: {getEnrichmentStatusLabel(channel.enrichment.status)}
+                </span>
+                <span
+                  className={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
+                >
+                  Advanced report: {getAdvancedReportStatusLabel(channel.advancedReport.status)}
+                </span>
+              </div>
+
+              <div className="channel-detail-shell__toolbar">
+                <button
+                  className="channel-detail-shell__button"
+                  disabled={smartPrimaryAction.disabled || isPrimaryActionSubmitting}
+                  onClick={handleSmartPrimaryAction}
+                  type="button"
+                >
+                  {isPrimaryActionSubmitting ? "Requesting..." : smartPrimaryAction.label}
+                </button>
+                <p className="channel-detail-shell__body-copy channel-detail-shell__body-copy--inline">
+                  {primaryActionContextMessage}
+                </p>
+                {primaryActionFeedback ? (
+                  <p
+                    className={`channel-detail-shell__action-status channel-detail-shell__action-status--${primaryActionFeedback.type} channel-detail-shell__action-status--inline`}
+                    role={primaryActionFeedback.type === "error" ? "alert" : "status"}
+                  >
+                    {primaryActionFeedback.message}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -698,110 +747,6 @@ function renderReadyState(
               <dd>{getLastCompletedReportSummary(channel)}</dd>
             </div>
           </dl>
-        </div>
-
-        <div className="channel-detail-shell__action-grid">
-          <article className="channel-detail-shell__action-card">
-            <div className="channel-detail-shell__action-card-head">
-              <div>
-                <p className="channel-detail-shell__eyebrow">Profile fill</p>
-                <h3 className="channel-detail-shell__subheading">Enrichment</h3>
-              </div>
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.enrichment.status}`}
-              >
-                {getEnrichmentStatusLabel(channel.enrichment.status)}
-              </span>
-            </div>
-
-            <div
-              className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.enrichment.status}`}
-            >
-              <h4 className="channel-detail-shell__subheading">
-                {getEnrichmentFeedbackTitle(channel.enrichment.status)}
-              </h4>
-              <p className="channel-detail-shell__body-copy">
-                {getEnrichmentStatusMessage(channel.enrichment)}
-              </p>
-            </div>
-
-            <div className="channel-detail-shell__actions">
-              <button
-                className="channel-detail-shell__button"
-                disabled={isEnrichmentBusy}
-                onClick={() => {
-                  void options.onRequestEnrichment();
-                }}
-                type="button"
-              >
-                {options.enrichmentActionState.type === "submitting"
-                  ? "Requesting..."
-                  : getEnrichmentActionLabel(channel.enrichment.status)}
-              </button>
-            </div>
-
-            {enrichmentActionStatus.message ? (
-              <div className="channel-detail-shell__request-feedback">
-                <p
-                  className={`channel-detail-shell__action-status channel-detail-shell__action-status--${enrichmentActionStatus.type}`}
-                  role={enrichmentActionStatus.type === "error" ? "alert" : "status"}
-                >
-                  {enrichmentActionStatus.message}
-                </p>
-              </div>
-            ) : null}
-          </article>
-
-          <article className="channel-detail-shell__action-card">
-            <div className="channel-detail-shell__action-card-head">
-              <div>
-                <p className="channel-detail-shell__eyebrow">Audience fill</p>
-                <h3 className="channel-detail-shell__subheading">Advanced report</h3>
-              </div>
-              <span
-                className={`channel-detail-shell__status channel-detail-shell__status--${channel.advancedReport.status}`}
-              >
-                {getAdvancedReportStatusLabel(channel.advancedReport.status)}
-              </span>
-            </div>
-
-            <div
-              className={`channel-detail-shell__job-feedback channel-detail-shell__job-feedback--${channel.advancedReport.status}`}
-            >
-              <h4 className="channel-detail-shell__subheading">
-                {getAdvancedReportFeedbackTitle(channel.advancedReport.status)}
-              </h4>
-              <p className="channel-detail-shell__body-copy">
-                {getAdvancedReportStatusMessage(channel)}
-              </p>
-            </div>
-
-            <div className="channel-detail-shell__actions">
-              <button
-                className="channel-detail-shell__button"
-                disabled={isAdvancedReportBusy}
-                onClick={() => {
-                  void options.onRequestAdvancedReport();
-                }}
-                type="button"
-              >
-                {options.advancedReportActionState.type === "submitting"
-                  ? "Requesting..."
-                  : getAdvancedReportActionLabel(channel.advancedReport.status)}
-              </button>
-            </div>
-
-            {advancedReportActionStatus.message ? (
-              <div className="channel-detail-shell__request-feedback">
-                <p
-                  className={`channel-detail-shell__action-status channel-detail-shell__action-status--${advancedReportActionStatus.type}`}
-                  role={advancedReportActionStatus.type === "error" ? "alert" : "status"}
-                >
-                  {advancedReportActionStatus.message}
-                </p>
-              </div>
-            ) : null}
-          </article>
         </div>
       </section>
 

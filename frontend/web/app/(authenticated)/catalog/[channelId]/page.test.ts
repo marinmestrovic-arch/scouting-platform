@@ -56,10 +56,7 @@ describe("catalog channel detail page", () => {
       channelId: "channel-123",
       canManageManualEdits: true,
     });
-    expect(html).toContain("<h1>Channel Detail</h1>");
-    expect(html).toContain(
-      "Review the resolved catalog profile, enrichment state, advanced report context, and admin overrides for a single channel.",
-    );
+    expect(html).not.toContain("Channel Detail");
     expect(html).toContain("channel-detail-shell:channel-123:true");
   });
 
