@@ -567,8 +567,24 @@ function StatusPopoverTag({
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    function handlePointerDown(event: MouseEvent): void {
-      if (!rootRef.current?.contains(event.target as Node)) {
+    function isOutsidePopover(target: EventTarget | null): boolean {
+      return target instanceof Node && !rootRef.current?.contains(target);
+    }
+
+    function handlePointerDown(event: MouseEvent | PointerEvent | TouchEvent): void {
+      if (isOutsidePopover(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleFocusIn(event: FocusEvent): void {
+      if (isOutsidePopover(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
         setIsOpen(false);
       }
     }
@@ -577,10 +593,14 @@ function StatusPopoverTag({
       return;
     }
 
-    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("focusin", handleFocusIn, true);
+    document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("focusin", handleFocusIn, true);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [isOpen]);
 

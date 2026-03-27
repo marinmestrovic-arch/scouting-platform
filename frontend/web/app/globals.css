@@ -5967,6 +5967,18 @@ body {
   background: rgba(24, 34, 74, 0.05);
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 .database-workspace__tab,
 .database-admin__tab,
 .dashboard-workspace__secondary-link,
