@@ -15,19 +15,35 @@ export function LoginForm() {
 
   return (
     <form action={formAction} className="login-form" noValidate suppressHydrationWarning>
-      <label className="login-form__field">
+      <label className="login-form__field" suppressHydrationWarning>
         <span>Email</span>
-        <input autoComplete="email" name="email" required suppressHydrationWarning type="email" />
+        <div className="login-form__control" suppressHydrationWarning>
+          <input
+            autoComplete="email"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-np-autofill="ignore"
+            name="email"
+            required
+            suppressHydrationWarning
+            type="email"
+          />
+        </div>
       </label>
-      <label className="login-form__field">
+      <label className="login-form__field" suppressHydrationWarning>
         <span>Password</span>
-        <input
-          autoComplete="current-password"
-          name="password"
-          required
-          suppressHydrationWarning
-          type="password"
-        />
+        <div className="login-form__control" suppressHydrationWarning>
+          <input
+            autoComplete="current-password"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-np-autofill="ignore"
+            name="password"
+            required
+            suppressHydrationWarning
+            type="password"
+          />
+        </div>
       </label>
       <p
         aria-live="polite"
