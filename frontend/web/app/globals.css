@@ -5068,7 +5068,6 @@ h3 {
 .database-runs__panel,
 .campaigns-workspace__filters,
 .campaigns-workspace__form,
-.clients-workspace,
 .admin-dashboard__section,
 .admin-dashboard__panel,
 .admin-dashboard__card,
@@ -6542,6 +6541,14 @@ body {
 .clients-workspace .database-records__table-shell,
 .campaigns-workspace .database-records__table-shell {
   border-top: 1px solid rgba(24, 34, 74, 0.08);
+}
+
+.clients-workspace {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
 
 .clients-workspace .database-records__filters {
