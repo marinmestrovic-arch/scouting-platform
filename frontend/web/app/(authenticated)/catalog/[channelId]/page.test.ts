@@ -1,21 +1,28 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, channelDetailShellMock } = vi.hoisted(() => ({
+const { authMock, channelDetailShellMock, getChannelByIdMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   channelDetailShellMock: vi.fn(
     ({
       channelId,
       canManageManualEdits,
+      initialData,
     }: {
       channelId: string;
       canManageManualEdits?: boolean;
-    }) => `channel-detail-shell:${channelId}:${String(canManageManualEdits)}`,
+      initialData?: unknown;
+    }) => `channel-detail-shell:${channelId}:${String(canManageManualEdits)}:${initialData ? "with-data" : "no-data"}`,
   ),
+  getChannelByIdMock: vi.fn(async () => ({ id: "channel-123" })),
 }));
 
 vi.mock("../../../../auth", () => ({
   auth: authMock,
+}));
+
+vi.mock("@scouting-platform/core", () => ({
+  getChannelById: getChannelByIdMock,
 }));
 
 vi.mock("../../../../components/catalog/channel-detail-shell", () => ({
@@ -55,9 +62,10 @@ describe("catalog channel detail page", () => {
     expect(channelDetailShellMock.mock.calls[0]?.[0]).toEqual({
       channelId: "channel-123",
       canManageManualEdits: true,
+      initialData: { id: "channel-123" },
     });
     expect(html).not.toContain("Channel Detail");
-    expect(html).toContain("channel-detail-shell:channel-123:true");
+    expect(html).toContain("channel-detail-shell:channel-123:true:with-data");
   });
 
   it("only enables manual edit controls for admins", async () => {
@@ -77,7 +85,8 @@ describe("catalog channel detail page", () => {
     expect(channelDetailShellMock.mock.calls[0]?.[0]).toEqual({
       channelId: "channel-123",
       canManageManualEdits: false,
+      initialData: { id: "channel-123" },
     });
-    expect(html).toContain("channel-detail-shell:channel-123:false");
+    expect(html).toContain("channel-detail-shell:channel-123:false:with-data");
   });
 });

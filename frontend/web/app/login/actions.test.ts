@@ -26,7 +26,7 @@ function createFormData(values: Readonly<Record<string, string | Blob>>): FormDa
 
 function createRedirectError(): Error & { digest: string } {
   const error = new Error("NEXT_REDIRECT") as Error & { digest: string };
-  error.digest = "NEXT_REDIRECT;replace;/catalog;303;";
+  error.digest = "NEXT_REDIRECT;replace;/dashboard;303;";
   return error;
 }
 
@@ -35,7 +35,7 @@ describe("login actions", () => {
     signInMock.mockReset();
   });
 
-  it("submits credentials sign-in with catalog redirect on success", async () => {
+  it("submits credentials sign-in with dashboard redirect on success", async () => {
     signInMock.mockResolvedValue(undefined);
 
     const result = await signInWithCredentials(
@@ -49,7 +49,7 @@ describe("login actions", () => {
     expect(signInMock).toHaveBeenCalledWith("credentials", {
       email: "active@example.com",
       password: "StrongPassword123",
-      redirectTo: "/catalog"
+      redirectTo: "/dashboard"
     });
     expect(result).toEqual(LOGIN_INITIAL_STATE);
   });
@@ -68,7 +68,7 @@ describe("login actions", () => {
     expect(signInMock).toHaveBeenCalledWith("credentials", {
       email: "",
       password: "",
-      redirectTo: "/catalog"
+      redirectTo: "/dashboard"
     });
   });
 

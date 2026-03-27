@@ -515,7 +515,25 @@ describe("catalog table shell behavior", () => {
       setSavedSegmentsRequestState,
     } = renderShell();
 
-    expect(setDraftFilters).toHaveBeenCalledWith({
+    const setDraftFiltersUpdater = setDraftFilters.mock.calls[0]?.[0] as
+      | ((current: {
+          query: string;
+          enrichmentStatus: string[];
+          advancedReportStatus: string[];
+        }) => {
+          query: string;
+          enrichmentStatus: string[];
+          advancedReportStatus: string[];
+        })
+      | undefined;
+
+    expect(
+      setDraftFiltersUpdater?.({
+        query: "",
+        enrichmentStatus: [],
+        advancedReportStatus: [],
+      }),
+    ).toEqual({
       query: "space",
       enrichmentStatus: ["failed"],
       advancedReportStatus: [],

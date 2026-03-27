@@ -2,7 +2,7 @@
 
 import type { ListRecentRunsResponse, ListRunsQuery } from "@scouting-platform/contracts";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import { getCsvPreviewHref, getHubspotPreviewHref } from "../../lib/navigation";
 import {
@@ -76,8 +76,10 @@ function renderCoverageCell(resultCount: number, target: number | null) {
 
 export function DashboardWorkspace({
   initialData,
+  initialFilters = INITIAL_FILTERS_STATE,
 }: Readonly<{
   initialData?: ListRecentRunsResponse | undefined;
+  initialFilters?: DashboardFiltersState;
 }>) {
   const [requestState, setRequestState] = useState<DashboardRunsRequestState>(
     initialData
@@ -88,23 +90,28 @@ export function DashboardWorkspace({
         }
       : INITIAL_REQUEST_STATE,
   );
-  const [filters, setFilters] = useState<DashboardFiltersState>(INITIAL_FILTERS_STATE);
+  const [filters, setFilters] = useState<DashboardFiltersState>(initialFilters);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let didCancel = false;
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const hasDefaultFilters =
+      filters.campaignManagerUserId.length === 0 && filters.client.length === 0 && filters.market.length === 0;
+    const canReuseInitialData = reloadToken === 0 && hasDefaultFilters && initialData;
 
     async function loadRuns(polling = false) {
-      if (!polling && !initialData) {
+      if (!polling && !canReuseInitialData) {
         setRequestState(INITIAL_REQUEST_STATE);
       }
 
       try {
-        const recentRuns = await fetchRecentRuns({
-          signal: abortController.signal,
-          filters: buildRunFilters(filters),
-        });
+        const recentRuns =
+          canReuseInitialData && !polling ? initialData : await fetchRecentRuns({
+            signal: abortController.signal,
+            filters: buildRunFilters(filters),
+          });
 
         if (didCancel || abortController.signal.aborted) {
           return;
@@ -144,31 +151,40 @@ export function DashboardWorkspace({
         clearTimeout(timeoutId);
       }
     };
-  }, [filters, initialData]);
+  }, [filters, initialData, reloadToken]);
 
   const filterOptions = requestState.status === "ready" ? requestState.data.filterOptions : null;
-  const campaignManagerOptions: SearchableSelectOption[] = [
-    { value: "", label: "All campaign managers" },
-    ...(filterOptions?.campaignManagers.map((campaignManager) => ({
-      value: campaignManager.id,
-      label: formatCampaignManagerLabel(campaignManager),
-      keywords: [campaignManager.email],
-    })) ?? []),
-  ];
-  const clientOptions: SearchableSelectOption[] = [
-    { value: "", label: "All clients" },
-    ...(filterOptions?.clients.map((client) => ({
-      value: client,
-      label: client,
-    })) ?? []),
-  ];
-  const marketOptions: SearchableSelectOption[] = [
-    { value: "", label: "All markets" },
-    ...(filterOptions?.markets.map((market) => ({
-      value: market,
-      label: market,
-    })) ?? []),
-  ];
+  const campaignManagerOptions: SearchableSelectOption[] = useMemo(
+    () => [
+      { value: "", label: "All campaign managers" },
+      ...(filterOptions?.campaignManagers.map((campaignManager) => ({
+        value: campaignManager.id,
+        label: formatCampaignManagerLabel(campaignManager),
+        keywords: [campaignManager.email],
+      })) ?? []),
+    ],
+    [filterOptions],
+  );
+  const clientOptions: SearchableSelectOption[] = useMemo(
+    () => [
+      { value: "", label: "All clients" },
+      ...(filterOptions?.clients.map((client) => ({
+        value: client,
+        label: client,
+      })) ?? []),
+    ],
+    [filterOptions],
+  );
+  const marketOptions: SearchableSelectOption[] = useMemo(
+    () => [
+      { value: "", label: "All markets" },
+      ...(filterOptions?.markets.map((market) => ({
+        value: market,
+        label: market,
+      })) ?? []),
+    ],
+    [filterOptions],
+  );
 
   return (
     <div className="dashboard-workspace">
@@ -227,6 +243,17 @@ export function DashboardWorkspace({
               value={filters.market}
             />
           </label>
+        </div>
+        <div className="dashboard-workspace__actions">
+          <button
+            className="workspace-button workspace-button--secondary workspace-button--small"
+            onClick={() => {
+              setReloadToken((current) => current + 1);
+            }}
+            type="button"
+          >
+            Refresh
+          </button>
         </div>
 
         {requestState.status === "loading" ? (

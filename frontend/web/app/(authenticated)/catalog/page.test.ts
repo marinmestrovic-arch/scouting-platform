@@ -1,6 +1,31 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const { authMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(() => ({
+  authMock: vi.fn(async () => ({
+    user: {
+      id: "user-1",
+      role: "user",
+    },
+  })),
+  listChannelsMock: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+  })),
+  listUserSegmentsMock: vi.fn(async () => []),
+}));
+
+vi.mock("../../../auth", () => ({
+  auth: authMock,
+}));
+
+vi.mock("@scouting-platform/core", () => ({
+  listChannels: listChannelsMock,
+  listUserSegments: listUserSegmentsMock,
+}));
+
 vi.mock("../../../components/catalog/catalog-table-shell", () => ({
   CatalogTableShell: () => "catalog-table-shell",
 }));
@@ -18,8 +43,8 @@ vi.mock("../../../components/database/database-workspace", () => ({
 import CatalogPage from "./page";
 
 describe("catalog page", () => {
-  it("renders the catalog workspace page", () => {
-    const html = renderToStaticMarkup(CatalogPage());
+  it("renders the catalog workspace page", async () => {
+    const html = renderToStaticMarkup(await CatalogPage({}));
 
     expect(html).toContain("Catalog");
     expect(html).toContain(
@@ -27,6 +52,13 @@ describe("catalog page", () => {
     );
     expect(databaseWorkspaceMock.mock.calls[0]?.[0]).toEqual({
       forcedTab: "catalog",
+      initialCatalogData: {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+      },
+      initialSavedSegments: [],
     });
     expect(html).toContain("database-workspace:catalog:undefined");
   });

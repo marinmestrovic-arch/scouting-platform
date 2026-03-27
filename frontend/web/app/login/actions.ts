@@ -31,7 +31,7 @@ export async function signInWithCredentials(
     await signIn("credentials", {
       email: typeof email === "string" ? email : "",
       password: typeof password === "string" ? password : "",
-      redirectTo: "/catalog"
+      redirectTo: "/dashboard"
     });
 
     return LOGIN_INITIAL_STATE;

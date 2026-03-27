@@ -20,6 +20,7 @@ import {
 
 type RunDetailShellProps = Readonly<{
   runId: string;
+  initialData?: RunStatusResponse | null;
 }>;
 
 type RunDetailRequestState =
@@ -284,24 +285,41 @@ export function RunDetailShellView({ runId, requestState, onRetry }: RunDetailSh
   return <div className="run-detail">{renderReadyState(requestState.data, onRetry)}</div>;
 }
 
-export function RunDetailShell({ runId }: RunDetailShellProps) {
-  const [requestState, setRequestState] = useState<RunDetailRequestState>(INITIAL_REQUEST_STATE);
+export function RunDetailShell({ initialData, runId }: RunDetailShellProps) {
+  const [requestState, setRequestState] = useState<RunDetailRequestState>(
+    initialData
+      ? {
+          status: "ready",
+          data: initialData,
+          error: null,
+        }
+      : initialData === null
+        ? NOT_FOUND_REQUEST_STATE
+        : INITIAL_REQUEST_STATE,
+  );
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let didCancel = false;
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const canReuseInitialData = reloadToken === 0 && !!initialData;
 
     async function loadRun(polling = false) {
-      if (!polling) {
+      if (!polling && !canReuseInitialData) {
         setRequestState(INITIAL_REQUEST_STATE);
       }
 
       try {
-        const run = await fetchRunStatus(runId, abortController.signal);
+        const run =
+          canReuseInitialData && !polling ? initialData : await fetchRunStatus(runId, abortController.signal);
 
         if (didCancel) {
+          return;
+        }
+
+        if (!run) {
+          setRequestState(NOT_FOUND_REQUEST_STATE);
           return;
         }
 
@@ -348,7 +366,7 @@ export function RunDetailShell({ runId }: RunDetailShellProps) {
         clearTimeout(timeoutId);
       }
     };
-  }, [runId, reloadToken]);
+  }, [initialData, reloadToken, runId]);
 
   function handleRetry() {
     setReloadToken((current) => current + 1);

@@ -8,11 +8,12 @@ import { getRoleFromSession } from "../../../lib/access-control";
 
 export default async function DashboardPage() {
   const session = await auth();
+  const role = getRoleFromSession(session);
   const initialData =
     session?.user?.id
       ? await listRecentRuns({
           userId: session.user.id,
-          role: getRoleFromSession(session),
+          role,
           limit: 50,
         })
       : undefined;
@@ -22,7 +23,14 @@ export default async function DashboardPage() {
       title="Dashboard"
       description="Review recent scouting runs, track coverage against each run target, and hand each run off to Database, CSV export, or HubSpot from one compact table."
     >
-      <DashboardWorkspace initialData={initialData} />
+      <DashboardWorkspace
+        initialData={initialData}
+        initialFilters={{
+          campaignManagerUserId: "",
+          client: "",
+          market: "",
+        }}
+      />
     </PageSection>
   );
 }
