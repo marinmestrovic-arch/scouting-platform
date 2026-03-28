@@ -41,6 +41,11 @@ export function AppNavigation({ role }: AppNavigationProps) {
               {groupItems.map((item) => (
                 <li key={item.key}>
                   <Link
+                    aria-current={
+                      pathname === item.href || pathname.startsWith(`${item.href}/`)
+                        ? "page"
+                        : undefined
+                    }
                     className={
                       pathname === item.href || pathname.startsWith(`${item.href}/`)
                         ? "app-nav__link app-nav__link--active"

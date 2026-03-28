@@ -39,6 +39,7 @@ export function AdminWorkspace() {
   const searchParams = useSearchParams();
   const activeTab = resolveAdminTab(searchParams.get("tab"));
   const [refreshKey, setRefreshKey] = React.useState(0);
+  const activePanelId = `admin-workspace-panel-${activeTab}`;
 
   function selectTab(tab: AdminWorkspaceTab) {
     const params = new URLSearchParams(searchParams.toString());
@@ -56,18 +57,27 @@ export function AdminWorkspace() {
   return (
     <div className="admin-workspace">
       <div className="admin-workspace__toolbar">
-        <div className="admin-workspace__tabs" aria-label="Admin sections">
+        <div
+          aria-label="Admin sections"
+          className="admin-workspace__tabs"
+          role="tablist"
+        >
           {ADMIN_TABS.map((tab) => (
             <button
+              aria-controls={`admin-workspace-panel-${tab.value}`}
+              aria-selected={activeTab === tab.value}
               className={
                 activeTab === tab.value
                   ? "admin-workspace__tab admin-workspace__tab--active"
                   : "admin-workspace__tab"
               }
+              id={`admin-workspace-tab-${tab.value}`}
               key={tab.value}
               onClick={() => {
                 selectTab(tab.value);
               }}
+              role="tab"
+              tabIndex={activeTab === tab.value ? 0 : -1}
               type="button"
             >
               {tab.label}
@@ -87,7 +97,13 @@ export function AdminWorkspace() {
       </div>
 
       {activeTab === "approvals" ? (
-        <div className="admin-workspace__panel" key={`approvals-${refreshKey}`}>
+        <div
+          aria-labelledby="admin-workspace-tab-approvals"
+          className="admin-workspace__panel"
+          id={activePanelId}
+          key={`approvals-${refreshKey}`}
+          role="tabpanel"
+        >
           <div id="admin-approval-queue">
             <AdminAdvancedReportQueue />
           </div>
@@ -95,19 +111,37 @@ export function AdminWorkspace() {
       ) : null}
 
       {activeTab === "imports" ? (
-        <div className="admin-workspace__panel" key={`imports-${refreshKey}`}>
+        <div
+          aria-labelledby="admin-workspace-tab-imports"
+          className="admin-workspace__panel"
+          id={activePanelId}
+          key={`imports-${refreshKey}`}
+          role="tabpanel"
+        >
           <AdminCsvImportManager />
         </div>
       ) : null}
 
       {activeTab === "users" ? (
-        <div className="admin-workspace__panel" key={`users-${refreshKey}`}>
+        <div
+          aria-labelledby="admin-workspace-tab-users"
+          className="admin-workspace__panel"
+          id={activePanelId}
+          key={`users-${refreshKey}`}
+          role="tabpanel"
+        >
           <AdminUsersManager />
         </div>
       ) : null}
 
       {activeTab === "exports" ? (
-        <section className="admin-workspace__panel admin-workspace__panel--placeholder" key={`exports-${refreshKey}`}>
+        <section
+          aria-labelledby="admin-workspace-tab-exports"
+          className="admin-workspace__panel admin-workspace__panel--placeholder"
+          id={activePanelId}
+          key={`exports-${refreshKey}`}
+          role="tabpanel"
+        >
           <div className="admin-workspace__placeholder">
             <h2>Exports</h2>
             <p>Review selected and filtered export batches from the dedicated export workspace.</p>
@@ -119,7 +153,13 @@ export function AdminWorkspace() {
       ) : null}
 
       {activeTab === "hubspot" ? (
-        <section className="admin-workspace__panel admin-workspace__panel--placeholder" key={`hubspot-${refreshKey}`}>
+        <section
+          aria-labelledby="admin-workspace-tab-hubspot"
+          className="admin-workspace__panel admin-workspace__panel--placeholder"
+          id={activePanelId}
+          key={`hubspot-${refreshKey}`}
+          role="tabpanel"
+        >
           <div className="admin-workspace__placeholder">
             <h2>HubSpot</h2>
             <p>Inspect import history, row-level results, and failure details in the dedicated HubSpot workspace.</p>

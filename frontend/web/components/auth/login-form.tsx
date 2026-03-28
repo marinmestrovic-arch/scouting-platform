@@ -25,6 +25,7 @@ export function LoginForm() {
             data-np-autofill="ignore"
             name="email"
             required
+            spellCheck={false}
             suppressHydrationWarning
             type="email"
           />

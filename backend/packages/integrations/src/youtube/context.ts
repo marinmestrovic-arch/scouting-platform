@@ -66,6 +66,24 @@ const playlistItemsResponseSchema = z.object({
     .default([]),
 });
 
+const videosResponseSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1),
+        statistics: z
+          .object({
+            viewCount: z.string().optional(),
+            likeCount: z.string().optional(),
+            commentCount: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
 const errorResponseSchema = z.object({
   error: z
     .object({
@@ -82,6 +100,7 @@ const errorResponseSchema = z.object({
 
 const YOUTUBE_CHANNELS_URL = "https://youtube.googleapis.com/youtube/v3/channels";
 const YOUTUBE_PLAYLIST_ITEMS_URL = "https://youtube.googleapis.com/youtube/v3/playlistItems";
+const YOUTUBE_VIDEOS_URL = "https://youtube.googleapis.com/youtube/v3/videos";
 
 const quotaErrorReasons = new Set([
   "quotaExceeded",
@@ -118,8 +137,19 @@ export const youtubeChannelContextSchema = z.object({
       title: z.string().trim().min(1),
       description: z.string().trim().nullable(),
       publishedAt: z.string().trim().nullable(),
+      viewCount: z.number().nullable().optional().default(null),
+      likeCount: z.number().nullable().optional().default(null),
+      commentCount: z.number().nullable().optional().default(null),
     }),
   ),
+  diagnostics: z
+    .object({
+      warnings: z.array(z.string().trim().min(1)).default([]),
+    })
+    .optional()
+    .default({
+      warnings: [],
+    }),
 });
 
 export type YoutubeChannelContext = z.infer<typeof youtubeChannelContextSchema>;
@@ -139,7 +169,13 @@ type YoutubeChannelContextDraft = {
     title: string;
     description: string | null;
     publishedAt: string | null;
+    viewCount: number | null;
+    likeCount: number | null;
+    commentCount: number | null;
   }>;
+  diagnostics: {
+    warnings: string[];
+  };
 };
 
 export type FetchYoutubeChannelContextInput = z.input<typeof contextInputSchema>;
@@ -228,6 +264,20 @@ function parsePlaylistItemsResponse(payload: unknown): z.output<typeof playlistI
   return parsed.data;
 }
 
+function parseVideosResponse(payload: unknown): z.output<typeof videosResponseSchema> {
+  const parsed = videosResponseSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new YoutubeChannelContextProviderError(
+      "YOUTUBE_CONTEXT_FAILED",
+      502,
+      "YouTube returned an invalid video statistics response",
+    );
+  }
+
+  return parsed.data;
+}
+
 async function assertSuccessResponseOrThrow(response: Response): Promise<void> {
   if (response.ok) {
     return;
@@ -288,6 +338,25 @@ function buildPlaylistItemsUrl(apiKey: string, uploadsPlaylistId: string, maxVid
   return `${YOUTUBE_PLAYLIST_ITEMS_URL}?${params.toString()}`;
 }
 
+function buildVideosUrl(apiKey: string, videoIds: string[]): string {
+  const params = new URLSearchParams({
+    key: apiKey,
+    part: "statistics",
+    id: videoIds.join(","),
+    maxResults: String(videoIds.length),
+  });
+
+  return `${YOUTUBE_VIDEOS_URL}?${params.toString()}`;
+}
+
+function toWarningMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return "Unknown YouTube video statistics error";
+}
+
 export async function fetchYoutubeChannelContext(
   rawInput: FetchYoutubeChannelContextInput,
 ): Promise<YoutubeChannelContext> {
@@ -311,7 +380,9 @@ export async function fetchYoutubeChannelContext(
   const uploadsPlaylistId =
     toNullableTrimmed(channel.contentDetails?.relatedPlaylists?.uploads) ?? null;
 
-  const recentVideos =
+  const warnings: string[] = [];
+
+  const recentVideos: YoutubeChannelContextDraft["recentVideos"] =
     uploadsPlaylistId === null
       ? []
       : await (async () => {
@@ -330,8 +401,58 @@ export async function fetchYoutubeChannelContext(
             title: item.snippet.title.trim(),
             description: toNullableTrimmed(item.snippet.description),
             publishedAt: toNullableTrimmed(item.snippet.publishedAt),
+            viewCount: null,
+            likeCount: null,
+            commentCount: null,
           }));
         })();
+
+  const recentVideoIds = recentVideos
+    .map((video) => video.youtubeVideoId)
+    .filter((videoId): videoId is string => Boolean(videoId));
+
+  if (recentVideos.length > 0 && recentVideoIds.length === 0) {
+    warnings.push("Recent uploads are missing video identifiers; engagement rate cannot be derived.");
+  }
+
+  if (recentVideoIds.length > 0) {
+    try {
+      const videosResponse = await fetch(buildVideosUrl(input.apiKey, recentVideoIds), {
+        method: "GET",
+      });
+      await assertSuccessResponseOrThrow(videosResponse);
+
+      const parsedVideos = parseVideosResponse(await parseJsonResponse(videosResponse));
+      const statsByVideoId = new Map(
+        parsedVideos.items.map((item) => [
+          item.id,
+          {
+            viewCount: toNullableNumber(item.statistics?.viewCount),
+            likeCount: toNullableNumber(item.statistics?.likeCount),
+            commentCount: toNullableNumber(item.statistics?.commentCount),
+          },
+        ]),
+      );
+
+      recentVideos.forEach((video) => {
+        if (!video.youtubeVideoId) {
+          return;
+        }
+
+        const stats = statsByVideoId.get(video.youtubeVideoId);
+
+        if (!stats) {
+          return;
+        }
+
+        video.viewCount = stats.viewCount;
+        video.likeCount = stats.likeCount;
+        video.commentCount = stats.commentCount;
+      });
+    } catch (error) {
+      warnings.push(`Recent video statistics unavailable: ${toWarningMessage(error)}`);
+    }
+  }
 
   const context: YoutubeChannelContextDraft = {
     youtubeChannelId: channel.id,
@@ -344,6 +465,9 @@ export async function fetchYoutubeChannelContext(
     viewCount: toNullableNumber(channel.statistics?.viewCount),
     videoCount: toNullableNumber(channel.statistics?.videoCount),
     recentVideos,
+    diagnostics: {
+      warnings,
+    },
   };
 
   return youtubeChannelContextSchema.parse(context);

@@ -3,6 +3,11 @@
 This runbook makes staging deployment repeatable from repository configuration. Cloud provisioning is
 still a manual operator step.
 
+For launch gating, pair this with:
+
+- [`/docs/setup/launch-readiness.md`](./launch-readiness.md)
+- [`/docs/setup/postgres-backup-restore-drill.md`](./postgres-backup-restore-drill.md)
+
 ## Target topology
 
 Create one Railway project with these services:
@@ -56,11 +61,33 @@ Set these in both `web` and `worker` services unless marked otherwise:
 8. Keep local reliability checks green before promoting staging changes:
    - run local Week 3 DB integration prep and verification from [`/docs/setup/local.md`](./local.md)
 
+## Staging smoke checklist
+
+Run this after every staging deploy that is a launch candidate:
+
+1. Sign in with a valid admin account.
+2. Confirm dashboard loads and recent runs render.
+3. Create a new scouting run and wait for persisted results.
+4. Open a channel detail page and request LLM enrichment.
+5. Request a HypeAuditor report, approve it as admin, and confirm status progression is visible.
+6. Run one CSV import and confirm row-level results are visible.
+7. Run one CSV export and confirm the artifact downloads.
+8. Run one HubSpot flow and confirm per-row saved results are visible.
+9. Exercise light queue concurrency by overlapping at least two background actions, preferably one run plus one channel enrichment, and confirm both progress without duplicate or stuck states.
+
+Record all failures as bugs before promotion. Do not treat them as justification for unrelated feature work.
+
 ## Rollback checklist
 
 1. Find the last known good deployment in Railway.
 2. Redeploy that version for `web` and `worker`.
 3. If rollback crosses a migration boundary, stop and assess DB compatibility before any down-migration action.
-4. Re-run quick verification:
+4. Only roll back app services automatically when the previous app version is known to be schema-compatible with the current database state.
+5. If schema compatibility is uncertain, pause rollback and restore service through forward-fix or database recovery planning rather than improvising a down-migration.
+6. Re-run quick verification:
    - web homepage loads
    - worker startup logs show clean boot
+
+## Backup and restore
+
+Before launch, complete one restore drill using [`/docs/setup/postgres-backup-restore-drill.md`](./postgres-backup-restore-drill.md).

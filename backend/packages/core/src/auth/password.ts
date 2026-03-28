@@ -34,16 +34,6 @@ function getRuntimeRequire(): RuntimeRequire {
     return __non_webpack_require__;
   }
 
-  try {
-    const runtimeRequire = (0, eval)("require") as RuntimeRequire;
-
-    if (typeof runtimeRequire === "function") {
-      return runtimeRequire;
-    }
-  } catch {
-    // Fall through to createRequire for plain Node execution contexts.
-  }
-
   return createRequire(getRequireRoot());
 }
 

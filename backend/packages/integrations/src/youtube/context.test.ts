@@ -74,6 +74,28 @@ describe("fetchYoutubeChannelContext", () => {
             },
           ],
         }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "video-1",
+              statistics: {
+                viewCount: "100",
+                likeCount: "10",
+                commentCount: "5",
+              },
+            },
+            {
+              id: "video-2",
+              statistics: {
+                viewCount: "200",
+                likeCount: "20",
+                commentCount: "10",
+              },
+            },
+          ],
+        }),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -82,7 +104,7 @@ describe("fetchYoutubeChannelContext", () => {
       channelId: "UC-CONTEXT-1",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(context).toEqual({
       youtubeChannelId: "UC-CONTEXT-1",
       title: "Channel Name",
@@ -99,14 +121,23 @@ describe("fetchYoutubeChannelContext", () => {
           title: "Latest video",
           description: "Video description",
           publishedAt: "2024-01-10T12:00:00Z",
+          viewCount: 100,
+          likeCount: 10,
+          commentCount: 5,
         },
         {
           youtubeVideoId: "video-2",
           title: "Second video",
           description: null,
           publishedAt: "2024-01-09T12:00:00Z",
+          viewCount: 200,
+          likeCount: 20,
+          commentCount: 10,
         },
       ],
+      diagnostics: {
+        warnings: [],
+      },
     });
   });
 
@@ -133,6 +164,7 @@ describe("fetchYoutubeChannelContext", () => {
     });
 
     expect(context.recentVideos).toEqual([]);
+    expect(context.diagnostics.warnings).toEqual([]);
   });
 
   it("returns an empty recent video list when the uploads response omits items", async () => {
@@ -164,6 +196,76 @@ describe("fetchYoutubeChannelContext", () => {
     });
 
     expect(context.recentVideos).toEqual([]);
+    expect(context.diagnostics.warnings).toEqual([]);
+  });
+
+  it("keeps recent video statistics best-effort and records diagnostics when the stats request fails", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "UC-CONTEXT-6",
+              snippet: {
+                title: "Channel Name",
+              },
+              contentDetails: {
+                relatedPlaylists: {
+                  uploads: "UU-CONTEXT-6",
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              contentDetails: {
+                videoId: "video-1",
+              },
+              snippet: {
+                title: "Latest video",
+                publishedAt: "2024-01-10T12:00:00Z",
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              errors: [{ reason: "quotaExceeded" }],
+            },
+          },
+          403,
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await fetchYoutubeChannelContext({
+      apiKey: "yt-key",
+      channelId: "UC-CONTEXT-6",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(context.recentVideos).toEqual([
+      {
+        youtubeVideoId: "video-1",
+        title: "Latest video",
+        description: null,
+        publishedAt: "2024-01-10T12:00:00Z",
+        viewCount: null,
+        likeCount: null,
+        commentCount: null,
+      },
+    ]);
+    expect(context.diagnostics.warnings).toEqual([
+      "Recent video statistics unavailable: YouTube API quota exceeded",
+    ]);
   });
 
   it("treats a successful channel response without items as not found", async () => {

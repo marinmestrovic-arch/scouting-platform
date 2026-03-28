@@ -50,6 +50,10 @@ const clientMetadataFieldsMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260326143000_client_metadata_fields/migration.sql",
 );
+const week8LaunchReadinessIndexesMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260328113000_week8_launch_readiness_indexes/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -216,5 +220,31 @@ describe("client metadata fields migration", () => {
     expect(migrationSql).toContain('"domain" TEXT');
     expect(migrationSql).toContain('"country_region" TEXT');
     expect(migrationSql).toContain('"city" TEXT');
+  });
+});
+
+describe("week 8 launch readiness indexes migration", () => {
+  it("adds composite indexes for operator queues and run history filters", () => {
+    const migrationSql = readFileSync(week8LaunchReadinessIndexesMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE INDEX "advanced_report_requests_status_created_at_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "csv_import_batches_status_created_at_idx"');
+    expect(migrationSql).toContain(
+      'CREATE INDEX "csv_export_batches_requested_by_user_id_created_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE INDEX "hubspot_push_batches_requested_by_user_id_created_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE INDEX "hubspot_import_batches_requested_by_user_id_created_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE INDEX "run_requests_requested_by_user_id_created_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE INDEX "run_requests_campaign_manager_user_id_created_at_idx"',
+    );
+    expect(migrationSql).toContain('CREATE INDEX "run_requests_client_created_at_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "run_requests_market_created_at_idx"');
   });
 });

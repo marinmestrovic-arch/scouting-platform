@@ -505,6 +505,7 @@ model AdvancedReportRequest {
   @@index([channelId], map: "advanced_report_requests_channel_id_idx")
   @@index([channelId, createdAt], map: "advanced_report_requests_channel_id_created_at_idx")
   @@index([status], map: "advanced_report_requests_status_idx")
+  @@index([status, createdAt], map: "advanced_report_requests_status_created_at_idx")
   @@index([requestedByUserId], map: "advanced_report_requests_requested_by_user_id_idx")
   @@index([reviewedByUserId], map: "advanced_report_requests_reviewed_by_user_id_idx")
   @@index([createdAt], map: "advanced_report_requests_created_at_idx")
@@ -561,6 +562,7 @@ model CsvImportBatch {
 
   @@index([requestedByUserId], map: "csv_import_batches_requested_by_user_id_idx")
   @@index([status], map: "csv_import_batches_status_idx")
+  @@index([status, createdAt], map: "csv_import_batches_status_created_at_idx")
   @@index([createdAt], map: "csv_import_batches_created_at_idx")
   @@map("csv_import_batches")
 }
@@ -613,6 +615,7 @@ model CsvExportBatch {
   requestedByUser   User                 @relation("CsvExportRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
 
   @@index([requestedByUserId], map: "csv_export_batches_requested_by_user_id_idx")
+  @@index([requestedByUserId, createdAt], map: "csv_export_batches_requested_by_user_id_created_at_idx")
   @@index([status], map: "csv_export_batches_status_idx")
   @@index([createdAt], map: "csv_export_batches_created_at_idx")
   @@map("csv_export_batches")
@@ -635,6 +638,7 @@ model HubspotPushBatch {
   rows              HubspotPushBatchRow[]
 
   @@index([requestedByUserId], map: "hubspot_push_batches_requested_by_user_id_idx")
+  @@index([requestedByUserId, createdAt], map: "hubspot_push_batches_requested_by_user_id_created_at_idx")
   @@index([status], map: "hubspot_push_batches_status_idx")
   @@index([createdAt], map: "hubspot_push_batches_created_at_idx")
   @@map("hubspot_push_batches")
@@ -681,6 +685,7 @@ model HubspotImportBatch {
   rows              HubspotImportBatchRow[]
 
   @@index([requestedByUserId], map: "hubspot_import_batches_requested_by_user_id_idx")
+  @@index([requestedByUserId, createdAt], map: "hubspot_import_batches_requested_by_user_id_created_at_idx")
   @@index([runRequestId], map: "hubspot_import_batches_run_request_id_idx")
   @@index([status], map: "hubspot_import_batches_status_idx")
   @@index([createdAt], map: "hubspot_import_batches_created_at_idx")
@@ -743,10 +748,14 @@ model RunRequest {
   results           RunResult[]
 
   @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
+  @@index([requestedByUserId, createdAt], map: "run_requests_requested_by_user_id_created_at_idx")
   @@index([campaignId], map: "run_requests_campaign_id_idx")
   @@index([campaignManagerUserId], map: "run_requests_campaign_manager_user_id_idx")
+  @@index([campaignManagerUserId, createdAt], map: "run_requests_campaign_manager_user_id_created_at_idx")
   @@index([client], map: "run_requests_client_idx")
+  @@index([client, createdAt], map: "run_requests_client_created_at_idx")
   @@index([market], map: "run_requests_market_idx")
+  @@index([market, createdAt], map: "run_requests_market_created_at_idx")
   @@index([status], map: "run_requests_status_idx")
   @@index([createdAt], map: "run_requests_created_at_idx")
   @@map("run_requests")

@@ -41,8 +41,23 @@ const CACHED_CONTEXT = {
       title: "Latest video",
       description: "Video description",
       publishedAt: "2024-01-10T12:00:00Z",
+      viewCount: 100,
+      likeCount: 10,
+      commentCount: 5,
+    },
+    {
+      youtubeVideoId: "video-2",
+      title: "Second video",
+      description: null,
+      publishedAt: "2024-01-09T12:00:00Z",
+      viewCount: 200,
+      likeCount: 20,
+      commentCount: 10,
     },
   ],
+  diagnostics: {
+    warnings: [],
+  },
 } as const;
 
 const ENRICHMENT_RESULT = {
@@ -329,6 +344,27 @@ integration("week 4 core integration", () => {
     expect(contextRow.lastError).toBeNull();
     expect(contextRow.context).toMatchObject(CACHED_CONTEXT);
 
+    const persistedChannel = await prisma.channel.findUniqueOrThrow({
+      where: {
+        id: channel.id,
+      },
+      select: {
+        handle: true,
+        youtubeUrl: true,
+      },
+    });
+    expect(persistedChannel.handle).toBe("@channel-name");
+    expect(persistedChannel.youtubeUrl).toBe("https://www.youtube.com/@channel-name");
+
+    const metrics = await prisma.channelMetric.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(metrics.youtubeAverageViews).toBe(517n);
+    expect(metrics.youtubeFollowers).toBe(1200n);
+    expect(metrics.youtubeEngagementRate).toBeCloseTo(15, 5);
+
     const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
       where: {
         channelId: channel.id,
@@ -379,6 +415,92 @@ integration("week 4 core integration", () => {
     });
     expect(refreshedContext.context).toMatchObject({
       title: "Channel Name Refreshed",
+    });
+  });
+
+  it("keeps enrichment successful when recent video stats are incomplete and persists diagnostics", async () => {
+    const user = await createUser();
+    const channel = await createChannel("UC-ENRICH-BEST-EFFORT", "Best Effort Channel");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValue({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-ENRICH-BEST-EFFORT",
+      handle: "channel-best-effort",
+      recentVideos: [
+        {
+          youtubeVideoId: "video-1",
+          title: "Latest video",
+          description: null,
+          publishedAt: "2024-01-10T12:00:00Z",
+          viewCount: null,
+          likeCount: null,
+          commentCount: null,
+        },
+      ],
+      diagnostics: {
+        warnings: ["Recent video statistics unavailable: YouTube API quota exceeded"],
+      },
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.COMPLETED);
+    expect(enrichment.lastError).toBeNull();
+
+    const persistedChannel = await prisma.channel.findUniqueOrThrow({
+      where: {
+        id: channel.id,
+      },
+      select: {
+        handle: true,
+        youtubeUrl: true,
+      },
+    });
+    expect(persistedChannel.handle).toBe("@channel-best-effort");
+    expect(persistedChannel.youtubeUrl).toBe("https://www.youtube.com/@channel-best-effort");
+
+    const metrics = await prisma.channelMetric.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(metrics.youtubeAverageViews).toBe(517n);
+    expect(metrics.youtubeFollowers).toBe(1200n);
+    expect(metrics.youtubeEngagementRate).toBeNull();
+
+    const contextRow = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(contextRow.lastError).toBeNull();
+    expect(contextRow.context).toMatchObject({
+      handle: "@channel-best-effort",
+      diagnostics: {
+        warnings: [
+          "Recent video statistics unavailable: YouTube API quota exceeded",
+          "No recent uploads contained complete statistics for engagement-rate derivation.",
+        ],
+      },
     });
   });
 

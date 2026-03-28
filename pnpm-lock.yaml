@@ -112,6 +112,9 @@ importers:
       '@scouting-platform/db':
         specifier: workspace:*
         version: link:../../backend/packages/db
+      argon2:
+        specifier: ^0.43.0
+        version: 0.43.1
       next:
         specifier: ^15.2.2
         version: 15.5.12(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

@@ -29,8 +29,14 @@ const TEST_INPUT = {
         title: "Video 1",
         description: "Description 1",
         publishedAt: "2024-01-01T00:00:00Z",
+        viewCount: null,
+        likeCount: null,
+        commentCount: null,
       },
     ],
+    diagnostics: {
+      warnings: [],
+    },
   },
 };
 

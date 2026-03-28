@@ -17,6 +17,7 @@ import { getUserYoutubeApiKey } from "../auth";
 import { getChannelById } from "../channels";
 import { ServiceError } from "../errors";
 import { enqueueJob } from "../queue";
+import { deriveYoutubeMetrics } from "./metrics";
 import { isYoutubeContextFresh, resolveChannelEnrichmentStatus } from "./status";
 
 type ChannelYoutubeContextCacheRow = {
@@ -355,12 +356,7 @@ export async function executeChannelLlmEnrichment(input: {
       }
     })();
 
-    const youtubeAverageViews =
-      youtubeContext.viewCount !== null &&
-      youtubeContext.videoCount !== null &&
-      youtubeContext.videoCount > 0
-        ? Math.round(youtubeContext.viewCount / youtubeContext.videoCount)
-        : null;
+    const youtubeMetrics = deriveYoutubeMetrics(youtubeContext);
 
     const enrichmentResult = await (async () => {
       try {
@@ -368,10 +364,10 @@ export async function executeChannelLlmEnrichment(input: {
           channel: {
             youtubeChannelId: executionState.channel.youtubeChannelId,
             title: executionState.channel.title,
-            handle: executionState.channel.handle,
+            handle: youtubeMetrics.normalizedHandle,
             description: executionState.channel.description,
           },
-          youtubeContext,
+          youtubeContext: youtubeMetrics.context,
         });
       } catch (error) {
         if (isOpenAiChannelEnrichmentError(error)) {
@@ -383,15 +379,25 @@ export async function executeChannelLlmEnrichment(input: {
     })();
 
     await prisma.$transaction(async (tx) => {
+      await tx.channelYoutubeContext.update({
+        where: {
+          channelId: executionState.channel.id,
+        },
+        data: {
+          context: toJsonValue(youtubeMetrics.context),
+          lastError: null,
+        },
+      });
+
       await tx.channel.update({
         where: {
           id: executionState.channel.id,
         },
         data: {
-          handle: youtubeContext.handle,
-          youtubeUrl: `https://www.youtube.com/channel/${youtubeContext.youtubeChannelId}`,
-          description: executionState.channel.description ?? youtubeContext.description,
-          thumbnailUrl: youtubeContext.thumbnailUrl,
+          handle: youtubeMetrics.normalizedHandle,
+          youtubeUrl: youtubeMetrics.canonicalUrl,
+          description: executionState.channel.description ?? youtubeMetrics.context.description,
+          thumbnailUrl: youtubeMetrics.context.thumbnailUrl,
         },
       });
 
@@ -401,19 +407,20 @@ export async function executeChannelLlmEnrichment(input: {
         },
         create: {
           channelId: executionState.channel.id,
-          subscriberCount: toNullableBigInt(youtubeContext.subscriberCount),
-          viewCount: toNullableBigInt(youtubeContext.viewCount),
-          videoCount: toNullableBigInt(youtubeContext.videoCount),
-          youtubeAverageViews: toNullableBigInt(youtubeAverageViews),
-          youtubeEngagementRate: null,
-          youtubeFollowers: toNullableBigInt(youtubeContext.subscriberCount),
+          subscriberCount: toNullableBigInt(youtubeMetrics.context.subscriberCount),
+          viewCount: toNullableBigInt(youtubeMetrics.context.viewCount),
+          videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
+          youtubeAverageViews: toNullableBigInt(youtubeMetrics.averageViews),
+          youtubeEngagementRate: youtubeMetrics.engagementRate,
+          youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
         },
         update: {
-          subscriberCount: toNullableBigInt(youtubeContext.subscriberCount),
-          viewCount: toNullableBigInt(youtubeContext.viewCount),
-          videoCount: toNullableBigInt(youtubeContext.videoCount),
-          youtubeAverageViews: toNullableBigInt(youtubeAverageViews),
-          youtubeFollowers: toNullableBigInt(youtubeContext.subscriberCount),
+          subscriberCount: toNullableBigInt(youtubeMetrics.context.subscriberCount),
+          viewCount: toNullableBigInt(youtubeMetrics.context.viewCount),
+          videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
+          youtubeAverageViews: toNullableBigInt(youtubeMetrics.averageViews),
+          youtubeEngagementRate: youtubeMetrics.engagementRate,
+          youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
         },
       });
 

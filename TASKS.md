@@ -221,8 +221,8 @@ Done when:
 
 #### You:
 
-- strengthen YouTube enrichment to persist handle, URL, average views, engagement rate, and followers
-- keep derived metrics best-effort and failure-visible
+- [done] strengthen YouTube enrichment to persist handle, URL, average views, engagement rate, and followers
+- [done] keep derived metrics best-effort and failure-visible
 
 #### Marin:
 
@@ -251,23 +251,28 @@ Done when:
 
 #### You:
 
-- DB/index tuning
-- job concurrency tuning
-- staging load smoke
-- deploy/rollback docs
-- backup/restore drill
+- [done] establish Week 8 as launch-hardening only and defer follow-on feature plans in `/docs/plans`
+- [done] tighten staging deploy/rollback guidance in `/docs/setup/staging-railway.md`
+- [done] add a concrete Postgres backup/restore drill runbook in `/docs/setup/postgres-backup-restore-drill.md`
+- [done] add a launch-readiness checklist in `/docs/setup/launch-readiness.md`
+- [done] verify and document queue worker concurrency + atomic claim expectations
+- [done] DB/index tuning
+- staging load smoke in the real staging environment
+- [done] backup/restore drill execution against a production-like local Postgres restore target
+- production checklist sign-off
 
 #### Marin:
 
-- Playwright coverage for critical flows
-- accessibility cleanup
-- edge-case UI fixes
-- empty/loading/error state pass
+- [done] expand Playwright smoke beyond the anonymous homepage baseline
+- [done] Playwright coverage for critical signed-in flows
+- [done] accessibility cleanup
+- [done] edge-case UI fixes
+- [done] empty/loading/error state pass
 
 #### Both:
 
-- fix bugs only
-- no scope expansion
+- [done] fix bugs only
+- [done] no scope expansion
 - production checklist
 - launch
 
