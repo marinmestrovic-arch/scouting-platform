@@ -1,5 +1,5 @@
-import { hubspotExportPreviewSchema } from "@scouting-platform/contracts";
-import { getHubspotExportPreview } from "@scouting-platform/core";
+import { hubspotExportPreviewSchema, hubspotPrepUpdateRequestSchema } from "@scouting-platform/contracts";
+import { getHubspotExportPreview, updateHubspotPreparation } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -25,6 +25,52 @@ export async function GET(
     if (!params.success) {
       return NextResponse.json({ error: "Invalid run id" }, { status: 400 });
     }
+
+    const preview = await getHubspotExportPreview({
+      runId: params.data.id,
+      userId: session.userId,
+      role: session.role,
+    });
+
+    return NextResponse.json(hubspotExportPreviewSchema.parse(preview));
+  } catch (error) {
+    return toRouteErrorResponse(error);
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const session = await requireAuthenticatedSession();
+
+  if (!session.ok) {
+    return session.response;
+  }
+
+  try {
+    const params = paramsSchema.safeParse(await context.params);
+
+    if (!params.success) {
+      return NextResponse.json({ error: "Invalid run id" }, { status: 400 });
+    }
+
+    const body = hubspotPrepUpdateRequestSchema.safeParse(await request.json());
+
+    if (!body.success) {
+      return NextResponse.json(
+        { error: "Invalid request payload", details: body.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    await updateHubspotPreparation({
+      runId: params.data.id,
+      userId: session.userId,
+      role: session.role,
+      actorUserId: session.userId,
+      payload: body.data,
+    });
 
     const preview = await getHubspotExportPreview({
       runId: params.data.id,

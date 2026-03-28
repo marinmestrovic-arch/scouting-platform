@@ -54,6 +54,10 @@ export const runMetadataResponseSchema = z.object({
   currency: z.string().nullable(),
   dealType: z.string().nullable(),
   activationType: z.string().nullable(),
+  hubspotInfluencerType: z.string().nullable().optional(),
+  hubspotInfluencerVertical: z.string().nullable().optional(),
+  hubspotCountryRegion: z.string().nullable().optional(),
+  hubspotLanguage: z.string().nullable().optional(),
 });
 
 export const createRunRequestSchema = z.object({

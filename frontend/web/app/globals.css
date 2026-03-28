@@ -6436,14 +6436,132 @@ button:disabled,
 
 .export-prep__actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: 0.7rem;
   margin-bottom: 1rem;
+}
+
+.export-prep__defaults-header {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  row-gap: 0.6rem;
+}
+
+.export-prep__defaults-save {
+  min-height: 2.4rem;
+  padding: 0.48rem 0.9rem;
+  font-size: 0.84rem;
+}
+
+.export-prep__default-field {
+  gap: 0.45rem;
+}
+
+.export-prep__default-field span {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.export-prep__default-field .searchable-select__trigger {
+  min-height: 2.45rem;
+  border-radius: 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  padding: 0.58rem 0.72rem;
+  text-transform: none;
+}
+
+.export-prep__default-field .searchable-select__value {
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.export-prep__default-field .searchable-select__icon {
+  font-size: 0.74rem;
+}
+
+.export-prep__default-field .searchable-select__search {
+  min-height: 2.35rem;
+  font-size: 0.88rem;
+  padding: 0.62rem 0.75rem;
+  text-transform: none;
+}
+
+.export-prep__default-field .searchable-select__option,
+.export-prep__default-field .searchable-select__empty {
+  font-size: 0.88rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.export-prep__default-field .searchable-select__option {
+  padding: 0.58rem 0.72rem;
+}
+
+.export-prep__readonly {
+  min-height: 2.45rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text);
+  font-size: 0.88rem;
+}
+
+.export-prep__cell-editor {
+  width: min(100%, 12.5rem);
+  min-width: 9.5rem;
+}
+
+.export-prep__cell-editor .searchable-select__trigger,
+.export-prep__cell-editor .export-prep__input {
+  min-height: 2.45rem;
+  border-radius: 0.85rem;
+}
+
+.export-prep__cell-editor .searchable-select__trigger {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 252, 0.92));
+  font-size: 0.86rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.export-prep__input {
+  font-size: 0.86rem;
+  padding: 0.5rem 0.65rem;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.export-prep__input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
 }
 
 .export-prep__defaults-grid {
   display: grid;
-  gap: 1rem;
+  gap: 0.8rem;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.export-prep__table th,
+.export-prep__table td {
+  padding: 0.72rem 0.68rem;
+}
+
+.export-prep__table th {
+  font-size: 0.68rem;
+}
+
+.export-prep__table td {
+  font-size: 0.86rem;
 }
 
 .export-prep__defaults dt {
@@ -6466,6 +6584,24 @@ button:disabled,
 
   .page-section__summary {
     max-width: none;
+  }
+
+  .export-prep__actions,
+  .export-prep__defaults-header {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 48rem) {
+  .export-prep__actions,
+  .export-prep__defaults-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .export-prep__actions button,
+  .export-prep__defaults-save {
+    width: 100%;
   }
 }
 

@@ -1,5 +1,5 @@
 import React, { Suspense } from "react";
-import { listCampaigns, listClients } from "@scouting-platform/core";
+import { listCampaigns, listClients, listDropdownValues } from "@scouting-platform/core";
 import { redirect } from "next/navigation";
 
 import { getSession } from "../../../lib/cached-auth";
@@ -14,12 +14,21 @@ async function DatabaseData() {
     redirect("/login");
   }
 
-  const [campaigns, clients] = await Promise.all([
+  const isAdmin = session.user.role === "admin";
+  const [campaigns, clients, dropdownValues] = await Promise.all([
     listCampaigns({ userId: session.user.id, query: { active: true } }),
     listClients({ userId: session.user.id }),
+    isAdmin ? listDropdownValues().then((response) => response.items) : Promise.resolve([]),
   ]);
 
-  return <DatabaseAdminWorkspace campaigns={campaigns} clients={clients} />;
+  return (
+    <DatabaseAdminWorkspace
+      campaigns={campaigns}
+      clients={clients}
+      dropdownValues={dropdownValues}
+      isAdmin={isAdmin}
+    />
+  );
 }
 
 function DatabaseFallback() {

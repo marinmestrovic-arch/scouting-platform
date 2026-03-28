@@ -8,7 +8,13 @@ import type {
 } from "@scouting-platform/contracts";
 import { prisma } from "@scouting-platform/db";
 
+import { listDropdownOptions } from "./dropdown-values";
 import { ServiceError } from "./errors";
+import {
+  applyHubspotPreparationRows,
+  buildHubspotRowKey,
+  normalizeHubspotPrepDefaults,
+} from "./hubspot/preparation";
 
 const runPreviewSelect = {
   id: true,
@@ -23,8 +29,31 @@ const runPreviewSelect = {
   dealOwner: true,
   pipeline: true,
   dealStage: true,
+  currency: true,
   dealType: true,
   activationType: true,
+  hubspotInfluencerType: true,
+  hubspotInfluencerVertical: true,
+  hubspotCountryRegion: true,
+  hubspotLanguage: true,
+  hubspotRowOverrides: {
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      rowKey: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      currency: true,
+      dealType: true,
+      activationType: true,
+      influencerType: true,
+      influencerVertical: true,
+      countryRegion: true,
+      language: true,
+    },
+  },
   campaignManagerUser: {
     select: {
       id: true,
@@ -84,17 +113,21 @@ function column(
   label: string,
   editable: boolean,
   required = false,
+  fieldType: "text" | "dropdown" | "readonly" = "text",
+  dropdownFieldKey: ExportPreviewColumn["dropdownFieldKey"] = null,
 ): ExportPreviewColumn {
   return {
     key,
     label,
     editable,
     required,
+    fieldType,
+    dropdownFieldKey,
   };
 }
 
 const HUBSPOT_COLUMNS: ExportPreviewColumn[] = [
-  column("contactType", "Contact Type", true, true),
+  column("contactType", "Contact Type", false, true, "readonly"),
   column("campaignName", "Campaign Name", false, true),
   column("month", "Month", false, true),
   column("year", "Year", false, true),
@@ -103,16 +136,16 @@ const HUBSPOT_COLUMNS: ExportPreviewColumn[] = [
   column("dealName", "Deal name", false, true),
   column("pipeline", "Pipeline", false, true),
   column("dealStage", "Deal stage", false, true),
-  column("currency", "Currency", true, true),
-  column("dealType", "Deal Type", true, true),
-  column("activationType", "Activation Type", true, true),
+  column("currency", "Currency", true, true, "dropdown", "currency"),
+  column("dealType", "Deal Type", true, true, "dropdown", "dealType"),
+  column("activationType", "Activation Type", true, true, "dropdown", "activationType"),
   column("firstName", "First Name", true, true),
   column("lastName", "Last Name", true, true),
-  column("email", "Email", false, true),
-  column("influencerType", "Influencer Type", true, true),
-  column("influencerVertical", "Influencer Vertical", true, true),
-  column("countryRegion", "Country/Region", true, true),
-  column("language", "Language", true, true),
+  column("email", "Email", true, true),
+  column("influencerType", "Influencer Type", true, true, "dropdown", "influencerType"),
+  column("influencerVertical", "Influencer Vertical", true, true, "dropdown", "influencerVertical"),
+  column("countryRegion", "Country/Region", true, true, "dropdown", "countryRegion"),
+  column("language", "Language", true, true, "dropdown", "language"),
   column("youtubeHandle", "YouTube Handle", false),
   column("youtubeUrl", "YouTube URL", false),
   column("youtubeAverageViews", "YouTube Average Views", false),
@@ -243,18 +276,24 @@ async function getRunPreview(input: {
 }
 
 function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
-  const rows: ExportPreviewRow[] = [];
+  const fallbackRows: Array<{ rowKey: string; fallbackValues: Record<string, string> }> = [];
 
   for (const result of run.results) {
     const channel = result.channel;
     const contacts = channel.contacts.length > 0 ? channel.contacts : [{ email: "", firstName: "", lastName: "" }];
 
     for (const [contactIndex, contact] of contacts.entries()) {
-      rows.push({
-        id: `${result.id}:${contact.email || contactIndex}`,
-        channelId: channel.id,
-        channelTitle: channel.title,
-        values: {
+      const rowKey = buildHubspotRowKey({
+        resultId: result.id,
+        contactEmail: contact.email,
+        contactIndex,
+      });
+
+      fallbackRows.push({
+        rowKey,
+        fallbackValues: {
+          channelId: channel.id,
+          channelTitle: channel.title,
           contactType: "Influencer",
           campaignName: run.campaignName ?? "",
           month: normalizeMonth(run.month),
@@ -264,16 +303,16 @@ function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
           dealName: `${channel.title} - ${run.campaignName ?? ""}`.trim(),
           pipeline: run.pipeline ?? "",
           dealStage: run.dealStage ?? "",
-          currency: "",
+          currency: run.currency ?? "",
           dealType: run.dealType ?? "",
           activationType: run.activationType ?? "",
           firstName: contact.firstName ?? "",
           lastName: contact.lastName ?? "",
           email: contact.email,
-          influencerType: "YouTube Creator",
+          influencerType: run.hubspotInfluencerType ?? "YouTube Creator",
           influencerVertical: getTopTopic(channel.enrichment?.topics ?? null),
           countryRegion: getTopCountry(channel.insights?.audienceCountries ?? null),
-          language: "",
+          language: run.hubspotLanguage ?? "",
           youtubeHandle: channel.handle ?? "",
           youtubeUrl: channel.youtubeUrl ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
           youtubeAverageViews: toText(channel.metrics?.youtubeAverageViews),
@@ -312,7 +351,19 @@ function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
     }
   }
 
-  return rows;
+  return applyHubspotPreparationRows({
+    run: {
+      currency: run.currency,
+      dealType: run.dealType,
+      activationType: run.activationType,
+      hubspotInfluencerType: run.hubspotInfluencerType,
+      hubspotInfluencerVertical: run.hubspotInfluencerVertical,
+      hubspotCountryRegion: run.hubspotCountryRegion,
+      hubspotLanguage: run.hubspotLanguage,
+      rowOverrides: run.hubspotRowOverrides,
+    },
+    rows: fallbackRows,
+  });
 }
 
 function buildValidationIssues(rows: ExportPreviewRow[]): ExportPreviewValidationIssue[] {
@@ -340,7 +391,7 @@ export async function getHubspotExportPreview(input: {
   userId: string;
   role: "admin" | "user";
 }): Promise<HubspotExportPreview> {
-  const run = await getRunPreview(input);
+  const [run, dropdownOptions] = await Promise.all([getRunPreview(input), listDropdownOptions()]);
   const rows = buildHubspotRows(run);
 
   return {
@@ -351,18 +402,16 @@ export async function getHubspotExportPreview(input: {
     },
     columns: HUBSPOT_COLUMNS,
     requiredColumnKeys: HUBSPOT_COLUMNS.filter((column) => column.required).map((column) => column.key),
-    defaults: {
-      campaignName: run.campaignName ?? "",
-      month: normalizeMonth(run.month),
-      year: toText(run.year),
-      clientName: run.client ?? "",
-      dealOwner: run.dealOwner ?? "",
-      pipeline: run.pipeline ?? "",
-      dealStage: run.dealStage ?? "",
-      currency: "",
-      dealType: run.dealType ?? "",
-      activationType: run.activationType ?? "",
-    },
+    defaults: normalizeHubspotPrepDefaults({
+      currency: run.currency,
+      dealType: run.dealType,
+      activationType: run.activationType,
+      hubspotInfluencerType: run.hubspotInfluencerType,
+      hubspotInfluencerVertical: run.hubspotInfluencerVertical,
+      hubspotCountryRegion: run.hubspotCountryRegion,
+      hubspotLanguage: run.hubspotLanguage,
+    }),
+    dropdownOptions,
     rows,
     validationIssues: buildValidationIssues(rows),
   };
@@ -382,6 +431,7 @@ export async function getCsvExportPreview(input: {
 
     rows.push({
       id: result.id,
+      rowKey: result.id,
       channelId: channel.id,
       channelTitle: channel.title,
       values: {

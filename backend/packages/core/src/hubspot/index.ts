@@ -21,6 +21,7 @@ import { ServiceError } from "../errors";
 import { enqueueHubspotPushJob } from "./queue";
 
 export { stopHubspotPushQueue } from "./queue";
+export * from "./preparation";
 
 const batchActorSelect = {
   id: true,

@@ -45,6 +45,18 @@ enum RunResultSource {
   @@map("run_result_source")
 }
 
+enum DropdownValueFieldKey {
+  CURRENCY             @map("currency")
+  DEAL_TYPE            @map("deal_type")
+  ACTIVATION_TYPE      @map("activation_type")
+  INFLUENCER_TYPE      @map("influencer_type")
+  INFLUENCER_VERTICAL  @map("influencer_vertical")
+  COUNTRY_REGION       @map("country_region")
+  LANGUAGE             @map("language")
+
+  @@map("dropdown_value_field_key")
+}
+
 enum RunMonth {
   JANUARY   @map("january")
   FEBRUARY  @map("february")
@@ -206,6 +218,19 @@ model User {
   createdCampaigns              Campaign[]              @relation("CampaignCreatedBy")
 
   @@map("users")
+}
+
+model DropdownValue {
+  id        String                @id @default(uuid()) @db.Uuid
+  fieldKey  DropdownValueFieldKey @map("field_key")
+  value     String
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  @@unique([fieldKey, value], map: "dropdown_values_field_key_value_key")
+  @@index([fieldKey], map: "dropdown_values_field_key_idx")
+  @@index([createdAt], map: "dropdown_values_created_at_idx")
+  @@map("dropdown_values")
 }
 
 model Client {
@@ -735,6 +760,10 @@ model RunRequest {
   currency          String?
   dealType          String?          @map("deal_type")
   activationType    String?          @map("activation_type")
+  hubspotInfluencerType String?      @map("hubspot_influencer_type")
+  hubspotInfluencerVertical String?  @map("hubspot_influencer_vertical")
+  hubspotCountryRegion String?       @map("hubspot_country_region")
+  hubspotLanguage   String?          @map("hubspot_language")
   status            RunRequestStatus @default(QUEUED)
   lastError         String?          @map("last_error") @db.Text
   createdAt         DateTime         @default(now()) @map("created_at")
@@ -745,6 +774,7 @@ model RunRequest {
   campaign          Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   campaignManagerUser User?          @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
   hubspotImportBatches HubspotImportBatch[]
+  hubspotRowOverrides RunHubspotRowOverride[]
   results           RunResult[]
 
   @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
@@ -759,6 +789,30 @@ model RunRequest {
   @@index([status], map: "run_requests_status_idx")
   @@index([createdAt], map: "run_requests_created_at_idx")
   @@map("run_requests")
+}
+
+model RunHubspotRowOverride {
+  id                String     @id @default(uuid()) @db.Uuid
+  runRequestId      String     @map("run_request_id") @db.Uuid
+  rowKey            String     @map("row_key")
+  firstName         String?    @map("first_name")
+  lastName          String?    @map("last_name")
+  email             String?
+  currency          String?
+  dealType          String?    @map("deal_type")
+  activationType    String?    @map("activation_type")
+  influencerType    String?    @map("influencer_type")
+  influencerVertical String?   @map("influencer_vertical")
+  countryRegion     String?    @map("country_region")
+  language          String?
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  runRequest        RunRequest @relation(fields: [runRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([runRequestId, rowKey], map: "run_hubspot_row_overrides_run_request_id_row_key_key")
+  @@index([runRequestId], map: "run_hubspot_row_overrides_run_request_id_idx")
+  @@index([createdAt], map: "run_hubspot_row_overrides_created_at_idx")
+  @@map("run_hubspot_row_overrides")
 }
 
 model RunResult {

@@ -4,6 +4,7 @@ export * from "./audit";
 export * from "./auth";
 export * from "./campaigns";
 export * from "./channels";
+export * from "./dropdown-values";
 export * from "./enrichment";
 export * from "./errors";
 export * from "./export-previews";

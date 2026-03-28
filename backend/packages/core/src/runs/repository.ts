@@ -50,6 +50,10 @@ const runMetadataSelect = {
   currency: true,
   dealType: true,
   activationType: true,
+  hubspotInfluencerType: true,
+  hubspotInfluencerVertical: true,
+  hubspotCountryRegion: true,
+  hubspotLanguage: true,
   campaignManagerUser: {
     select: campaignManagerSelect,
   },
@@ -140,6 +144,10 @@ function toRunMetadata(
     currency: runRequest.currency,
     dealType: runRequest.dealType,
     activationType: runRequest.activationType,
+    hubspotInfluencerType: runRequest.hubspotInfluencerType,
+    hubspotInfluencerVertical: runRequest.hubspotInfluencerVertical,
+    hubspotCountryRegion: runRequest.hubspotCountryRegion,
+    hubspotLanguage: runRequest.hubspotLanguage,
   };
 }
 
@@ -189,6 +197,10 @@ async function loadRunCreationMetadata(input: {
   | "dealStage"
   | "dealType"
   | "activationType"
+  | "hubspotInfluencerType"
+  | "hubspotInfluencerVertical"
+  | "hubspotCountryRegion"
+  | "hubspotLanguage"
 >> {
   const [campaign, user] = await Promise.all([
     prisma.campaign.findUnique({
@@ -274,6 +286,10 @@ async function loadRunCreationMetadata(input: {
     dealStage: "Scouted",
     dealType: "",
     activationType: "",
+    hubspotInfluencerType: "YouTube Creator",
+    hubspotInfluencerVertical: "",
+    hubspotCountryRegion: "",
+    hubspotLanguage: "",
   };
 }
 

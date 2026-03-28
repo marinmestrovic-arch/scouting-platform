@@ -1,7 +1,9 @@
 import {
   csvExportPreviewSchema,
   hubspotExportPreviewSchema,
+  hubspotPrepUpdateRequestSchema,
   type CsvExportPreview,
+  type HubspotPrepUpdateRequest,
   type HubspotExportPreview,
 } from "@scouting-platform/contracts";
 
@@ -57,4 +59,24 @@ export async function fetchCsvExportPreview(runId: string, signal?: AbortSignal)
   }
 
   return csvExportPreviewSchema.parse(payload);
+}
+
+export async function updateHubspotExportPreview(
+  runId: string,
+  input: HubspotPrepUpdateRequest,
+): Promise<HubspotExportPreview> {
+  const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/hubspot-preview`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(hubspotPrepUpdateRequestSchema.parse(input)),
+  });
+  const payload = await readJsonPayload(response);
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response, payload, "Unable to update HubSpot preview."));
+  }
+
+  return hubspotExportPreviewSchema.parse(payload);
 }

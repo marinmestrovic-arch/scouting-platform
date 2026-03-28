@@ -17,6 +17,11 @@ import {
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { ServiceError } from "../errors";
+import {
+  buildHubspotRowKey,
+  normalizeHubspotPrepDefaults,
+  resolveHubspotRowValues,
+} from "./preparation";
 import { enqueueHubspotImportJob } from "./queue";
 
 const batchActorSelect = {
@@ -93,11 +98,34 @@ const runImportSelect = {
   currency: true,
   dealType: true,
   activationType: true,
+  hubspotInfluencerType: true,
+  hubspotInfluencerVertical: true,
+  hubspotCountryRegion: true,
+  hubspotLanguage: true,
+  hubspotRowOverrides: {
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      rowKey: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      currency: true,
+      dealType: true,
+      activationType: true,
+      influencerType: true,
+      influencerVertical: true,
+      countryRegion: true,
+      language: true,
+    },
+  },
   results: {
     orderBy: {
       rank: "asc",
     },
     select: {
+      id: true,
       channel: {
         select: {
           id: true,
@@ -411,30 +439,30 @@ function buildRunFieldBlockers(run: ImportRunRecord): HubspotImportBlocker[] {
 function buildRowPayload(input: {
   run: ImportRunRecord;
   channel: ImportRunRecord["results"][number]["channel"];
-  contact: ImportRunRecord["results"][number]["channel"]["contacts"][number];
+  values: Record<(typeof HUBSPOT_IMPORT_HEADER)[number] | "Contact Type", string>;
 }): HubspotImportPayload {
   return {
     channelTitle: input.channel.title,
     csv: {
-      "Contact Type": "Influencer",
-      "Campaign Name": input.run.campaignName ?? "",
-      Month: input.run.month?.toLowerCase() ?? "",
-      Year: input.run.year?.toString() ?? "",
-      "Client name": input.run.client ?? "",
-      "Deal owner": input.run.dealOwner ?? "",
-      "Deal name": input.run.dealName ?? "",
-      Pipeline: input.run.pipeline ?? "",
-      "Deal stage": input.run.dealStage ?? "",
-      Currency: input.run.currency ?? "",
-      "Deal Type": input.run.dealType ?? "",
-      "Activation Type": input.run.activationType ?? "",
-      "First Name": input.contact.firstName ?? "",
-      "Last Name": input.contact.lastName ?? "",
-      Email: input.contact.email,
-      "Influencer Type": "YouTube Creator",
-      "Influencer Vertical": getInfluencerVertical(input.channel.enrichment?.topics ?? null),
-      "Country/Region": getTopAudienceCountryName(input.channel.insights?.audienceCountries ?? null),
-      Language: "English",
+      "Contact Type": input.values["Contact Type"],
+      "Campaign Name": input.values["Campaign Name"],
+      Month: input.values.Month,
+      Year: input.values.Year,
+      "Client name": input.values["Client name"],
+      "Deal owner": input.values["Deal owner"],
+      "Deal name": input.values["Deal name"],
+      Pipeline: input.values.Pipeline,
+      "Deal stage": input.values["Deal stage"],
+      Currency: input.values.Currency,
+      "Deal Type": input.values["Deal Type"],
+      "Activation Type": input.values["Activation Type"],
+      "First Name": input.values["First Name"],
+      "Last Name": input.values["Last Name"],
+      Email: input.values.Email,
+      "Influencer Type": input.values["Influencer Type"],
+      "Influencer Vertical": input.values["Influencer Vertical"],
+      "Country/Region": input.values["Country/Region"],
+      Language: input.values.Language,
     },
   };
 }
@@ -463,6 +491,10 @@ async function buildImportDraft(input: {
     lastName: string;
     payload: HubspotImportPayload;
   }> = [];
+  const defaults = normalizeHubspotPrepDefaults(run);
+  const rowOverrides = new Map<string, ImportRunRecord["hubspotRowOverrides"][number]>(
+    run.hubspotRowOverrides.map((row) => [row.rowKey, row]),
+  );
 
   for (const result of run.results) {
     const channel = result.channel;
@@ -479,8 +511,41 @@ async function buildImportDraft(input: {
       continue;
     }
 
-    for (const contact of channel.contacts) {
-      if (!toNullableTrimmed(contact.firstName)) {
+    for (const [contactIndex, contact] of channel.contacts.entries()) {
+      const rowKey = buildHubspotRowKey({
+        resultId: result.id,
+        contactEmail: contact.email,
+        contactIndex,
+      });
+      const effectiveValues = resolveHubspotRowValues({
+        defaults,
+        fallbackValues: {
+          channelId: channel.id,
+          channelTitle: channel.title,
+          contactType: "Influencer",
+          campaignName: run.campaignName ?? "",
+          month: run.month?.toLowerCase() ?? "",
+          year: run.year?.toString() ?? "",
+          clientName: run.client ?? "",
+          dealOwner: run.dealOwner ?? "",
+          dealName: run.dealName ?? "",
+          pipeline: run.pipeline ?? "",
+          dealStage: run.dealStage ?? "",
+          currency: run.currency ?? "",
+          dealType: run.dealType ?? "",
+          activationType: run.activationType ?? "",
+          firstName: contact.firstName ?? "",
+          lastName: contact.lastName ?? "",
+          email: contact.email,
+          influencerType: run.hubspotInfluencerType ?? "YouTube Creator",
+          influencerVertical: getInfluencerVertical(channel.enrichment?.topics ?? null),
+          countryRegion: getTopAudienceCountryName(channel.insights?.audienceCountries ?? null),
+          language: run.hubspotLanguage ?? "",
+        },
+        rowOverride: rowOverrides.get(rowKey) ?? null,
+      });
+
+      if (!toNullableTrimmed(effectiveValues.firstName)) {
         blockers.push({
           scope: "contact",
           runId: run.id,
@@ -491,7 +556,7 @@ async function buildImportDraft(input: {
         });
       }
 
-      if (!toNullableTrimmed(contact.lastName)) {
+      if (!toNullableTrimmed(effectiveValues.lastName)) {
         blockers.push({
           scope: "contact",
           runId: run.id,
@@ -502,19 +567,43 @@ async function buildImportDraft(input: {
         });
       }
 
-      if (!toNullableTrimmed(contact.firstName) || !toNullableTrimmed(contact.lastName)) {
+      if (
+        !toNullableTrimmed(effectiveValues.firstName) ||
+        !toNullableTrimmed(effectiveValues.lastName) ||
+        !toNullableTrimmed(effectiveValues.email)
+      ) {
         continue;
       }
 
       rows.push({
         channelId: channel.id,
-        contactEmail: contact.email,
-        firstName: contact.firstName ?? "",
-        lastName: contact.lastName ?? "",
+        contactEmail: effectiveValues.email ?? "",
+        firstName: effectiveValues.firstName ?? "",
+        lastName: effectiveValues.lastName ?? "",
         payload: buildRowPayload({
           run,
           channel,
-          contact,
+          values: {
+            "Contact Type": effectiveValues.contactType ?? "",
+            "Campaign Name": effectiveValues.campaignName ?? "",
+            Month: effectiveValues.month ?? "",
+            Year: effectiveValues.year ?? "",
+            "Client name": effectiveValues.clientName ?? "",
+            "Deal owner": effectiveValues.dealOwner ?? "",
+            "Deal name": effectiveValues.dealName ?? "",
+            Pipeline: effectiveValues.pipeline ?? "",
+            "Deal stage": effectiveValues.dealStage ?? "",
+            Currency: effectiveValues.currency ?? "",
+            "Deal Type": effectiveValues.dealType ?? "",
+            "Activation Type": effectiveValues.activationType ?? "",
+            "First Name": effectiveValues.firstName ?? "",
+            "Last Name": effectiveValues.lastName ?? "",
+            Email: effectiveValues.email ?? "",
+            "Influencer Type": effectiveValues.influencerType ?? "",
+            "Influencer Vertical": effectiveValues.influencerVertical ?? "",
+            "Country/Region": effectiveValues.countryRegion ?? "",
+            Language: effectiveValues.language ?? "",
+          },
         }),
       });
     }

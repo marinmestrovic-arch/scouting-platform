@@ -5,6 +5,7 @@ export * from "./campaigns";
 export * from "./channels";
 export * from "./csv-exports";
 export * from "./csv-imports";
+export * from "./dropdown-values";
 export * from "./export-previews";
 export * from "./hubspot-imports";
 export * from "./hubspot-pushes";
