@@ -1,16 +1,16 @@
 import { type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStringAsync } from "../../../../../lib/test-render";
 
-const { authMock, listUsersMock, notFoundMock, redirectMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
+const { getSessionMock, listUsersMock, notFoundMock, redirectMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
   listUsersMock: vi.fn(),
   notFoundMock: vi.fn(),
   redirectMock: vi.fn()
 }));
 
-vi.mock("../../../../../auth", () => ({
-  auth: authMock
+vi.mock("../../../../../lib/cached-auth", () => ({
+  getSession: getSessionMock
 }));
 
 vi.mock("@scouting-platform/core", () => ({
@@ -65,74 +65,80 @@ describe("admin user detail page", () => {
   });
 
   it("redirects unauthenticated users to login", async () => {
-    authMock.mockResolvedValueOnce(null);
+    getSessionMock.mockResolvedValueOnce(null);
 
-    const result = await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    });
+    await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).toHaveBeenCalledWith("/login");
     expect(listUsersMock).not.toHaveBeenCalled();
-    expect(result).toBeNull();
   });
 
   it("redirects sessions without user to login", async () => {
-    authMock.mockResolvedValueOnce({});
+    getSessionMock.mockResolvedValueOnce({});
 
-    const result = await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    });
+    await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).toHaveBeenCalledWith("/login");
     expect(redirectMock).toHaveBeenCalledTimes(1);
     expect(listUsersMock).not.toHaveBeenCalled();
-    expect(result).toBeNull();
   });
 
   it("redirects authenticated non-admin users to forbidden", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         role: "user"
       }
     });
 
-    const result = await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    });
+    await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).toHaveBeenCalledWith("/forbidden");
     expect(listUsersMock).not.toHaveBeenCalled();
-    expect(result).toBeNull();
   });
 
   it("redirects unknown roles to forbidden", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         role: "owner"
       }
     });
 
-    const result = await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    });
+    await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).toHaveBeenCalledWith("/forbidden");
     expect(redirectMock).toHaveBeenCalledTimes(1);
     expect(listUsersMock).not.toHaveBeenCalled();
-    expect(result).toBeNull();
   });
 
   it("renders missing YouTube key state for the selected user", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         role: "admin"
       }
     });
     listUsersMock.mockResolvedValueOnce([missingKeyUser]);
 
-    const html = renderToStaticMarkup(await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    }));
+    const html = await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(notFoundMock).not.toHaveBeenCalled();
@@ -144,16 +150,18 @@ describe("admin user detail page", () => {
   });
 
   it("renders assigned YouTube key state for the selected user", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         role: "admin"
       }
     });
     listUsersMock.mockResolvedValueOnce([assignedKeyUser]);
 
-    const html = renderToStaticMarkup(await AdminUserDetailPage({
-      params: Promise.resolve({ userId: assignedKeyUser.id }),
-    }));
+    const html = await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: assignedKeyUser.id }),
+      }),
+    );
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(notFoundMock).not.toHaveBeenCalled();
@@ -164,18 +172,19 @@ describe("admin user detail page", () => {
   });
 
   it("calls notFound for unknown users", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         role: "admin"
       }
     });
     listUsersMock.mockResolvedValueOnce([assignedKeyUser]);
 
-    const result = await AdminUserDetailPage({
-      params: Promise.resolve({ userId: missingKeyUser.id }),
-    });
+    await renderToStringAsync(
+      await AdminUserDetailPage({
+        params: Promise.resolve({ userId: missingKeyUser.id }),
+      }),
+    );
 
     expect(notFoundMock).toHaveBeenCalledTimes(1);
-    expect(result).toBeNull();
   });
 });

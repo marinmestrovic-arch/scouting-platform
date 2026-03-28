@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStringAsync } from "../../../lib/test-render";
 
-const { authMock, databaseAdminWorkspaceMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
+const { getSessionMock, databaseAdminWorkspaceMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
   databaseAdminWorkspaceMock: vi.fn(() => "database-admin-workspace"),
 }));
 
-vi.mock("../../../auth", () => ({
-  auth: authMock,
+vi.mock("../../../lib/cached-auth", () => ({
+  getSession: getSessionMock,
 }));
 
 vi.mock("../../../components/database/database-admin-workspace", () => ({
@@ -35,7 +35,7 @@ import DatabasePage from "./page";
 describe("database page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({
+    getSessionMock.mockResolvedValue({
       user: {
         id: "user-1",
       },
@@ -43,8 +43,7 @@ describe("database page", () => {
   });
 
   it("renders the database workspace for authenticated users", async () => {
-    const page = await DatabasePage();
-    const html = renderToStaticMarkup(page);
+    const html = await renderToStringAsync(DatabasePage());
 
     expect(databaseAdminWorkspaceMock).toHaveBeenCalledTimes(1);
     expect(html).toContain("Database");

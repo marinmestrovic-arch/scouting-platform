@@ -1,9 +1,10 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { listChannels, listUserSegments } from "@scouting-platform/core";
 
-import { auth } from "../../../auth";
+import { getSession } from "../../../lib/cached-auth";
 import { DatabaseWorkspace } from "../../../components/database/database-workspace";
 import { PageSection } from "../../../components/layout/page-section";
+import { SkeletonFilterBar, SkeletonPageBody, SkeletonTable } from "../../../components/ui/skeleton";
 import { parseCatalogFiltersFromSearchParams } from "../../../lib/catalog-filters";
 
 type CatalogPageProps = Readonly<{
@@ -32,8 +33,8 @@ function toUrlSearchParams(
   return searchParams;
 }
 
-export default async function CatalogPage({ searchParams }: CatalogPageProps) {
-  const session = await auth();
+async function CatalogData({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> | undefined }) {
+  const session = await getSession();
   const resolvedSearchParams = toUrlSearchParams((await searchParams) ?? {});
   const filters = parseCatalogFiltersFromSearchParams(resolvedSearchParams);
   const rawPage = Number.parseInt(resolvedSearchParams.get("page") ?? "1", 10);
@@ -54,15 +55,32 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   ]);
 
   return (
+    <DatabaseWorkspace
+      forcedTab="catalog"
+      initialCatalogData={initialData}
+      initialSavedSegments={initialSavedSegments}
+    />
+  );
+}
+
+function CatalogFallback() {
+  return (
+    <SkeletonPageBody>
+      <SkeletonFilterBar filters={3} />
+      <SkeletonTable columns={8} rows={8} />
+    </SkeletonPageBody>
+  );
+}
+
+export default function CatalogPage({ searchParams }: CatalogPageProps) {
+  return (
     <PageSection
       title="Catalog"
       description="Browse the canonical creator catalog with full-width filters, enrichment actions, and export shortcuts."
     >
-      <DatabaseWorkspace
-        forcedTab="catalog"
-        initialCatalogData={initialData}
-        initialSavedSegments={initialSavedSegments}
-      />
+      <Suspense fallback={<CatalogFallback />}>
+        <CatalogData searchParams={searchParams} />
+      </Suspense>
     </PageSection>
   );
 }

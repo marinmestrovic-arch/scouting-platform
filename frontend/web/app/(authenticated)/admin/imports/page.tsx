@@ -1,4 +1,4 @@
-import { auth } from "../../../../auth";
+import { getSession } from "../../../../lib/cached-auth";
 import { AdminCsvImportManager } from "../../../../components/admin/admin-csv-import-manager";
 import { PageSection } from "../../../../components/layout/page-section";
 import {
@@ -10,7 +10,7 @@ import {
 import { redirect } from "next/navigation";
 
 export default async function AdminImportsPage() {
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     redirect(LOGIN_ROUTE);

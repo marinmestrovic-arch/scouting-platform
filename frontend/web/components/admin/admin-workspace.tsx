@@ -1,12 +1,19 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
-import { AdminAdvancedReportQueue } from "./admin-advanced-report-queue";
-import { AdminCsvImportManager } from "./admin-csv-import-manager";
-import { AdminUsersManager } from "./admin-users-manager";
+const AdminAdvancedReportQueue = dynamic(
+  () => import("./admin-advanced-report-queue").then((mod) => mod.AdminAdvancedReportQueue),
+);
+const AdminCsvImportManager = dynamic(
+  () => import("./admin-csv-import-manager").then((mod) => mod.AdminCsvImportManager),
+);
+const AdminUsersManager = dynamic(
+  () => import("./admin-users-manager").then((mod) => mod.AdminUsersManager),
+);
 
 type AdminWorkspaceTab = "approvals" | "imports" | "users" | "exports" | "hubspot";
 

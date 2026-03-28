@@ -1,8 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStringAsync } from "../../../../lib/test-render";
 
-const { authMock, channelDetailShellMock, getChannelByIdMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
+const { getSessionMock, channelDetailShellMock, getChannelByIdMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
   channelDetailShellMock: vi.fn(
     ({
       channelId,
@@ -17,8 +17,8 @@ const { authMock, channelDetailShellMock, getChannelByIdMock } = vi.hoisted(() =
   getChannelByIdMock: vi.fn(async () => ({ id: "channel-123" })),
 }));
 
-vi.mock("../../../../auth", () => ({
-  auth: authMock,
+vi.mock("../../../../lib/cached-auth", () => ({
+  getSession: getSessionMock,
 }));
 
 vi.mock("@scouting-platform/core", () => ({
@@ -34,7 +34,7 @@ import CatalogChannelDetailPage from "./page";
 describe("catalog channel detail page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({
+    getSessionMock.mockResolvedValue({
       user: {
         id: "e3cda197-465d-4483-bad8-4b20df7df098",
         role: "admin",
@@ -51,7 +51,7 @@ describe("catalog channel detail page", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    const html = renderToStaticMarkup(
+    const html = await renderToStringAsync(
       await CatalogChannelDetailPage({
         params: Promise.resolve({ channelId: "channel-123" }),
       }),
@@ -69,14 +69,14 @@ describe("catalog channel detail page", () => {
   });
 
   it("only enables manual edit controls for admins", async () => {
-    authMock.mockResolvedValueOnce({
+    getSessionMock.mockResolvedValueOnce({
       user: {
         id: "e3cda197-465d-4483-bad8-4b20df7df098",
         role: "user",
       },
     });
 
-    const html = renderToStaticMarkup(
+    const html = await renderToStringAsync(
       await CatalogChannelDetailPage({
         params: Promise.resolve({ channelId: "channel-123" }),
       }),

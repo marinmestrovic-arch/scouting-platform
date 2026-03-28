@@ -1,11 +1,16 @@
 "use client";
 
 import type { ListCampaignsResponse, ListClientsResponse } from "@scouting-platform/contracts";
+import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import React from "react";
 
-import { CampaignsWorkspace } from "../campaigns/campaigns-workspace";
-import { ClientsWorkspace } from "../database/clients-workspace";
+const CampaignsWorkspace = dynamic(
+  () => import("../campaigns/campaigns-workspace").then((mod) => mod.CampaignsWorkspace),
+);
+const ClientsWorkspace = dynamic(
+  () => import("../database/clients-workspace").then((mod) => mod.ClientsWorkspace),
+);
 
 export function DatabaseAdminWorkspace({
   campaigns,

@@ -1,8 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStringAsync } from "../../../lib/test-render";
 
-const { authMock, listCampaignManagersMock, listCampaignsMock, newScoutingWorkspaceMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
+const { getSessionMock, listCampaignManagersMock, listCampaignsMock, newScoutingWorkspaceMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
   listCampaignManagersMock: vi.fn(async () => []),
   listCampaignsMock: vi.fn(async () => ({
     items: [],
@@ -12,8 +12,8 @@ const { authMock, listCampaignManagersMock, listCampaignsMock, newScoutingWorksp
   newScoutingWorkspaceMock: vi.fn(() => "new-scouting-workspace"),
 }));
 
-vi.mock("../../../auth", () => ({
-  auth: authMock,
+vi.mock("../../../lib/cached-auth", () => ({
+  getSession: getSessionMock,
 }));
 
 vi.mock("@scouting-platform/core", () => ({
@@ -30,7 +30,7 @@ import NewScoutingPage from "./page";
 describe("new scouting page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMock.mockResolvedValue({
+    getSessionMock.mockResolvedValue({
       user: {
         id: "user-1",
       },
@@ -38,7 +38,7 @@ describe("new scouting page", () => {
   });
 
   it("renders the new scouting workspace", async () => {
-    const html = renderToStaticMarkup(await NewScoutingPage());
+    const html = await renderToStringAsync(NewScoutingPage());
 
     expect(html).toContain("New scouting");
     expect(html).toContain(

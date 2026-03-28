@@ -1,6 +1,7 @@
 "use client";
 
 import type { ListChannelsResponse, SegmentResponse } from "@scouting-platform/contracts";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
@@ -10,7 +11,11 @@ import {
   type DatabaseTab,
 } from "../../lib/database-workspace";
 import { CatalogTableShell } from "../catalog/catalog-table-shell";
-import { DatabaseRunsTab } from "./database-runs-tab";
+
+const DatabaseRunsTab = dynamic(
+  () => import("./database-runs-tab").then((mod) => mod.DatabaseRunsTab),
+  { loading: () => <p className="page-section__description">Loading runs...</p> },
+);
 
 type DatabaseWorkspaceProps = Readonly<{
   forcedTab?: DatabaseTab;

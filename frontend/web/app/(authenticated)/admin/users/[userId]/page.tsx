@@ -1,9 +1,11 @@
+import React, { Suspense } from "react";
 import { listUsers } from "@scouting-platform/core";
 import { notFound, redirect } from "next/navigation";
 
-import { auth } from "../../../../../auth";
+import { getSession } from "../../../../../lib/cached-auth";
 import { UserAccountDetail } from "../../../../../components/admin/user-account-detail";
 import { PageSection } from "../../../../../components/layout/page-section";
+import { Skeleton, SkeletonPageBody } from "../../../../../components/ui/skeleton";
 import {
   canAccessNavigationKey,
   FORBIDDEN_ROUTE,
@@ -15,8 +17,8 @@ type AdminUserDetailPageProps = Readonly<{
   params: Promise<{ userId: string }>;
 }>;
 
-export default async function AdminUserDetailPage({ params }: AdminUserDetailPageProps) {
-  const session = await auth();
+async function UserDetailData({ userId }: { userId: string }) {
+  const session = await getSession();
 
   if (!session?.user) {
     redirect(LOGIN_ROUTE);
@@ -28,7 +30,6 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
     return null;
   }
 
-  const { userId } = await params;
   const users = await listUsers();
   const user = users.find((candidate) => candidate.id === userId);
 
@@ -45,5 +46,30 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
     >
       <UserAccountDetail user={user} />
     </PageSection>
+  );
+}
+
+function UserDetailFallback() {
+  return (
+    <PageSection
+      section="Admin"
+      title="User"
+      description="Loading user account details..."
+    >
+      <SkeletonPageBody>
+        <Skeleton height="2rem" width="16rem" />
+        <Skeleton height="12rem" width="100%" />
+      </SkeletonPageBody>
+    </PageSection>
+  );
+}
+
+export default async function AdminUserDetailPage({ params }: AdminUserDetailPageProps) {
+  const { userId } = await params;
+
+  return (
+    <Suspense fallback={<UserDetailFallback />}>
+      <UserDetailData userId={userId} />
+    </Suspense>
   );
 }

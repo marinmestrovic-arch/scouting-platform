@@ -1,8 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStringAsync } from "../../../../lib/test-render";
 
-const { authMock, getRunStatusMock, runDetailShellMock } = vi.hoisted(() => ({
-  authMock: vi.fn(async () => ({
+const { getSessionMock, getRunStatusMock, runDetailShellMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(async () => ({
     user: {
       id: "user-1",
       role: "user",
@@ -19,8 +19,8 @@ vi.mock("@scouting-platform/core", () => ({
   getRunStatus: getRunStatusMock,
 }));
 
-vi.mock("../../../../auth", () => ({
-  auth: authMock,
+vi.mock("../../../../lib/cached-auth", () => ({
+  getSession: getSessionMock,
 }));
 
 vi.mock("../../../../components/runs/run-detail-shell", () => ({
@@ -39,7 +39,7 @@ describe("run detail page", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    const html = renderToStaticMarkup(
+    const html = await renderToStringAsync(
       await RunDetailPage({
         params: Promise.resolve({ runId: "run-123" }),
       }),

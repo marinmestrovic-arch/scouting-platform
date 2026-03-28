@@ -1,8 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { renderToStringAsync } from "../../../lib/test-render";
 
-const { authMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(() => ({
-  authMock: vi.fn(async () => ({
+const { getSessionMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(async () => ({
     user: {
       id: "user-1",
       role: "user",
@@ -17,8 +17,8 @@ const { authMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(() => ({
   listUserSegmentsMock: vi.fn(async () => []),
 }));
 
-vi.mock("../../../auth", () => ({
-  auth: authMock,
+vi.mock("../../../lib/cached-auth", () => ({
+  getSession: getSessionMock,
 }));
 
 vi.mock("@scouting-platform/core", () => ({
@@ -44,7 +44,7 @@ import CatalogPage from "./page";
 
 describe("catalog page", () => {
   it("renders the catalog workspace page", async () => {
-    const html = renderToStaticMarkup(await CatalogPage({}));
+    const html = await renderToStringAsync(CatalogPage({}));
 
     expect(html).toContain("Catalog");
     expect(html).toContain(

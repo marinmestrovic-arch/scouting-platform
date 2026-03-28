@@ -1,5 +1,5 @@
 import React from "react";
-import { auth } from "../../../auth";
+import { getSession } from "../../../lib/cached-auth";
 import { AdminWorkspace } from "../../../components/admin/admin-workspace";
 import { PageSection } from "../../../components/layout/page-section";
 import {
@@ -11,7 +11,7 @@ import {
 import { redirect } from "next/navigation";
 
 export default async function AdminPage() {
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     redirect(LOGIN_ROUTE);
