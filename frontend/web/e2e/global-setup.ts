@@ -40,6 +40,7 @@ import {
   PLAYWRIGHT_SEED_PATH,
   type PlaywrightSeedData,
 } from "./test-data";
+import { ensurePlaywrightEnvironment } from "./test-env";
 
 function buildSeededExportCsv(channelId: string): string {
   const row = {
@@ -123,6 +124,8 @@ async function writeSeedDataFile(seedData: PlaywrightSeedData): Promise<void> {
 }
 
 export default async function globalSetup(): Promise<void> {
+  ensurePlaywrightEnvironment();
+
   const [admin, manager] = await Promise.all([
     upsertUser({
       email: E2E_ADMIN.email,

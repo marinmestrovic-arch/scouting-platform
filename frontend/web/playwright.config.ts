@@ -4,6 +4,8 @@ import process from "node:process";
 
 import { defineConfig } from "@playwright/test";
 
+import { ensurePlaywrightEnvironment } from "./e2e/test-env";
+
 function loadRootEnv(): void {
   const workspaceRoot = path.resolve(process.cwd(), "../..");
 
@@ -40,6 +42,7 @@ function loadRootEnv(): void {
 }
 
 loadRootEnv();
+ensurePlaywrightEnvironment();
 
 export default defineConfig({
   testDir: "./e2e",
