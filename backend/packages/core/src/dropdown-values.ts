@@ -1,4 +1,4 @@
-import { DropdownValueFieldKey as PrismaDropdownValueFieldKey } from "@prisma/client";
+import type { DropdownValueFieldKey as PrismaDropdownValueFieldKey } from "@prisma/client";
 import type {
   DropdownValue,
   DropdownValueFieldKey,
@@ -18,25 +18,36 @@ const DEFAULT_DROPDOWN_VALUES: Record<DropdownValueFieldKey, readonly string[]> 
   language: ["English", "German", "French", "Spanish", "Italian", "Croatian"],
 };
 
-const toPrismaFieldKey: Record<DropdownValueFieldKey, PrismaDropdownValueFieldKey> = {
-  currency: PrismaDropdownValueFieldKey.CURRENCY,
-  dealType: PrismaDropdownValueFieldKey.DEAL_TYPE,
-  activationType: PrismaDropdownValueFieldKey.ACTIVATION_TYPE,
-  influencerType: PrismaDropdownValueFieldKey.INFLUENCER_TYPE,
-  influencerVertical: PrismaDropdownValueFieldKey.INFLUENCER_VERTICAL,
-  countryRegion: PrismaDropdownValueFieldKey.COUNTRY_REGION,
-  language: PrismaDropdownValueFieldKey.LANGUAGE,
-};
+// Keep these as local string literals so importing the core barrel into action-browser
+// stubs does not depend on the runtime enum object from @prisma/client.
+const PRISMA_DROPDOWN_FIELD_KEYS = {
+  currency: "CURRENCY",
+  dealType: "DEAL_TYPE",
+  activationType: "ACTIVATION_TYPE",
+  influencerType: "INFLUENCER_TYPE",
+  influencerVertical: "INFLUENCER_VERTICAL",
+  countryRegion: "COUNTRY_REGION",
+  language: "LANGUAGE",
+} as const satisfies Record<DropdownValueFieldKey, PrismaDropdownValueFieldKey>;
 
-const fromPrismaFieldKey: Record<PrismaDropdownValueFieldKey, DropdownValueFieldKey> = {
-  [PrismaDropdownValueFieldKey.CURRENCY]: "currency",
-  [PrismaDropdownValueFieldKey.DEAL_TYPE]: "dealType",
-  [PrismaDropdownValueFieldKey.ACTIVATION_TYPE]: "activationType",
-  [PrismaDropdownValueFieldKey.INFLUENCER_TYPE]: "influencerType",
-  [PrismaDropdownValueFieldKey.INFLUENCER_VERTICAL]: "influencerVertical",
-  [PrismaDropdownValueFieldKey.COUNTRY_REGION]: "countryRegion",
-  [PrismaDropdownValueFieldKey.LANGUAGE]: "language",
-};
+function fromPrismaFieldKey(fieldKey: PrismaDropdownValueFieldKey): DropdownValueFieldKey {
+  switch (fieldKey) {
+    case PRISMA_DROPDOWN_FIELD_KEYS.currency:
+      return "currency";
+    case PRISMA_DROPDOWN_FIELD_KEYS.dealType:
+      return "dealType";
+    case PRISMA_DROPDOWN_FIELD_KEYS.activationType:
+      return "activationType";
+    case PRISMA_DROPDOWN_FIELD_KEYS.influencerType:
+      return "influencerType";
+    case PRISMA_DROPDOWN_FIELD_KEYS.influencerVertical:
+      return "influencerVertical";
+    case PRISMA_DROPDOWN_FIELD_KEYS.countryRegion:
+      return "countryRegion";
+    case PRISMA_DROPDOWN_FIELD_KEYS.language:
+      return "language";
+  }
+}
 
 function toDropdownValue(record: {
   id: string;
@@ -45,11 +56,9 @@ function toDropdownValue(record: {
   createdAt: Date;
   updatedAt: Date;
 }): DropdownValue {
-  const fieldKey = fromPrismaFieldKey[record.fieldKey];
-
   return {
     id: record.id,
-    fieldKey,
+    fieldKey: fromPrismaFieldKey(record.fieldKey),
     value: record.value,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -67,7 +76,7 @@ export async function ensureDropdownValueDefaults(): Promise<void> {
     data: (Object.entries(DEFAULT_DROPDOWN_VALUES) as Array<[DropdownValueFieldKey, readonly string[]]>)
       .flatMap(([fieldKey, values]) =>
         values.map((value) => ({
-          fieldKey: toPrismaFieldKey[fieldKey],
+          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
           value,
         })),
       ),
@@ -121,14 +130,14 @@ export async function replaceDropdownValues(input: UpdateDropdownValuesRequest &
   await withDbTransaction(async (tx) => {
     await tx.dropdownValue.deleteMany({
       where: {
-        fieldKey: toPrismaFieldKey[payload.fieldKey],
+        fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[payload.fieldKey],
       },
     });
 
     if (values.length > 0) {
       await tx.dropdownValue.createMany({
         data: values.map((value) => ({
-          fieldKey: toPrismaFieldKey[payload.fieldKey],
+          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[payload.fieldKey],
           value,
         })),
       });
