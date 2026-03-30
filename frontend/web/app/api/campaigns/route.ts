@@ -7,7 +7,7 @@ import {
 import { createCampaign, listCampaigns } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
-import { requireAuthenticatedSession, toRouteErrorResponse } from "../../../lib/api";
+import { cachedJson, requireAuthenticatedSession, toRouteErrorResponse } from "../../../lib/api";
 
 export async function GET(request: Request): Promise<NextResponse> {
   const session = await requireAuthenticatedSession();
@@ -36,7 +36,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       query: query.data,
     });
 
-    return NextResponse.json(listCampaignsResponseSchema.parse(campaigns));
+    return cachedJson(listCampaignsResponseSchema.parse(campaigns), { maxAge: 60 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

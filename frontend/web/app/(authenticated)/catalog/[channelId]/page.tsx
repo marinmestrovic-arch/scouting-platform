@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 
-import { getChannelById } from "@scouting-platform/core";
 import { getSession } from "../../../../lib/cached-auth";
+import { getCachedChannelById } from "../../../../lib/cached-data";
 import { ChannelDetailShell } from "../../../../components/catalog/channel-detail-shell";
 import { Skeleton, SkeletonPageBody, SkeletonText } from "../../../../components/ui/skeleton";
 import { getRoleFromSession } from "../../../../lib/access-control";
@@ -13,7 +13,7 @@ type CatalogChannelDetailPageProps = Readonly<{
 async function ChannelDetailData({ channelId }: { channelId: string }) {
   const session = await getSession();
   const canManageManualEdits = getRoleFromSession(session) === "admin";
-  const initialData = await getChannelById(channelId);
+  const initialData = await getCachedChannelById(channelId);
 
   return (
     <ChannelDetailShell

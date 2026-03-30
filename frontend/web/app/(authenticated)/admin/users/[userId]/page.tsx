@@ -1,8 +1,8 @@
 import React, { Suspense } from "react";
-import { listUsers } from "@scouting-platform/core";
 import { notFound, redirect } from "next/navigation";
 
 import { getSession } from "../../../../../lib/cached-auth";
+import { getCachedUsers } from "../../../../../lib/cached-data";
 import { UserAccountDetail } from "../../../../../components/admin/user-account-detail";
 import { PageSection } from "../../../../../components/layout/page-section";
 import { Skeleton, SkeletonPageBody } from "../../../../../components/ui/skeleton";
@@ -30,7 +30,7 @@ async function UserDetailData({ userId }: { userId: string }) {
     return null;
   }
 
-  const users = await listUsers();
+  const users = await getCachedUsers();
   const user = users.find((candidate) => candidate.id === userId);
 
   if (!user) {

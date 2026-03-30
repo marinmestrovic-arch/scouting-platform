@@ -1,8 +1,8 @@
 import React, { Suspense } from "react";
 
 import type { CampaignManagerOption } from "@scouting-platform/contracts";
-import { listCampaignManagers, listCampaigns } from "@scouting-platform/core";
 import { getSession } from "../../../lib/cached-auth";
+import { getCachedCampaigns, getCachedCampaignManagers } from "../../../lib/cached-data";
 import { PageSection } from "../../../components/layout/page-section";
 import { NewScoutingWorkspace } from "../../../components/scouting/new-scouting-workspace";
 import { Skeleton, SkeletonPageBody } from "../../../components/ui/skeleton";
@@ -11,11 +11,8 @@ async function NewScoutingData() {
   const session = await getSession();
   const [campaigns, campaignManagers] = session?.user?.id
     ? await Promise.all([
-        listCampaigns({
-          userId: session.user.id,
-          query: { active: true },
-        }),
-        listCampaignManagers(),
+        getCachedCampaigns(session.user.id, { active: true }),
+        getCachedCampaignManagers(),
       ])
     : [
         { items: [], filterOptions: { clients: [], markets: [] }, permissions: { canCreate: false, role: "user", userType: "campaign_manager" as const } },

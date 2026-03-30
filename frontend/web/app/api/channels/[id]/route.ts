@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  cachedJson,
   requireAuthenticatedSession,
   toRouteErrorResponse,
 } from "../../../../lib/api";
@@ -36,7 +37,7 @@ export async function GET(
     }
 
     const payload = channelDetailSchema.parse(channel);
-    return NextResponse.json(payload);
+    return cachedJson(payload);
   } catch (error) {
     return toRouteErrorResponse(error);
   }

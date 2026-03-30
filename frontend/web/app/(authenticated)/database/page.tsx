@@ -1,8 +1,8 @@
 import React, { Suspense } from "react";
-import { listCampaigns, listClients, listDropdownValues } from "@scouting-platform/core";
 import { redirect } from "next/navigation";
 
 import { getSession } from "../../../lib/cached-auth";
+import { getCachedCampaigns, getCachedClients, getCachedDropdownValues } from "../../../lib/cached-data";
 import { DatabaseAdminWorkspace } from "../../../components/database/database-admin-workspace";
 import { PageSection } from "../../../components/layout/page-section";
 import { Skeleton, SkeletonPageBody, SkeletonTable } from "../../../components/ui/skeleton";
@@ -16,9 +16,9 @@ async function DatabaseData() {
 
   const isAdmin = session.user.role === "admin";
   const [campaigns, clients, dropdownValues] = await Promise.all([
-    listCampaigns({ userId: session.user.id, query: { active: true } }),
-    listClients({ userId: session.user.id }),
-    isAdmin ? listDropdownValues().then((response) => response.items) : Promise.resolve([]),
+    getCachedCampaigns(session.user.id, { active: true }),
+    getCachedClients(session.user.id),
+    isAdmin ? getCachedDropdownValues().then((response) => response.items) : Promise.resolve([]),
   ]);
 
   return (

@@ -8,6 +8,7 @@ import { createRunRequest, listRecentRuns } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
 import {
+  cachedJson,
   requireAuthenticatedSession,
   toRouteErrorResponse,
 } from "../../../lib/api";
@@ -50,7 +51,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     });
     const payload = listRecentRunsResponseSchema.parse(runs);
 
-    return NextResponse.json(payload);
+    return cachedJson(payload, { maxAge: 15 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

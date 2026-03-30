@@ -1,7 +1,6 @@
 import React, { Suspense } from "react";
-import { listChannels, listUserSegments } from "@scouting-platform/core";
-
 import { getSession } from "../../../lib/cached-auth";
+import { getCachedChannels, getCachedUserSegments } from "../../../lib/cached-data";
 import { DatabaseWorkspace } from "../../../components/database/database-workspace";
 import { PageSection } from "../../../components/layout/page-section";
 import { SkeletonFilterBar, SkeletonPageBody, SkeletonTable } from "../../../components/ui/skeleton";
@@ -40,7 +39,7 @@ async function CatalogData({ searchParams }: { searchParams: Promise<Record<stri
   const rawPage = Number.parseInt(resolvedSearchParams.get("page") ?? "1", 10);
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const [initialData, initialSavedSegments] = await Promise.all([
-    listChannels({
+    getCachedChannels({
       page,
       pageSize: 20,
       ...(filters.query ? { query: filters.query } : {}),
@@ -51,7 +50,7 @@ async function CatalogData({ searchParams }: { searchParams: Promise<Record<stri
         ? { advancedReportStatus: filters.advancedReportStatus }
         : {}),
     }),
-    session?.user?.id ? listUserSegments(session.user.id) : Promise.resolve([]),
+    session?.user?.id ? getCachedUserSegments(session.user.id) : Promise.resolve([]),
   ]);
 
   return (

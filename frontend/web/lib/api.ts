@@ -7,6 +7,25 @@ export function jsonError(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
+/**
+ * Wrap a JSON response with short-lived cache headers so the browser (and any
+ * CDN) can reuse the response for `maxAge` seconds instead of re-fetching.
+ *
+ * `stale-while-revalidate` lets clients use a stale response while fetching a
+ * fresh one in the background, preventing UI stalls on cache expiry.
+ */
+export function cachedJson(
+  data: unknown,
+  { maxAge = 30, swr = 60, status = 200 }: { maxAge?: number; swr?: number; status?: number } = {},
+): NextResponse {
+  return NextResponse.json(data, {
+    status,
+    headers: {
+      "Cache-Control": `private, max-age=${maxAge}, stale-while-revalidate=${swr}`,
+    },
+  });
+}
+
 export function toRouteErrorResponse(error: unknown): NextResponse {
   if (error instanceof ServiceError) {
     return jsonError(error.message, error.status);

@@ -519,36 +519,44 @@ export async function listRecentRuns(input: {
   market?: string;
 }): Promise<ListRecentRunsResponse> {
   const limit = Math.max(1, Math.floor(input.limit ?? 50));
-  const runRequests = await prisma.runRequest.findMany({
-    where: buildRunListWhere(input),
-    orderBy: [
-      {
-        createdAt: "desc",
-      },
-      {
-        id: "desc",
-      },
-    ],
-    take: limit,
-    select: {
-      id: true,
-      name: true,
-      query: true,
-      target: true,
-      status: true,
-      lastError: true,
-      createdAt: true,
-      updatedAt: true,
-      startedAt: true,
-      completedAt: true,
-      ...runMetadataSelect,
-      _count: {
-        select: {
-          results: true,
+
+  // Run both queries in parallel instead of sequentially.
+  const [runRequests, filterOptions] = await Promise.all([
+    prisma.runRequest.findMany({
+      where: buildRunListWhere(input),
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          id: "desc",
+        },
+      ],
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        query: true,
+        target: true,
+        status: true,
+        lastError: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        completedAt: true,
+        ...runMetadataSelect,
+        _count: {
+          select: {
+            results: true,
+          },
         },
       },
-    },
-  });
+    }),
+    getRunFilterOptions({
+      userId: input.userId,
+      role: input.role,
+    }),
+  ]);
 
   return {
     items: runRequests.map((runRequest) => ({
@@ -565,10 +573,7 @@ export async function listRecentRuns(input: {
       resultCount: runRequest._count.results,
       metadata: toRunMetadata(runRequest),
     })),
-    filterOptions: await getRunFilterOptions({
-      userId: input.userId,
-      role: input.role,
-    }),
+    filterOptions,
   };
 }
 

@@ -2,7 +2,7 @@ import { listCampaignManagersResponseSchema } from "@scouting-platform/contracts
 import { listCampaignManagers } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
-import { requireAuthenticatedSession, toRouteErrorResponse } from "../../../../lib/api";
+import { cachedJson, requireAuthenticatedSession, toRouteErrorResponse } from "../../../../lib/api";
 
 export async function GET(): Promise<NextResponse> {
   const session = await requireAuthenticatedSession();
@@ -15,7 +15,7 @@ export async function GET(): Promise<NextResponse> {
     const items = await listCampaignManagers();
     const payload = listCampaignManagersResponseSchema.parse({ items });
 
-    return NextResponse.json(payload);
+    return cachedJson(payload, { maxAge: 300 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

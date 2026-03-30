@@ -123,8 +123,6 @@ export async function listCampaigns(input: {
   query?: Partial<ListCampaignsQuery>;
 }): Promise<ListCampaignsResponse> {
   const parsedQuery = listCampaignsQuerySchema.partial().parse(input.query ?? {});
-  const requestUser = await getRequestUser(input.userId);
-  await ensureMarketReferenceData();
 
   const where: Prisma.CampaignWhereInput = {
     ...(parsedQuery.clientId ? { clientId: parsedQuery.clientId } : {}),
@@ -132,7 +130,10 @@ export async function listCampaigns(input: {
     ...(typeof parsedQuery.active === "boolean" ? { isActive: parsedQuery.active } : {}),
   };
 
-  const [campaigns, clients, markets] = await Promise.all([
+  // Run all queries in parallel — getRequestUser, campaigns, clients, markets.
+  // ensureMarketReferenceData is only needed during campaign creation, not reads.
+  const [requestUser, campaigns, clients, markets] = await Promise.all([
+    getRequestUser(input.userId),
     prisma.campaign.findMany({
       where,
       select: campaignSelect,
@@ -217,12 +218,14 @@ export async function createCampaign(input: CreateCampaignRequest & { userId: st
 }
 
 export async function listClients(input: { userId: string }) {
-  const requestUser = await getRequestUser(input.userId);
-  const clients = await prisma.client.findMany({
-    orderBy: {
-      name: "asc",
-    },
-  });
+  const [requestUser, clients] = await Promise.all([
+    getRequestUser(input.userId),
+    prisma.client.findMany({
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
   return {
     items: clients.map(toClientSummary),

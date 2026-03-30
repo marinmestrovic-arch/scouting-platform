@@ -6,7 +6,7 @@ import {
 import { createClient, listClients } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
-import { requireAuthenticatedSession, toRouteErrorResponse } from "../../../lib/api";
+import { cachedJson, requireAuthenticatedSession, toRouteErrorResponse } from "../../../lib/api";
 
 export async function GET(): Promise<NextResponse> {
   const session = await requireAuthenticatedSession();
@@ -20,7 +20,7 @@ export async function GET(): Promise<NextResponse> {
       userId: session.userId,
     });
 
-    return NextResponse.json(listClientsResponseSchema.parse(clients));
+    return cachedJson(listClientsResponseSchema.parse(clients), { maxAge: 60 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

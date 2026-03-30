@@ -5,7 +5,7 @@ import {
 import { listDropdownValues, replaceDropdownValues } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
-import { requireAdminSession, toRouteErrorResponse } from "../../../../lib/api";
+import { cachedJson, requireAdminSession, toRouteErrorResponse } from "../../../../lib/api";
 
 export async function GET(): Promise<NextResponse> {
   const admin = await requireAdminSession();
@@ -16,7 +16,7 @@ export async function GET(): Promise<NextResponse> {
 
   try {
     const response = await listDropdownValues();
-    return NextResponse.json(listDropdownValuesResponseSchema.parse(response));
+    return cachedJson(listDropdownValuesResponseSchema.parse(response), { maxAge: 300 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

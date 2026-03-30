@@ -6,6 +6,7 @@ import { listChannels } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
 import {
+  cachedJson,
   requireAuthenticatedSession,
   toRouteErrorResponse,
 } from "../../../lib/api";
@@ -53,7 +54,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const result = await listChannels(listInput);
     const payload = listChannelsResponseSchema.parse(result);
 
-    return NextResponse.json(payload);
+    return cachedJson(payload);
   } catch (error) {
     return toRouteErrorResponse(error);
   }

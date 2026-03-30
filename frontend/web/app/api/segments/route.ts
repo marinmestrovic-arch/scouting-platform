@@ -7,6 +7,7 @@ import { createUserSegment, listUserSegments } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
 import {
+  cachedJson,
   requireAuthenticatedSession,
   toRouteErrorResponse,
 } from "../../../lib/api";
@@ -21,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     const segments = await listUserSegments(session.userId);
     const payload = listSegmentsResponseSchema.parse({ items: segments });
-    return NextResponse.json(payload);
+    return cachedJson(payload, { maxAge: 60 });
   } catch (error) {
     return toRouteErrorResponse(error);
   }

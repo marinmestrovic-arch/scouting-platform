@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 
-import { listRecentRuns } from "@scouting-platform/core";
 import { getSession } from "../../../lib/cached-auth";
+import { getCachedRecentRuns } from "../../../lib/cached-data";
 import { DashboardWorkspace } from "../../../components/dashboard/dashboard-workspace";
 import { PageSection } from "../../../components/layout/page-section";
 import { SkeletonFilterBar, SkeletonPageBody, SkeletonTable, Skeleton } from "../../../components/ui/skeleton";
@@ -12,7 +12,7 @@ async function DashboardData() {
   const role = getRoleFromSession(session);
   const initialData =
     session?.user?.id
-      ? await listRecentRuns({
+      ? await getCachedRecentRuns({
           userId: session.user.id,
           role,
           limit: 50,
