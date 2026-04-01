@@ -1,231 +1,214 @@
-# AGENTS.md (v2) — Scouting Platform Agent Policy
+# AGENTS.md (v3) — Scouting Platform Agent Policy
 
-This file defines how humans and AI coding agents (Codex Desktop, etc.) must work in `scouting-platform`.
-If this file conflicts with ad-hoc instructions in chat/prompts, THIS FILE WINS.
+This file defines how humans and AI coding agents work in `scouting-platform`.
+
+**Quick start:** Read `/CODEX_QUICKREF.md` first for the condensed rules.
 
 ---
 
-## 0) Operating Principle
+## 0. Operating Principle
 
 **Default stance is safety.**
+
 If unsure about correctness, security, or data integrity:
-- stop
-- explain risk
-- propose smallest safe fix
-- prefer “FAIL” for merge reviews
+- Stop
+- Explain risk
+- Propose smallest safe fix
+- Prefer "FAIL" for merge reviews
 
 ---
 
-## 1) Read Order (required before meaningful changes)
+## 1. Read Order
 
-Before changing code beyond trivial UI copy:
-1. `/README.md`
-2. `/PROJECTS_SPECS.md`
-3. `/ARCHITECTURE.md`
-4. `/TASKS.md`
-5. `/docs/ADR-*.md` (especially ADR-001, ADR-002, ADR-003)
+Before making meaningful changes, read in this order:
 
-Do not implement from memory if docs disagree.  [oai_citation:6‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)  [oai_citation:7‡TASKS.md](sediment://file_000000006fd471f8869cbb09a1484915)  [oai_citation:8‡ADR-001-architecture.md](sediment://file_00000000442071fd951b6d06481efd17)  [oai_citation:9‡ADR-002-data-ownership-and-precedence.md](sediment://file_0000000015cc71fd86c57d2baf4ba6e9)
+1. `/CODEX_QUICKREF.md` — condensed rules and checklists
+2. `/TASKS.md` — current milestone and your assigned work
+3. `/docs/patterns/` — copy patterns for new code
 
----
+For deeper context when needed:
+- `/ARCHITECTURE.md` — system design
+- `/PROJECTS_SPECS.md` — product scope
+- `/docs/ADR-*.md` — architectural decisions
 
-## 2) Hard Rules (MUST / FAIL if violated)
-
-### 2.1 Architecture & boundaries (ADR-001)
-- Monorepo is authoritative: `frontend/web`, `backend/worker`, `backend/packages/*`, `shared/packages/*`.
-- Worker is a **separate process** from web.
-- Provider calls live only in `backend/packages/integrations`.
-- Domain/business logic lives in `backend/packages/core`.
-- Shared zod schemas/types live in `shared/packages/contracts`.
-- Env/config validation lives in `shared/packages/config`.  [oai_citation:10‡ADR-001-architecture.md](sediment://file_00000000442071fd951b6d06481efd17)  [oai_citation:11‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
-
-### 2.2 Database
-- Postgres only.
-- Prisma migrations only.
-- **No runtime DDL** (no create/alter tables in app code).  [oai_citation:12‡ADR-001-architecture.md](sediment://file_00000000442071fd951b6d06481efd17)  [oai_citation:13‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
-
-### 2.3 Security & secret hygiene
-- Browser must never call YouTube/OpenAI/HypeAuditor/HubSpot directly.
-- Never expose provider secrets to client bundles.
-- Never log secrets.
-- User YouTube keys must be encrypted at rest using `APP_ENCRYPTION_KEY`.
-- Admin-only actions must enforce auth server-side (UI hiding is not security).  [oai_citation:14‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)  [oai_citation:15‡ADR-001-architecture.md](sediment://file_00000000442071fd951b6d06481efd17)
-
-### 2.4 Data ownership & precedence (ADR-002)
-- **Catalog is canonical. Runs are snapshots.**
-- Manual admin overrides must never be overwritten by automated sources.
-- Resolved precedence is fixed:
-  1) admin manual edit
-  2) admin CSV import
-  3) HypeAuditor
-  4) LLM
-  5) heuristics
-  6) YouTube raw  [oai_citation:16‡ADR-002-data-ownership-and-precedence.md](sediment://file_0000000015cc71fd86c57d2baf4ba6e9)  [oai_citation:17‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
-
-### 2.5 HypeAuditor approval (ADR-002 + Architecture)
-- Advanced reports require an approval flow before execution.
-- No “auto-run” bypass.  [oai_citation:18‡ADR-002-data-ownership-and-precedence.md](sediment://file_0000000015cc71fd86c57d2baf4ba6e9)  [oai_citation:19‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
-
-### 2.6 Auditability + background jobs
-- Every privileged action emits an immutable audit event.
-- Every background job persists: status, timestamps, last error.
-- Jobs must have: typed payload, idempotency strategy, retry policy, bounded concurrency, explicit failure logging.  [oai_citation:20‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+Do not implement from memory if docs disagree.
 
 ---
 
-## 3) Review Modes (how agents should behave)
+## 2. Hard Rules (MUST / FAIL if violated)
 
-### 3.1 Commit review (fast, high-signal)
-Focus only on “stop-the-line” issues:
-- secrets/client exposure
-- browser calling providers
-- runtime DDL / missing migration
-- precedence/manual override violations
-- missing auth on privileged mutations
-- broken job durability (status/last error)
-- obvious boundary violations (provider logic in web/client)
+### 2.1 Architecture & Boundaries
+| Rule | Violation |
+|------|-----------|
+| Provider calls in `backend/packages/integrations` only | Browser calling YouTube/OpenAI/HypeAuditor/HubSpot |
+| Domain logic in `backend/packages/core` only | Business rules in route handlers or UI |
+| Worker is separate process from web | Long-running work in request handlers |
+| Postgres + Prisma migrations only | Runtime DDL, `CREATE TABLE IF NOT EXISTS` |
 
-### 3.2 Merge review (strict, architectural)
-Everything in commit review PLUS:
-- ADR requirement enforcement (see section 4)
-- test completeness expectations
-- performance footguns (provider calls in request path)
-- operational visibility (job status surfaces, audit log integrity)
+### 2.2 Security
+| Rule | Violation |
+|------|-----------|
+| Secrets server-side only | `NEXT_PUBLIC_*` containing API keys |
+| User YouTube keys encrypted at rest | Plaintext credential storage |
+| Auth enforced server-side | UI hiding as security |
+| Audit events for privileged actions | Admin mutations without audit trail |
+
+### 2.3 Data Precedence (ADR-002)
+```
+1. admin_manual      ← NEVER auto-overwritten
+2. csv_import
+3. hypeauditor
+4. llm
+5. heuristics
+6. youtube_raw
+```
+
+Manual admin overrides must never be overwritten by automated sources.
+
+### 2.4 Approval Flows
+- HypeAuditor advanced reports require admin approval before execution
+- No bypass mechanism permitted
+
+### 2.5 Job Durability
+Every background job must persist:
+- Status (queued → running → completed/failed)
+- Timestamps (startedAt, completedAt)
+- lastError on failure
 
 ---
 
-## 4) ADR Requirement (merge-blocking)
+## 3. File Placement
 
-If a change affects any of the following, you MUST add/update an ADR in `/docs`:
-- system boundaries / repo shape
-- auth model
-- queue approach
-- data precedence rules
-- hosting/deployment topology
+See `/CODEX_QUICKREF.md` for the full table. Summary:
+
+| Directory | What Goes Here |
+|-----------|----------------|
+| `frontend/web/app/` | Pages, route handlers, server actions |
+| `backend/worker/src/` | Job handlers, queue bootstrap |
+| `backend/packages/core/` | Domain services, business rules |
+| `backend/packages/integrations/` | Provider adapters |
+| `backend/packages/db/` | Prisma schema, migrations |
+| `shared/packages/contracts/` | Zod schemas, DTOs |
+
+---
+
+## 4. Code Patterns
+
+**Always copy from `/docs/patterns/` when creating:**
+
+| New Code | Pattern File |
+|----------|--------------|
+| API route | `route-handler-pattern.ts` |
+| Background job | `worker-job-pattern.ts` |
+| Provider client | `provider-adapter-pattern.ts` |
+| Domain service | `domain-service-pattern.ts` |
+| Error handling | `error-handling-pattern.ts` |
+
+Each pattern includes a checklist. Complete it before PR.
+
+---
+
+## 5. "Never Do This" (Instant FAIL)
+
+1. Calling provider APIs from client components or browser code
+2. Putting provider secrets into `NEXT_PUBLIC_*`
+3. Adding runtime schema management
+4. Overwriting admin manual overrides from automated sources
+5. Executing HypeAuditor without approval gating
+6. Adding jobs without status + lastError persistence
+7. Adding privileged routes without audit logging + server-side auth
+
+---
+
+## 6. ADR Requirement
+
+Changes to these require an ADR in `/docs/` before merge:
+- System boundaries / repo shape
+- Auth model
+- Queue approach
+- Data precedence rules
+- Hosting/deployment topology
 - DB/ORM choice
 
-No ADR = FAIL for merge review.  [oai_citation:21‡README.md](sediment://file_00000000b1bc71fdb1ac38df52e4cd84)  [oai_citation:22‡ADR-001-architecture.md](sediment://file_00000000442071fd951b6d06481efd17)
+No ADR = FAIL for merge review.
 
 ---
 
-## 5) File Placement Rules (enforced)
+## 7. Testing Requirements
 
-### frontend/web
-Allowed:
-- UI, pages, server route handlers (“BFF”)
-- session validation & permission checks at boundary
-Not allowed:
-- provider clients
-- long-running workflows
-- heavy domain logic
-
-### backend/worker
-Allowed:
-- job registration + execution
-- orchestration of imports/exports/enrichment
-- provider retry logic and concurrency caps
-
-### backend/packages/core
-- domain services, business rules
-- merge/resolution logic (precedence)
-- approval rules
-- orchestration functions used by both web & worker
-
-### backend/packages/integrations
-- YouTube/OpenAI/HypeAuditor/HubSpot adapters
-- request signing, quotas, retries (but do not store domain rules here)
-
-### shared/packages/contracts
-- zod schemas, DTOs, route contracts, queue payload contracts
-
-### backend/packages/db
-- prisma schema + migrations + client + transaction helpers
-
-### shared/packages/config
-- env parsing, validation, feature flags, constants  [oai_citation:23‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+| Change Type | Required Test |
+|-------------|---------------|
+| New route handler | Integration test |
+| New domain function | Unit test |
+| New/changed migration | Migration safety test |
+| Auth changes | Auth integration test (**required**) |
+| New worker job | Job handler integration test |
+| Provider adapter change | Adapter unit test with mocks |
 
 ---
 
-## 6) “Never Do This” Patterns (instant FAIL)
+## 8. PR Checklist
 
-- Calling provider APIs from client components or browser code.
-- Putting provider secrets into NEXT_PUBLIC_* or any client bundle surface.
-- Adding runtime schema management (“ensure table exists”, “create table if not exists”).
-- Writing to resolved catalog fields in a way that can overwrite admin manual overrides.
-- Replacing “catalog canonical” with “run-first canonical” behavior.
-- Executing HypeAuditor advanced report without approval gating.
-- Adding a background job without persisted status + last error.
-- Adding privileged mutation routes without audit logging + server-side auth.  [oai_citation:24‡ADR-002-data-ownership-and-precedence.md](sediment://file_0000000015cc71fd86c57d2baf4ba6e9)  [oai_citation:25‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+Output this for every merge review:
 
-## 6.1 Migration Style Policy
-
-- Prefer deterministic Prisma-generated migration DDL.
-- Avoid `IF NOT EXISTS`, conditional enum creation, and other defensive SQL guards in committed migrations unless there is a documented environment/bootstrap reason.
-- If a migration intentionally uses non-deterministic or defensive DDL, explain why in the PR description and add a short comment at the top of the migration file.
-
----
-
-## 7) Validation & Contracts
-
-- Validate all external inputs with zod at the boundary:
-  - route requests
-  - CSV rows
-  - provider payload normalization
-  - queue payloads
-- Never trust client-provided role/permission flags.
-- Prefer explicit DTOs (contracts) between web ↔ core ↔ worker.  [oai_citation:26‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+```
+□ No secrets exposed to browser
+□ No browser-to-provider calls
+□ Migrations use Prisma only
+□ Admin overrides preserved
+□ Approval flows intact
+□ Audit events for privileged actions
+□ Jobs have status + lastError
+□ Server-side auth on mutations
+□ Tests added for change type
+□ Pattern checklist completed
+```
 
 ---
 
-## 8) Jobs Policy (pg-boss discipline)
+## 9. Review Modes
 
-Every job must define:
-- name: `domain.action` (e.g., `runs.discover`)
-- payload: zod schema in `shared/packages/contracts`
-- idempotency: natural key or dedupe strategy documented in code
-- retries: bounded backoff
-- concurrency: explicit cap per provider
-- persistence: status + timestamps + last error (operator-visible)  [oai_citation:27‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+### Commit Review (fast)
+Focus on stop-the-line issues:
+- Secrets/client exposure
+- Browser calling providers
+- Runtime DDL
+- Missing auth
+- Broken job durability
 
-If you add/modify a job, include:
-- unit tests for payload validation
-- integration test for job handler effects (DB writes)
-
----
-
-## 9) Testing Expectations (minimum bar)
-
-Non-trivial change must include the correct layer:
-- Unit: domain rules, precedence/merge, provider adapters, queue payload validation
-- Integration: route handlers, auth rules, DB transactions, worker job behavior
-- E2E (Playwright): user flows for UI behavior changes (login, catalog, runs, approvals, CSV import, HubSpot push)
-
-Auth and migrations ALWAYS require tests.  [oai_citation:28‡ARCHITECTURE.md](sediment://file_00000000c9d071fd875320dd2e50d45a)
+### Merge Review (strict)
+Everything above PLUS:
+- ADR requirement check
+- Test completeness
+- Pattern compliance
+- Performance (no provider calls in request path)
 
 ---
 
-## 10) PR / Merge Checklist (agents must output this)
+## 10. Ownership
 
-For merge review output, include:
-- PASS/FAIL verdict
-- blocking issues (path, rule violated, fix)
-- non-blocking recommendations
-- tests to run / update
-- security & data-integrity checklist:
-  - secrets exposure
-  - browser-to-provider calls
-  - migrations / no runtime DDL
-  - precedence preserved & manual overrides durable
-  - approval flow preserved
-  - audit events present for privileged actions
-  - job status + last error persisted
+| Owner | Scope |
+|-------|-------|
+| Ivan | Backend, DB, worker, integrations, CI/CD, infra |
+| Marin | Frontend, UX, admin screens, Playwright |
+
+**Pair on:** Schema changes, ADR decisions, DB + UX crossover.
 
 ---
 
-## 11) Ownership Guidance (coordination, not gatekeeping)
+## 11. Plans Directory
 
-Default ownership:
-- Ivan: backend, DB, worker, integrations, CI/CD, infra
-- Marin: frontend, UX, admin screens, Playwright
+Files in `/docs/plans/` describe future work.
 
-Pair on anything that crosses DB + UX or changes canonical data flows.  [oai_citation:29‡TASKS.md](sediment://file_000000006fd471f8869cbb09a1484915)
+**Do not implement** unless explicitly instructed. Each plan file should have a status header:
+- `Status: Draft` — under discussion
+- `Status: Approved` — ready for implementation
+- `Status: Deferred` — not yet scheduled
+
+---
+
+## 12. Migration Style
+
+- Prefer deterministic Prisma-generated DDL
+- Avoid `IF NOT EXISTS`, conditional enum creation
+- If defensive DDL is needed, explain in PR and add comment in migration file

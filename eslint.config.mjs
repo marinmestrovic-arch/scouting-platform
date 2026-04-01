@@ -18,6 +18,7 @@ export default [
       "**/.turbo/**",
       "**/dist/**",
       "**/coverage/**",
+      "docs/patterns/**/*.ts",
       "pnpm-lock.yaml",
     ],
   },

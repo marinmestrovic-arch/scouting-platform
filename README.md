@@ -6,6 +6,14 @@ This repository is the clean rewrite of the current creator scouting tool. It st
 explicit architecture, a fixed scope, and a controlled delivery plan so the team does not have to
 make major pivots after implementation begins.
 
+## Quick Start for AI Agents
+
+```
+1. Read /CODEX_QUICKREF.md           ← Condensed rules, 2 minutes
+2. Read /TASKS.md                    ← Your current work
+3. Copy from /docs/patterns/         ← Code patterns to follow
+```
+
 ## Product Summary
 
 The app lets campaign managers:
@@ -67,22 +75,36 @@ shared/
     contracts/
     config/
 docs/
+  AGENTS.md
   ADR-001-architecture.md
   ADR-002-data-ownership-and-precedence.md
+  ADR-003-repository-layout-simplification.md
   README.md
+  patterns/                    ← Code patterns to copy
+    route-handler-pattern.ts
+    worker-job-pattern.ts
+    provider-adapter-pattern.ts
+    domain-service-pattern.ts
+    error-handling-pattern.ts
+  plans/
   setup/
+CODEX_QUICKREF.md              ← Start here for AI agents
 .github/
 ```
 
 ## Primary Docs
 
-- `/README.md`: project overview and onboarding
-- `/PROJECTS_SPECS.md`: locked product scope and behavior
-- `/ARCHITECTURE.md`: target system design and technical rules
-- `/TASKS.md`: milestone plan and GitHub issue backlog
-- `/AGENTS.md`: contributor and AI-agent rules for working in this repo
-- `/docs/setup/local.md`: local environment bootstrap (Docker + tooling)
-- `/docs/setup/staging-railway.md`: staging deployment runbook (Railway)
+| Document | Purpose |
+|----------|---------|
+| `/CODEX_QUICKREF.md` | **Start here** — condensed rules for AI agents |
+| `/README.md` | Project overview and onboarding |
+| `/PROJECTS_SPECS.md` | Locked product scope and behavior |
+| `/ARCHITECTURE.md` | Target system design and technical rules |
+| `/TASKS.md` | Milestone plan and GitHub issue backlog |
+| `/docs/AGENTS.md` | Full contributor and AI-agent rules |
+| `/docs/patterns/` | Code patterns to copy |
+| `/docs/setup/local.md` | Local environment bootstrap |
+| `/docs/setup/staging-railway.md` | Staging deployment runbook |
 
 ## Delivery Strategy
 
@@ -103,28 +125,17 @@ Do not add new product branches until the items in `/TASKS.md` for the active mi
 
 Use the local runbook at [`/docs/setup/local.md`](./docs/setup/local.md).
 
-## Local Development Setup
-
-Fastest container-only path:
+### Fastest Path (Docker only)
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-That is enough to boot Postgres, install dependencies in Docker volumes, run migrations, seed the
-initial admin, and start both the web app and worker. Host-side `nvm`/`pnpm` setup is only needed
-if you want to run workspace commands directly on your machine outside Docker.
+That boots Postgres, installs dependencies, runs migrations, seeds the initial admin, and starts
+both the web app and worker.
 
-Required for the container-only path:
-- git
-- Docker
-
-Optional for host-side workspace commands:
-- nvm
-- pnpm
-
-If you also want the host-side shorthand for the same full-stack Docker flow, use:
+### With Host-Side Tools
 
 ```bash
 nvm install
@@ -138,23 +149,12 @@ cp .env.example .env
 pnpm infra:up
 ```
 
-`pnpm infra:up` is just the scripted shorthand for bringing up the same Docker Compose stack.
-Sign in with the seeded initial admin from `.env` or `.env.example`:
+Sign in at `http://localhost:3000/login`:
 
 ```text
 email: admin@example.com
 password: StrongAdminPassword123
 ```
-
-Weekly Postgres image maintenance (advisory):
-
-```bash
-pnpm infra:refresh-postgres
-pnpm security:scan:postgres
-```
-
-Troubleshooting:
-- If you hit macOS permission errors from system Node installs under `/usr/local`, use `nvm install` and `nvm use` to keep Node and global tooling in your user-owned environment.
 
 ## Staging Setup
 
@@ -162,7 +162,7 @@ Use the staging runbook at [`/docs/setup/staging-railway.md`](./docs/setup/stagi
 
 ## API Quick Reference
 
-Backend endpoints available for Marin UI integration:
+Backend endpoints available for UI integration:
 
 - `POST /api/auth/[...nextauth]` credentials callback via Auth.js
 - `GET /api/admin/users`
