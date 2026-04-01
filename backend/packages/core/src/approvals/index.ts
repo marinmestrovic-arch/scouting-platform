@@ -708,6 +708,7 @@ export async function executeAdvancedReportRequest(input: {
     }
 
     let providerPayloadId = executionState.providerPayloadId;
+    let resolvedInsights: HypeAuditorChannelInsights | null = null;
 
     if (providerPayloadId !== null) {
       logProviderSpend({
@@ -833,6 +834,7 @@ export async function executeAdvancedReportRequest(input: {
       });
 
       providerPayloadId = providerPayload.id;
+      resolvedInsights = result.insights;
 
       await prisma.advancedReportRequest.update({
         where: {
@@ -846,15 +848,20 @@ export async function executeAdvancedReportRequest(input: {
       });
     }
 
-    const payloadRow = await prisma.channelProviderPayload.findUniqueOrThrow({
-      where: {
-        id: providerPayloadId,
-      },
-      select: {
-        payload: true,
-      },
-    });
-    const insights = deriveInsightsFromRawPayload(payloadRow.payload);
+    const insights =
+      resolvedInsights ??
+      deriveInsightsFromRawPayload(
+        (
+          await prisma.channelProviderPayload.findUniqueOrThrow({
+            where: {
+              id: providerPayloadId,
+            },
+            select: {
+              payload: true,
+            },
+          })
+        ).payload,
+      );
     const completedAt = new Date();
 
     await prisma.$transaction(async (tx) => {

@@ -21,6 +21,9 @@
   - DB-backed YouTube discovery cache with per-user hashed cache keys and configurable TTL
   - Structured provider spend telemetry across HypeAuditor, YouTube context, OpenAI, and YouTube discovery paths
   - Session 3 week 3 integration coverage for discovery cache hits, expiry, and cache persistence
+- Local environment note:
+  - `DATABASE_URL` and `DATABASE_URL_TEST` were not exported in the shell and this worktree does not include a checked-in `.env`
+  - Local verification used the documented Postgres URLs from `.env.example` against the local Docker Postgres service
 - Verified:
   - `pnpm --filter @scouting-platform/db exec vitest run src/migrations.test.ts`
   - `pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts`
@@ -29,10 +32,13 @@
   - `pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts src/hypeauditor/report.test.ts`
   - `pnpm --filter @scouting-platform/core typecheck`
   - `pnpm --filter @scouting-platform/core exec vitest run src/week3.integration.test.ts src/week4.integration.test.ts src/week5.integration.test.ts`
-- Pending local verification:
-  - `pnpm db:migrate` could not be completed in this worktree because `DATABASE_URL` was not set
-  - `backend/packages/db/src/postgres.integration.test.ts` skipped because `DATABASE_URL_TEST` was not set
-  - `backend/packages/core/src/week3.integration.test.ts`, `backend/packages/core/src/week4.integration.test.ts`, and `backend/packages/core/src/week5.integration.test.ts` were present and updated, but skipped because `DATABASE_URL_TEST` was not set
+  - `pnpm db:migrate:test`
+  - `pnpm --filter @scouting-platform/db exec vitest run src/postgres.integration.test.ts`
+- Local verification fixes:
+  - Added `backend/packages/core/vitest.config.ts` with `fileParallelism: false` so direct `vitest run ...` matches the package test script and DB-backed integration files do not deadlock each other
+  - Updated `backend/packages/core/src/approvals/index.ts` so fresh HypeAuditor executions reuse the already-parsed `result.insights`, while payload-reuse retries still derive from stored provider payloads
+- Remaining local verification caveat:
+  - `pnpm db:migrate` connected to local Postgres and applied `20260401120000_provider_spend_hardening_columns` plus `20260401130000_youtube_discovery_cache`, but `prisma migrate dev` then prompted for a new migration because this repo already has pre-existing schema-vs-migration drift outside the provider spend hardening scope
 
 This document is the implementation handoff for Codex. It is split into three sessions that must be
 executed in order. Each session is self-contained and testable before the next begins.
