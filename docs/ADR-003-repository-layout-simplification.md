@@ -1,22 +1,17 @@
 # ADR-003: Repository Layout Simplification
 
-## Status
-
-Proposed
+- Status: Accepted
+- Date: 2026-04-01
 
 ## Context
 
-The repository kept frontend, backend, and shared packages under the same top-level `apps/` and `packages/` directories. That layout preserved runtime boundaries, but it made the codebase harder to navigate because:
+The repository originally separated code under top-level `apps/` and `packages/` directories. That preserved runtime boundaries, but it made the repo harder to scan because frontend, backend, and shared packages were mixed at the same level.
 
-- web and worker entrypoints were separated from the backend packages they depend on
-- shared packages were visually mixed with backend-only packages
-- new contributors had to learn package intent before they could infer where code lived
-
-The refactor goal is organizational clarity, not a runtime redesign.
+The accepted refactor goal was organizational clarity, not a runtime redesign.
 
 ## Decision
 
-Reorganize the repository into responsibility-oriented top-level directories:
+Use responsibility-oriented top-level directories:
 
 ```text
 frontend/
@@ -33,12 +28,11 @@ shared/
     config/
 ```
 
-Keep all runtime boundaries, package names, and architectural rules unchanged:
-
+This decision keeps the runtime architecture unchanged:
 - `frontend/web` remains the Next.js app
 - `backend/worker` remains the separate worker process
 - `backend/packages/core` remains the domain layer
-- `backend/packages/db` remains the Prisma and database layer
+- `backend/packages/db` remains the Prisma/database layer
 - `backend/packages/integrations` remains the provider adapter layer
 - `shared/packages/contracts` and `shared/packages/config` remain cross-runtime packages
 
@@ -47,14 +41,14 @@ Keep all runtime boundaries, package names, and architectural rules unchanged:
 ### Positive
 
 - frontend, backend, and shared code are immediately discoverable from the repo root
-- package responsibilities are easier to infer without reading multiple docs first
-- runtime architecture remains unchanged, so the refactor risk stays low
+- package intent is easier to infer for new contributors
+- runtime boundaries stay the same, so the change is primarily navigational
 
-### Neutral / Required follow-up
+### Neutral
 
-- path-sensitive scripts, test helpers, workspace globs, and docs must be updated
-- historical ADRs remain valid for system boundaries, but newer docs should reference the new paths
+- path-sensitive scripts, tests, and docs must stay aligned with the accepted layout
+- historical ADRs still matter for context, but current path/layout docs should point to this ADR
 
-## Approval
+## Notes
 
-Per repository policy, this ADR requires Ivan and Marin approval before merge.
+ADR-001 remains valuable historical context for the original service-boundary decision, but the current repository layout is governed by this ADR.

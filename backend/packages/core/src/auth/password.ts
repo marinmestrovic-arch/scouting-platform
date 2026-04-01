@@ -14,9 +14,6 @@ function getRequireRoot(): string {
     path.resolve(process.cwd(), "backend/packages/core/package.json"),
     path.resolve(process.cwd(), "../backend/packages/core/package.json"),
     path.resolve(process.cwd(), "../../backend/packages/core/package.json"),
-    path.resolve(process.cwd(), "packages/core/package.json"),
-    path.resolve(process.cwd(), "../packages/core/package.json"),
-    path.resolve(process.cwd(), "../../packages/core/package.json"),
     path.resolve(process.cwd(), "package.json"),
   ];
 

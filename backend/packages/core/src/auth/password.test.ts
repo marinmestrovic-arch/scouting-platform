@@ -7,14 +7,11 @@ import { hashPassword, verifyPassword } from "./password";
 
 const originalCwd = process.cwd();
 
-function resolveAppsWebDirectory(): string {
+function resolveFrontendWebDirectory(): string {
   const candidates = [
     path.resolve(originalCwd, "frontend", "web"),
     path.resolve(originalCwd, "..", "..", "..", "frontend", "web"),
     path.resolve(originalCwd, "..", "..", "frontend", "web"),
-    path.resolve(originalCwd, "apps", "web"),
-    path.resolve(originalCwd, "..", "..", "..", "apps", "web"),
-    path.resolve(originalCwd, "..", "..", "apps", "web"),
   ];
 
   const match = candidates.find((candidate) => fs.existsSync(candidate));
@@ -39,7 +36,7 @@ describe("password hashing", () => {
   });
 
   it("resolves argon2 independently of the current working directory", async () => {
-    process.chdir(resolveAppsWebDirectory());
+    process.chdir(resolveFrontendWebDirectory());
 
     const hash = await hashPassword("DirectoryIndependentPass123");
 
