@@ -98,24 +98,60 @@ function getModel(override?: string): string {
   return override?.trim() || process.env.OPENAI_MODEL?.trim() || OPENAI_MODEL_FALLBACK;
 }
 
+function slimYoutubeContext(ctx: z.output<typeof inputSchema>["youtubeContext"]): {
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  thumbnailUrl: string | null;
+  publishedAt: string | null;
+  subscriberCount: number | null;
+  viewCount: number | null;
+  videoCount: number | null;
+  recentVideos: {
+    youtubeVideoId: string | null;
+    title: string;
+    description: string | null;
+    publishedAt: string | null;
+    viewCount: number | null;
+    likeCount: number | null;
+    commentCount: number | null;
+  }[];
+} {
+  return {
+    youtubeChannelId: ctx.youtubeChannelId,
+    title: ctx.title,
+    handle: ctx.handle,
+    thumbnailUrl: ctx.thumbnailUrl,
+    publishedAt: ctx.publishedAt,
+    subscriberCount: ctx.subscriberCount,
+    viewCount: ctx.viewCount,
+    videoCount: ctx.videoCount,
+    recentVideos: ctx.recentVideos.slice(0, 5).map((video) => ({
+      youtubeVideoId: video.youtubeVideoId,
+      title: video.title,
+      description: video.description ? video.description.slice(0, 200) : null,
+      publishedAt: video.publishedAt,
+      viewCount: video.viewCount ?? null,
+      likeCount: video.likeCount ?? null,
+      commentCount: video.commentCount ?? null,
+    })),
+  };
+}
+
 function buildPrompt(input: z.output<typeof inputSchema>): string {
-  return JSON.stringify(
-    {
-      channel: input.channel,
-      youtubeContext: input.youtubeContext,
-      instructions: {
-        summary:
-          "Write a concise summary of the creator's content style, audience, and positioning.",
-        topics: "List the main repeatable content topics as short tags.",
-        brandFitNotes:
-          "Explain the most relevant sponsor/brand fit observations, including constraints if visible.",
-        confidence:
-          "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
-      },
+  return JSON.stringify({
+    channel: input.channel,
+    youtubeContext: slimYoutubeContext(input.youtubeContext),
+    instructions: {
+      summary:
+        "Write a concise summary of the creator's content style, audience, and positioning.",
+      topics: "List the main repeatable content topics as short tags.",
+      brandFitNotes:
+        "Explain the most relevant sponsor/brand fit observations, including constraints if visible.",
+      confidence:
+        "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
     },
-    null,
-    2,
-  );
+  });
 }
 
 function extractTextContent(content: unknown): string | null {
@@ -151,6 +187,46 @@ function extractTextContent(content: unknown): string | null {
 
 function toRawPayload(response: OpenAiCompletionResponse): Record<string, unknown> {
   return JSON.parse(JSON.stringify(response)) as Record<string, unknown>;
+}
+
+export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
+  rawPayload: unknown,
+): OpenAiChannelEnrichment {
+  const content = extractTextContent(
+    (rawPayload as OpenAiCompletionResponse | null | undefined)?.choices?.[0]?.message?.content,
+  );
+
+  if (!content) {
+    throw new OpenAiChannelEnrichmentError(
+      "OPENAI_INVALID_RESPONSE",
+      502,
+      "OpenAI returned empty enrichment content",
+    );
+  }
+
+  let parsedContent: unknown;
+
+  try {
+    parsedContent = JSON.parse(content);
+  } catch {
+    throw new OpenAiChannelEnrichmentError(
+      "OPENAI_INVALID_RESPONSE",
+      502,
+      "OpenAI returned invalid enrichment JSON",
+    );
+  }
+
+  const profile = outputSchema.safeParse(parsedContent);
+
+  if (!profile.success) {
+    throw new OpenAiChannelEnrichmentError(
+      "OPENAI_INVALID_RESPONSE",
+      502,
+      "OpenAI returned invalid enrichment output",
+    );
+  }
+
+  return profile.data;
 }
 
 function toProviderError(error: unknown): OpenAiChannelEnrichmentError {
@@ -217,40 +293,8 @@ export async function enrichChannelWithOpenAi(
     throw toProviderError(error);
   }
 
-  const content = extractTextContent(response.choices?.[0]?.message?.content);
-
-  if (!content) {
-    throw new OpenAiChannelEnrichmentError(
-      "OPENAI_INVALID_RESPONSE",
-      502,
-      "OpenAI returned empty enrichment content",
-    );
-  }
-
-  let parsedContent: unknown;
-
-  try {
-    parsedContent = JSON.parse(content);
-  } catch {
-    throw new OpenAiChannelEnrichmentError(
-      "OPENAI_INVALID_RESPONSE",
-      502,
-      "OpenAI returned invalid enrichment JSON",
-    );
-  }
-
-  const profile = outputSchema.safeParse(parsedContent);
-
-  if (!profile.success) {
-    throw new OpenAiChannelEnrichmentError(
-      "OPENAI_INVALID_RESPONSE",
-      502,
-      "OpenAI returned invalid enrichment output",
-    );
-  }
-
   return {
-    profile: profile.data,
+    profile: extractOpenAiChannelEnrichmentProfileFromRawPayload(response),
     rawPayload: toRawPayload(response),
   };
 }

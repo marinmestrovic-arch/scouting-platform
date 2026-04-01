@@ -14,12 +14,15 @@ import type {
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 import {
+  deriveHypeAuditorChannelInsightsFromRawPayload,
   fetchHypeAuditorChannelInsights,
+  type HypeAuditorChannelInsights,
   isHypeAuditorError,
 } from "@scouting-platform/integrations";
 
 import { getChannelById } from "../channels";
 import { ServiceError } from "../errors";
+import { logProviderSpend } from "../telemetry";
 import { enqueueAdvancedReportJob } from "./queue";
 import {
   fromAdvancedReportRequestStatus,
@@ -144,6 +147,18 @@ function canApplyInsightSource(
   }
 
   return incomingRank <= existingRank;
+}
+
+function deriveInsightsFromRawPayload(rawPayload: Prisma.JsonValue): HypeAuditorChannelInsights {
+  try {
+    return deriveHypeAuditorChannelInsightsFromRawPayload(rawPayload);
+  } catch {
+    throw new ServiceError(
+      "HYPEAUDITOR_INVALID_STORED_PAYLOAD",
+      500,
+      "Stored HypeAuditor payload is invalid",
+    );
+  }
 }
 
 function toAdminAdvancedReportRequestSummary(
@@ -665,6 +680,10 @@ export async function executeAdvancedReportRequest(input: {
       select: {
         id: true,
         channelId: true,
+        providerPayloadId: true,
+        providerFetchedAt: true,
+        lastProviderAttemptAt: true,
+        nextProviderAttemptAt: true,
         channel: {
           select: {
             id: true,
@@ -688,35 +707,157 @@ export async function executeAdvancedReportRequest(input: {
       return;
     }
 
-    const result = await (async () => {
-      try {
-        return await fetchHypeAuditorChannelInsights({
-          youtubeChannelId: executionState.channel.youtubeChannelId,
+    let providerPayloadId = executionState.providerPayloadId;
+
+    if (providerPayloadId !== null) {
+      logProviderSpend({
+        provider: "hypeauditor",
+        operation: "fetch_insights",
+        outcome: "payload_reuse",
+        retryAttempt: true,
+        durationMs: 0,
+      });
+    } else {
+      const now = new Date();
+
+      if (
+        executionState.nextProviderAttemptAt !== null &&
+        executionState.nextProviderAttemptAt > now
+      ) {
+        logProviderSpend({
+          provider: "hypeauditor",
+          operation: "fetch_insights",
+          outcome: "not_ready",
+          retryAttempt: true,
+          durationMs: 0,
         });
-      } catch (error) {
-        if (isHypeAuditorError(error)) {
-          throw new ServiceError(error.code, error.status, error.message);
-        }
-
-        throw error;
+        await prisma.advancedReportRequest.update({
+          where: {
+            id: executionState.id,
+          },
+          data: {
+            status: PrismaAdvancedReportRequestStatus.FAILED,
+            lastError: "HypeAuditor cooldown active — retry after nextProviderAttemptAt",
+          },
+        });
+        throw new ServiceError(
+          "HYPEAUDITOR_COOLDOWN_ACTIVE",
+          429,
+          "HypeAuditor cooldown active",
+        );
       }
-    })();
 
-    const completedAt = new Date();
+      await prisma.advancedReportRequest.update({
+        where: {
+          id: executionState.id,
+        },
+        data: {
+          lastProviderAttemptAt: now,
+        },
+      });
 
-    await prisma.$transaction(async (tx) => {
-      const providerPayload = await tx.channelProviderPayload.create({
+      const providerCallStartedAt = Date.now();
+      const retryAttempt = executionState.lastProviderAttemptAt !== null;
+      const result = await (async () => {
+        try {
+          return await fetchHypeAuditorChannelInsights({
+            youtubeChannelId: executionState.channel.youtubeChannelId,
+          });
+        } catch (error) {
+          const durationMs = Date.now() - providerCallStartedAt;
+
+          if (isHypeAuditorError(error)) {
+            const serviceError = new ServiceError(error.code, error.status, error.message);
+
+            if (serviceError.code === "HYPEAUDITOR_REPORT_NOT_READY") {
+              logProviderSpend({
+                provider: "hypeauditor",
+                operation: "fetch_insights",
+                outcome: "not_ready",
+                retryAttempt,
+                durationMs,
+              });
+              await prisma.advancedReportRequest.update({
+                where: {
+                  id: executionState.id,
+                },
+                data: {
+                  status: PrismaAdvancedReportRequestStatus.FAILED,
+                  lastError: serviceError.message,
+                  nextProviderAttemptAt: new Date(Date.now() + 5 * 60 * 1000),
+                },
+              });
+            } else {
+              logProviderSpend({
+                provider: "hypeauditor",
+                operation: "fetch_insights",
+                outcome: "error",
+                retryAttempt,
+                durationMs,
+              });
+            }
+
+            throw serviceError;
+          }
+
+          logProviderSpend({
+            provider: "hypeauditor",
+            operation: "fetch_insights",
+            outcome: "error",
+            retryAttempt,
+            durationMs,
+          });
+          throw error;
+        }
+      })();
+
+      logProviderSpend({
+        provider: "hypeauditor",
+        operation: "fetch_insights",
+        outcome: "fresh_call",
+        retryAttempt,
+        durationMs: Date.now() - providerCallStartedAt,
+      });
+
+      const providerFetchedAt = new Date();
+      const providerPayload = await prisma.channelProviderPayload.create({
         data: {
           channelId: executionState.channelId,
           provider: ChannelProviderPayloadProvider.HYPEAUDITOR,
           payload: toJsonValue(result.rawPayload),
-          fetchedAt: completedAt,
+          fetchedAt: providerFetchedAt,
         },
         select: {
           id: true,
         },
       });
 
+      providerPayloadId = providerPayload.id;
+
+      await prisma.advancedReportRequest.update({
+        where: {
+          id: executionState.id,
+        },
+        data: {
+          providerPayloadId,
+          providerFetchedAt,
+          nextProviderAttemptAt: null,
+        },
+      });
+    }
+
+    const payloadRow = await prisma.channelProviderPayload.findUniqueOrThrow({
+      where: {
+        id: providerPayloadId,
+      },
+      select: {
+        payload: true,
+      },
+    });
+    const insights = deriveInsightsFromRawPayload(payloadRow.payload);
+    const completedAt = new Date();
+
+    await prisma.$transaction(async (tx) => {
       const existingInsight = executionState.channel.insights;
       const insightUpdateData: Prisma.ChannelInsightUncheckedUpdateInput = {};
       const insightCreateData: Prisma.ChannelInsightUncheckedCreateInput = {
@@ -729,10 +870,10 @@ export async function executeAdvancedReportRequest(input: {
           PrismaChannelInsightSource.HYPEAUDITOR,
         )
       ) {
-        insightUpdateData.audienceCountries = toJsonValue(result.insights.audienceCountries);
+        insightUpdateData.audienceCountries = toJsonValue(insights.audienceCountries);
         insightUpdateData.audienceCountriesSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightUpdateData.audienceCountriesSourceUpdatedAt = completedAt;
-        insightCreateData.audienceCountries = toJsonValue(result.insights.audienceCountries);
+        insightCreateData.audienceCountries = toJsonValue(insights.audienceCountries);
         insightCreateData.audienceCountriesSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightCreateData.audienceCountriesSourceUpdatedAt = completedAt;
       }
@@ -743,10 +884,10 @@ export async function executeAdvancedReportRequest(input: {
           PrismaChannelInsightSource.HYPEAUDITOR,
         )
       ) {
-        insightUpdateData.audienceGenderAge = toJsonValue(result.insights.audienceGenderAge);
+        insightUpdateData.audienceGenderAge = toJsonValue(insights.audienceGenderAge);
         insightUpdateData.audienceGenderAgeSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightUpdateData.audienceGenderAgeSourceUpdatedAt = completedAt;
-        insightCreateData.audienceGenderAge = toJsonValue(result.insights.audienceGenderAge);
+        insightCreateData.audienceGenderAge = toJsonValue(insights.audienceGenderAge);
         insightCreateData.audienceGenderAgeSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightCreateData.audienceGenderAgeSourceUpdatedAt = completedAt;
       }
@@ -757,10 +898,10 @@ export async function executeAdvancedReportRequest(input: {
           PrismaChannelInsightSource.HYPEAUDITOR,
         )
       ) {
-        insightUpdateData.audienceInterests = toJsonValue(result.insights.audienceInterests);
+        insightUpdateData.audienceInterests = toJsonValue(insights.audienceInterests);
         insightUpdateData.audienceInterestsSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightUpdateData.audienceInterestsSourceUpdatedAt = completedAt;
-        insightCreateData.audienceInterests = toJsonValue(result.insights.audienceInterests);
+        insightCreateData.audienceInterests = toJsonValue(insights.audienceInterests);
         insightCreateData.audienceInterestsSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightCreateData.audienceInterestsSourceUpdatedAt = completedAt;
       }
@@ -771,14 +912,14 @@ export async function executeAdvancedReportRequest(input: {
           PrismaChannelInsightSource.HYPEAUDITOR,
         )
       ) {
-        insightUpdateData.estimatedPriceCurrencyCode = result.insights.estimatedPrice?.currencyCode ?? null;
-        insightUpdateData.estimatedPriceMin = result.insights.estimatedPrice?.min ?? null;
-        insightUpdateData.estimatedPriceMax = result.insights.estimatedPrice?.max ?? null;
+        insightUpdateData.estimatedPriceCurrencyCode = insights.estimatedPrice?.currencyCode ?? null;
+        insightUpdateData.estimatedPriceMin = insights.estimatedPrice?.min ?? null;
+        insightUpdateData.estimatedPriceMax = insights.estimatedPrice?.max ?? null;
         insightUpdateData.estimatedPriceSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightUpdateData.estimatedPriceSourceUpdatedAt = completedAt;
-        insightCreateData.estimatedPriceCurrencyCode = result.insights.estimatedPrice?.currencyCode ?? null;
-        insightCreateData.estimatedPriceMin = result.insights.estimatedPrice?.min ?? null;
-        insightCreateData.estimatedPriceMax = result.insights.estimatedPrice?.max ?? null;
+        insightCreateData.estimatedPriceCurrencyCode = insights.estimatedPrice?.currencyCode ?? null;
+        insightCreateData.estimatedPriceMin = insights.estimatedPrice?.min ?? null;
+        insightCreateData.estimatedPriceMax = insights.estimatedPrice?.max ?? null;
         insightCreateData.estimatedPriceSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightCreateData.estimatedPriceSourceUpdatedAt = completedAt;
       }
@@ -789,10 +930,10 @@ export async function executeAdvancedReportRequest(input: {
           PrismaChannelInsightSource.HYPEAUDITOR,
         )
       ) {
-        insightUpdateData.brandMentions = toJsonValue(result.insights.brandMentions);
+        insightUpdateData.brandMentions = toJsonValue(insights.brandMentions);
         insightUpdateData.brandMentionsSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightUpdateData.brandMentionsSourceUpdatedAt = completedAt;
-        insightCreateData.brandMentions = toJsonValue(result.insights.brandMentions);
+        insightCreateData.brandMentions = toJsonValue(insights.brandMentions);
         insightCreateData.brandMentionsSource = PrismaChannelInsightSource.HYPEAUDITOR;
         insightCreateData.brandMentionsSourceUpdatedAt = completedAt;
       }
@@ -813,20 +954,26 @@ export async function executeAdvancedReportRequest(input: {
           status: PrismaAdvancedReportRequestStatus.COMPLETED,
           completedAt,
           lastError: null,
-          providerPayloadId: providerPayload.id,
         },
       });
     });
   } catch (error) {
-    await prisma.advancedReportRequest.update({
-      where: {
-        id: input.advancedReportRequestId,
-      },
-      data: {
-        status: PrismaAdvancedReportRequestStatus.FAILED,
-        lastError: formatErrorMessage(error),
-      },
-    });
+    const alreadyHandled =
+      error instanceof ServiceError &&
+      (error.code === "HYPEAUDITOR_REPORT_NOT_READY" ||
+        error.code === "HYPEAUDITOR_COOLDOWN_ACTIVE");
+
+    if (!alreadyHandled) {
+      await prisma.advancedReportRequest.update({
+        where: {
+          id: input.advancedReportRequestId,
+        },
+        data: {
+          status: PrismaAdvancedReportRequestStatus.FAILED,
+          lastError: formatErrorMessage(error),
+        },
+      });
+    }
 
     throw error;
   }
