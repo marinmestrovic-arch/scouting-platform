@@ -59,6 +59,42 @@ const COMPLETED_INSIGHTS = {
   ],
 } as const;
 
+const STORED_HYPEAUDITOR_RAW_PAYLOAD = {
+  report: {
+    report_state: "READY",
+    report: {
+      video_integration_price: {
+        data: {
+          currency_code: "usd",
+          min: 500,
+          max: 900,
+        },
+      },
+      features: {
+        audience_geo: {
+          data: [
+            { title: "us", prc: 32.5 },
+            { title: "hr", prc: "18.4" },
+          ],
+        },
+        audience_age_gender: {
+          data: {
+            "18-24": {
+              female: 21.5,
+            },
+          },
+        },
+        audience_interests: {
+          data: [{ label: "Gaming", score: 0.88 }],
+        },
+      },
+    },
+  },
+  brandMentions: {
+    items: [{ title: "Nike" }],
+  },
+} as const;
+
 integration("week 5 core integration", () => {
   let prisma: PrismaClient;
   let core: CoreModule | null = null;
@@ -477,6 +513,166 @@ integration("week 5 core integration", () => {
     });
     expect(failedRequest.status).toBe(PrismaAdvancedReportRequestStatus.FAILED);
     expect(failedRequest.lastError).toBe("provider boom");
+  });
+
+  it("skips HypeAuditor when providerPayloadId is already set", async () => {
+    const user = await createUser("manager@example.com");
+    const channel = await createChannel("UC-HYPE-REUSE", "Reuse Channel");
+    const payload = await prisma.channelProviderPayload.create({
+      data: {
+        channelId: channel.id,
+        provider: "HYPEAUDITOR",
+        payload: STORED_HYPEAUDITOR_RAW_PAYLOAD,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const request = await prisma.advancedReportRequest.create({
+      data: {
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        status: PrismaAdvancedReportRequestStatus.QUEUED,
+        providerPayloadId: payload.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await getCore().executeAdvancedReportRequest({
+      advancedReportRequestId: request.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(fetchHypeAuditorChannelInsightsMock).not.toHaveBeenCalled();
+
+    const completedRequest = await prisma.advancedReportRequest.findUniqueOrThrow({
+      where: {
+        id: request.id,
+      },
+    });
+    expect(completedRequest.status).toBe(PrismaAdvancedReportRequestStatus.COMPLETED);
+  });
+
+  it("sets nextProviderAttemptAt on REPORT_NOT_READY", async () => {
+    const user = await createUser("manager@example.com");
+    const channel = await createChannel("UC-HYPE-NOT-READY", "Not Ready Channel");
+    const request = await prisma.advancedReportRequest.create({
+      data: {
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        status: PrismaAdvancedReportRequestStatus.QUEUED,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const { HypeAuditorError } = await import("@scouting-platform/integrations");
+
+    fetchHypeAuditorChannelInsightsMock.mockRejectedValue(
+      new HypeAuditorError(
+        "HYPEAUDITOR_REPORT_NOT_READY",
+        503,
+        "HypeAuditor report is still processing",
+      ),
+    );
+
+    const before = Date.now();
+
+    await expect(
+      getCore().executeAdvancedReportRequest({
+        advancedReportRequestId: request.id,
+        requestedByUserId: user.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "HYPEAUDITOR_REPORT_NOT_READY",
+      status: 503,
+    });
+
+    const failedRequest = await prisma.advancedReportRequest.findUniqueOrThrow({
+      where: {
+        id: request.id,
+      },
+    });
+    expect(failedRequest.status).toBe(PrismaAdvancedReportRequestStatus.FAILED);
+    expect(failedRequest.nextProviderAttemptAt).not.toBeNull();
+    expect(failedRequest.nextProviderAttemptAt!.getTime()).toBeGreaterThanOrEqual(
+      before + 4 * 60 * 1000,
+    );
+    expect(failedRequest.nextProviderAttemptAt!.getTime()).toBeLessThanOrEqual(
+      before + 6 * 60 * 1000,
+    );
+  });
+
+  it("respects cooldown when nextProviderAttemptAt is in the future", async () => {
+    const user = await createUser("manager@example.com");
+    const channel = await createChannel("UC-HYPE-COOLDOWN", "Cooldown Channel");
+    const request = await prisma.advancedReportRequest.create({
+      data: {
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        status: PrismaAdvancedReportRequestStatus.QUEUED,
+        nextProviderAttemptAt: new Date(Date.now() + 60_000),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await expect(
+      getCore().executeAdvancedReportRequest({
+        advancedReportRequestId: request.id,
+        requestedByUserId: user.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "HYPEAUDITOR_COOLDOWN_ACTIVE",
+      status: 429,
+    });
+
+    expect(fetchHypeAuditorChannelInsightsMock).not.toHaveBeenCalled();
+
+    const failedRequest = await prisma.advancedReportRequest.findUniqueOrThrow({
+      where: {
+        id: request.id,
+      },
+    });
+    expect(failedRequest.status).toBe(PrismaAdvancedReportRequestStatus.FAILED);
+    expect(failedRequest.lastError).toBe(
+      "HypeAuditor cooldown active — retry after nextProviderAttemptAt",
+    );
+  });
+
+  it("sets lastProviderAttemptAt on successful attempt", async () => {
+    const user = await createUser("manager@example.com");
+    const channel = await createChannel("UC-HYPE-ATTEMPT", "Attempt Channel");
+    const request = await prisma.advancedReportRequest.create({
+      data: {
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        status: PrismaAdvancedReportRequestStatus.QUEUED,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    fetchHypeAuditorChannelInsightsMock.mockResolvedValue({
+      insights: COMPLETED_INSIGHTS,
+      rawPayload: STORED_HYPEAUDITOR_RAW_PAYLOAD,
+    });
+
+    await getCore().executeAdvancedReportRequest({
+      advancedReportRequestId: request.id,
+      requestedByUserId: user.id,
+    });
+
+    const completedRequest = await prisma.advancedReportRequest.findUniqueOrThrow({
+      where: {
+        id: request.id,
+      },
+    });
+    expect(completedRequest.lastProviderAttemptAt).not.toBeNull();
   });
 
   it("surfaces stale completed reports on channel detail after 120 days", async () => {

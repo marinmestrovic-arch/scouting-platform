@@ -88,6 +88,11 @@ export type FetchHypeAuditorChannelInsightsResult = {
   };
 };
 
+const storedRawPayloadSchema = z.object({
+  report: z.record(z.string(), z.unknown()),
+  brandMentions: z.unknown(),
+});
+
 export class HypeAuditorError extends Error {
   readonly code: HypeAuditorErrorCode;
   readonly status: number;
@@ -826,6 +831,38 @@ async function fetchBrandMentions(input: {
   throw new HypeAuditorError("HYPEAUDITOR_REQUEST_FAILED", 502, "HypeAuditor request failed");
 }
 
+export function deriveHypeAuditorChannelInsightsFromRawPayload(
+  rawPayload: unknown,
+): HypeAuditorChannelInsights {
+  const parsedPayload = storedRawPayloadSchema.safeParse(rawPayload);
+
+  if (!parsedPayload.success) {
+    throw new HypeAuditorError(
+      "HYPEAUDITOR_INVALID_RESPONSE",
+      502,
+      "HypeAuditor stored payload is invalid",
+    );
+  }
+
+  const reportResponse = reportResponseSchema.safeParse(parsedPayload.data.report);
+
+  if (!reportResponse.success) {
+    throw new HypeAuditorError(
+      "HYPEAUDITOR_INVALID_RESPONSE",
+      502,
+      "HypeAuditor stored report payload is invalid",
+    );
+  }
+
+  return {
+    audienceCountries: normalizeAudienceCountries(reportResponse.data.report),
+    audienceGenderAge: normalizeAudienceGenderAge(reportResponse.data.report),
+    audienceInterests: normalizeAudienceInterests(reportResponse.data.report),
+    estimatedPrice: normalizeEstimatedPrice(reportResponse.data.report),
+    brandMentions: normalizeBrandMentions(parsedPayload.data.brandMentions),
+  };
+}
+
 export async function fetchHypeAuditorChannelInsights(
   rawInput: FetchHypeAuditorChannelInsightsInput,
 ): Promise<FetchHypeAuditorChannelInsightsResult> {
@@ -850,13 +887,10 @@ export async function fetchHypeAuditorChannelInsights(
   });
 
   return {
-    insights: {
-      audienceCountries: normalizeAudienceCountries(reportResponse.report),
-      audienceGenderAge: normalizeAudienceGenderAge(reportResponse.report),
-      audienceInterests: normalizeAudienceInterests(reportResponse.report),
-      estimatedPrice: normalizeEstimatedPrice(reportResponse.report),
-      brandMentions: normalizeBrandMentions(brandMentionsResponse),
-    },
+    insights: deriveHypeAuditorChannelInsightsFromRawPayload({
+      report: toJsonRecord(reportResponse),
+      brandMentions: JSON.parse(JSON.stringify(brandMentionsResponse)) as unknown,
+    }),
     rawPayload: {
       report: toJsonRecord(reportResponse),
       brandMentions: JSON.parse(JSON.stringify(brandMentionsResponse)) as unknown,

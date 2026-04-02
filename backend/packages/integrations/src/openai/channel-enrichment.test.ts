@@ -41,6 +41,77 @@ const TEST_INPUT = {
 };
 
 describe("enrichChannelWithOpenAi", () => {
+  it("sends a compact, slimmed youtube context prompt", async () => {
+    const longDescription = "x".repeat(240);
+    const create = vi.fn<
+      (input: Record<string, unknown>) => Promise<{ choices: Array<{ message: { content: string } }> }>
+    >(async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              summary: "Creator focused on gaming commentary.",
+              topics: ["gaming", "commentary"],
+              brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+              confidence: 0.82,
+            }),
+          },
+        },
+      ],
+    }));
+
+    await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      youtubeContext: {
+        ...TEST_INPUT.youtubeContext,
+        description: "A long top-level youtube description that should be omitted from the prompt.",
+        recentVideos: Array.from({ length: 6 }, (_, index) => ({
+          youtubeVideoId: `video-${index + 1}`,
+          title: `Video ${index + 1}`,
+          description: index === 0 ? longDescription : `Description ${index + 1}`,
+          publishedAt: "2024-01-01T00:00:00Z",
+          viewCount: index + 100,
+          likeCount: index + 10,
+          commentCount: index + 1,
+        })),
+        diagnostics: {
+          warnings: ["some warning"],
+        },
+      },
+      client: {
+        chat: {
+          completions: {
+            create,
+          },
+        },
+      },
+    });
+
+    const request = create.mock.calls[0]?.[0] as
+      | { messages?: Array<{ content?: unknown }> }
+      | undefined;
+    const content = request?.messages?.[1]?.content;
+
+    expect(typeof content).toBe("string");
+    expect(content).not.toContain('"diagnostics"');
+    expect(content).toMatch(/^\{"channel":/);
+
+    const parsed = JSON.parse(content as string) as {
+      youtubeContext: {
+        description?: string;
+        recentVideos: Array<{ description: string | null }>;
+      };
+    };
+
+    expect(parsed.youtubeContext).not.toHaveProperty("description");
+    expect(parsed.youtubeContext.recentVideos).toHaveLength(5);
+    expect(
+      parsed.youtubeContext.recentVideos.every(
+        (video) => video.description === null || video.description.length <= 200,
+      ),
+    ).toBe(true);
+  });
+
   it("uses gpt-5-nano by default and omits temperature", async () => {
     const create = vi.fn<(input: Record<string, unknown>) => Promise<{ id: string; choices: Array<{ message: { content: string } }> }>>(
       async () => ({

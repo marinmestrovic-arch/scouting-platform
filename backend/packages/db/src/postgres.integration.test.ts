@@ -139,5 +139,43 @@ if (!databaseUrl) {
       expect(rowRows[0]?.relation_name).toBe("hubspot_import_batch_rows");
       expect(enumRows[0]?.exists).toBe(true);
     });
+
+    it("sees provider spend hardening tables after migrations are applied", async () => {
+      const cacheRows = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+        SELECT to_regclass('youtube_discovery_cache')::text AS relation_name
+      `;
+      const enrichmentColumns = await prisma.$queryRaw<
+        Array<{ raw_openai_payload_fetched_at: string | null; youtube_fetched_at: string | null }>
+      >`
+        SELECT
+          MAX(CASE WHEN column_name = 'raw_openai_payload_fetched_at' THEN column_name END) AS raw_openai_payload_fetched_at,
+          MAX(CASE WHEN column_name = 'youtube_fetched_at' THEN column_name END) AS youtube_fetched_at
+        FROM information_schema.columns
+        WHERE table_name = 'channel_enrichments'
+      `;
+      const requestColumns = await prisma.$queryRaw<
+        Array<{
+          provider_fetched_at: string | null;
+          last_provider_attempt_at: string | null;
+          next_provider_attempt_at: string | null;
+        }>
+      >`
+        SELECT
+          MAX(CASE WHEN column_name = 'provider_fetched_at' THEN column_name END) AS provider_fetched_at,
+          MAX(CASE WHEN column_name = 'last_provider_attempt_at' THEN column_name END) AS last_provider_attempt_at,
+          MAX(CASE WHEN column_name = 'next_provider_attempt_at' THEN column_name END) AS next_provider_attempt_at
+        FROM information_schema.columns
+        WHERE table_name = 'advanced_report_requests'
+      `;
+
+      expect(cacheRows[0]?.relation_name).toBe("youtube_discovery_cache");
+      expect(enrichmentColumns[0]?.raw_openai_payload_fetched_at).toBe(
+        "raw_openai_payload_fetched_at",
+      );
+      expect(enrichmentColumns[0]?.youtube_fetched_at).toBe("youtube_fetched_at");
+      expect(requestColumns[0]?.provider_fetched_at).toBe("provider_fetched_at");
+      expect(requestColumns[0]?.last_provider_attempt_at).toBe("last_provider_attempt_at");
+      expect(requestColumns[0]?.next_provider_attempt_at).toBe("next_provider_attempt_at");
+    });
   });
 }

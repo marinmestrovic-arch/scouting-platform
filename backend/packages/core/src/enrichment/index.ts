@@ -6,9 +6,11 @@ import {
 import type { RequestChannelEnrichmentResponse } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 import {
+  extractOpenAiChannelEnrichmentProfileFromRawPayload,
   enrichChannelWithOpenAi,
   fetchYoutubeChannelContext,
   isOpenAiChannelEnrichmentError,
+  type YoutubeChannelContext,
   isYoutubeChannelContextProviderError,
   youtubeChannelContextSchema,
 } from "@scouting-platform/integrations";
@@ -17,6 +19,7 @@ import { getUserYoutubeApiKey } from "../auth";
 import { getChannelById } from "../channels";
 import { ServiceError } from "../errors";
 import { enqueueJob } from "../queue";
+import { logProviderSpend } from "../telemetry";
 import { deriveYoutubeMetrics } from "./metrics";
 import { isYoutubeContextFresh, resolveChannelEnrichmentStatus } from "./status";
 
@@ -53,6 +56,49 @@ function getCachedYoutubeContext(row: ChannelYoutubeContextCacheRow | null) {
 
   const parsed = youtubeChannelContextSchema.safeParse(row.context);
   return parsed.success ? parsed.data : null;
+}
+
+function extractProfileFromRawPayload(
+  raw: Prisma.JsonValue,
+): { summary: string; topics: string[]; brandFitNotes: string; confidence: number } {
+  try {
+    return extractOpenAiChannelEnrichmentProfileFromRawPayload(raw);
+  } catch {
+    throw new ServiceError(
+      "OPENAI_INVALID_STORED_PAYLOAD",
+      500,
+      "Stored OpenAI payload is invalid",
+    );
+  }
+}
+
+function extractTokenUsage(
+  rawPayload: unknown,
+): { promptTokens: number; completionTokens: number; totalTokens: number } | undefined {
+  if (!rawPayload || typeof rawPayload !== "object") {
+    return undefined;
+  }
+
+  const usage = (rawPayload as Record<string, unknown>).usage;
+
+  if (!usage || typeof usage !== "object") {
+    return undefined;
+  }
+
+  const u = usage as Record<string, unknown>;
+  const prompt = Number(u.prompt_tokens);
+  const completion = Number(u.completion_tokens);
+  const total = Number(u.total_tokens);
+
+  if (!Number.isFinite(prompt)) {
+    return undefined;
+  }
+
+  return {
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: total,
+  };
 }
 
 async function refreshYoutubeContext(input: {
@@ -306,6 +352,9 @@ export async function executeChannelLlmEnrichment(input: {
       select: {
         channelId: true,
         requestedByUserId: true,
+        rawOpenaiPayload: true,
+        rawOpenaiPayloadFetchedAt: true,
+        youtubeFetchedAt: true,
         channel: {
           select: {
             id: true,
@@ -339,44 +388,176 @@ export async function executeChannelLlmEnrichment(input: {
       );
     }
 
-    const youtubeContext = await (async () => {
-      try {
-        return await refreshYoutubeContext({
-          channelId: executionState.channel.id,
-          youtubeChannelId: executionState.channel.youtubeChannelId,
-          youtubeApiKey,
-          cachedContextRow: executionState.channel.youtubeContext,
-        });
-      } catch (error) {
-        if (isYoutubeChannelContextProviderError(error)) {
-          throw new ServiceError(error.code, error.status, error.message);
-        }
+    let youtubeContext: YoutubeChannelContext;
+    const youtubeRetryAttempt = executionState.youtubeFetchedAt !== null;
 
-        throw error;
+    if (executionState.youtubeFetchedAt !== null) {
+      const contextRow = await prisma.channelYoutubeContext.findUnique({
+        where: {
+          channelId: input.channelId,
+        },
+        select: {
+          context: true,
+          fetchedAt: true,
+          lastError: true,
+        },
+      });
+      const cachedContext = getCachedYoutubeContext(contextRow);
+
+      if (!cachedContext) {
+        throw new ServiceError(
+          "YOUTUBE_CONTEXT_MISSING",
+          500,
+          "YouTube context missing after youtubeFetchedAt set",
+        );
       }
-    })();
 
-    const youtubeMetrics = deriveYoutubeMetrics(youtubeContext);
-
-    const enrichmentResult = await (async () => {
-      try {
-        return await enrichChannelWithOpenAi({
-          channel: {
+      youtubeContext = cachedContext;
+      logProviderSpend({
+        provider: "youtube_context",
+        operation: "refresh_context",
+        outcome: "payload_reuse",
+        retryAttempt: true,
+        durationMs: 0,
+      });
+    } else {
+      const youtubeContextStartedAt = Date.now();
+      youtubeContext = await (async () => {
+        try {
+          return await refreshYoutubeContext({
+            channelId: executionState.channel.id,
             youtubeChannelId: executionState.channel.youtubeChannelId,
-            title: executionState.channel.title,
-            handle: youtubeMetrics.normalizedHandle,
-            description: executionState.channel.description,
-          },
-          youtubeContext: youtubeMetrics.context,
-        });
-      } catch (error) {
-        if (isOpenAiChannelEnrichmentError(error)) {
-          throw new ServiceError(error.code, error.status, error.message);
-        }
+            youtubeApiKey,
+            cachedContextRow: executionState.channel.youtubeContext,
+          });
+        } catch (error) {
+          logProviderSpend({
+            provider: "youtube_context",
+            operation: "refresh_context",
+            outcome: "error",
+            retryAttempt: youtubeRetryAttempt,
+            durationMs: Date.now() - youtubeContextStartedAt,
+          });
 
-        throw error;
+          if (isYoutubeChannelContextProviderError(error)) {
+            throw new ServiceError(error.code, error.status, error.message);
+          }
+
+          throw error;
+        }
+      })();
+
+      logProviderSpend({
+        provider: "youtube_context",
+        operation: "refresh_context",
+        outcome: "fresh_call",
+        retryAttempt: youtubeRetryAttempt,
+        durationMs: Date.now() - youtubeContextStartedAt,
+      });
+
+      await prisma.channelEnrichment.update({
+        where: {
+          channelId: input.channelId,
+        },
+        data: {
+          youtubeFetchedAt: new Date(),
+        },
+      });
+    }
+
+    let youtubeMetrics: ReturnType<typeof deriveYoutubeMetrics> | null = null;
+    let enrichmentResult: {
+      profile: ReturnType<typeof extractProfileFromRawPayload>;
+      rawPayload: unknown;
+    };
+    const openAiRetryAttempt = executionState.rawOpenaiPayloadFetchedAt !== null;
+
+    if (executionState.rawOpenaiPayloadFetchedAt !== null) {
+      if (executionState.rawOpenaiPayload === null) {
+        throw new ServiceError(
+          "OPENAI_INVALID_STORED_PAYLOAD",
+          500,
+          "Stored OpenAI payload is invalid",
+        );
       }
-    })();
+
+      enrichmentResult = {
+        profile: extractProfileFromRawPayload(executionState.rawOpenaiPayload),
+        rawPayload: executionState.rawOpenaiPayload,
+      };
+      logProviderSpend({
+        provider: "openai",
+        operation: "enrich_channel",
+        outcome: "payload_reuse",
+        retryAttempt: true,
+        durationMs: 0,
+      });
+    } else {
+      youtubeMetrics = deriveYoutubeMetrics(youtubeContext);
+      const openAiStartedAt = Date.now();
+      const result = await (async () => {
+        try {
+          return await enrichChannelWithOpenAi({
+            channel: {
+              youtubeChannelId: executionState.channel.youtubeChannelId,
+              title: executionState.channel.title,
+              handle: youtubeMetrics.normalizedHandle,
+              description: executionState.channel.description,
+            },
+            youtubeContext: youtubeMetrics.context,
+          });
+        } catch (error) {
+          logProviderSpend({
+            provider: "openai",
+            operation: "enrich_channel",
+            outcome: "error",
+            retryAttempt: openAiRetryAttempt,
+            durationMs: Date.now() - openAiStartedAt,
+          });
+
+          if (isOpenAiChannelEnrichmentError(error)) {
+            throw new ServiceError(error.code, error.status, error.message);
+          }
+
+          throw error;
+        }
+      })();
+
+      const tokenUsage = extractTokenUsage(result.rawPayload);
+
+      if (tokenUsage) {
+        logProviderSpend({
+          provider: "openai",
+          operation: "enrich_channel",
+          outcome: "fresh_call",
+          retryAttempt: openAiRetryAttempt,
+          durationMs: Date.now() - openAiStartedAt,
+          tokenUsage,
+        });
+      } else {
+        logProviderSpend({
+          provider: "openai",
+          operation: "enrich_channel",
+          outcome: "fresh_call",
+          retryAttempt: openAiRetryAttempt,
+          durationMs: Date.now() - openAiStartedAt,
+        });
+      }
+
+      await prisma.channelEnrichment.update({
+        where: {
+          channelId: input.channelId,
+        },
+        data: {
+          rawOpenaiPayload: toJsonValue(result.rawPayload),
+          rawOpenaiPayloadFetchedAt: new Date(),
+        },
+      });
+
+      enrichmentResult = result;
+    }
+
+    youtubeMetrics ??= deriveYoutubeMetrics(youtubeContext);
 
     await prisma.$transaction(async (tx) => {
       await tx.channelYoutubeContext.update({
@@ -432,7 +613,8 @@ export async function executeChannelLlmEnrichment(input: {
           status: PrismaChannelEnrichmentStatus.COMPLETED,
           completedAt: new Date(),
           lastError: null,
-          rawOpenaiPayload: toJsonValue(enrichmentResult.rawPayload),
+          youtubeFetchedAt: null,
+          rawOpenaiPayloadFetchedAt: null,
           summary: enrichmentResult.profile.summary,
           topics: toJsonValue(enrichmentResult.profile.topics),
           brandFitNotes: enrichmentResult.profile.brandFitNotes,

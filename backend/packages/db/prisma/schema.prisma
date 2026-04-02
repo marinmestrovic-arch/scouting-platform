@@ -216,6 +216,7 @@ model User {
   requestedHubspotPushBatches   HubspotPushBatch[]      @relation("HubspotPushRequestedBy")
   requestedHubspotImportBatches HubspotImportBatch[]    @relation("HubspotImportRequestedBy")
   createdCampaigns              Campaign[]              @relation("CampaignCreatedBy")
+  youtubeDiscoveryCache         YoutubeDiscoveryCache[]
 
   @@map("users")
 }
@@ -452,6 +453,8 @@ model ChannelEnrichment {
   completedAt       DateTime?               @map("completed_at")
   lastError         String?                 @map("last_error") @db.Text
   rawOpenaiPayload  Json?                   @map("raw_openai_payload")
+  rawOpenaiPayloadFetchedAt DateTime?       @map("raw_openai_payload_fetched_at")
+  youtubeFetchedAt  DateTime?               @map("youtube_fetched_at")
   summary           String?                 @db.Text
   topics            Json?
   brandFitNotes     String?                 @map("brand_fit_notes") @db.Text
@@ -520,6 +523,9 @@ model AdvancedReportRequest {
   startedAt         DateTime?                    @map("started_at")
   completedAt       DateTime?                    @map("completed_at")
   lastError         String?                      @map("last_error") @db.Text
+  providerFetchedAt DateTime?                    @map("provider_fetched_at")
+  lastProviderAttemptAt DateTime?                @map("last_provider_attempt_at")
+  nextProviderAttemptAt DateTime?                @map("next_provider_attempt_at")
   createdAt         DateTime                     @default(now()) @map("created_at")
   updatedAt         DateTime                     @updatedAt @map("updated_at")
   channel           Channel                      @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -828,4 +834,21 @@ model RunResult {
   @@unique([runRequestId, channelId], map: "run_results_run_request_id_channel_id_key")
   @@index([runRequestId], map: "run_results_run_request_id_idx")
   @@map("run_results")
+}
+
+model YoutubeDiscoveryCache {
+  id         String   @id @default(uuid()) @db.Uuid
+  cacheKey   String   @unique @map("cache_key")
+  userId     String   @map("user_id") @db.Uuid
+  query      String
+  maxResults Int      @map("max_results")
+  payload    Json
+  fetchedAt  DateTime @map("fetched_at")
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cacheKey], map: "youtube_discovery_cache_cache_key_idx")
+  @@index([expiresAt], map: "youtube_discovery_cache_expires_at_idx")
+  @@map("youtube_discovery_cache")
 }

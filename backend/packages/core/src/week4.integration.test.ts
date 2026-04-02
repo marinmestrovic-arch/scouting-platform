@@ -72,6 +72,17 @@ const ENRICHMENT_RESULT = {
   },
 } as const;
 
+const STORED_OPENAI_RAW_PAYLOAD = {
+  id: "resp-stored",
+  choices: [
+    {
+      message: {
+        content: JSON.stringify(ENRICHMENT_RESULT.profile),
+      },
+    },
+  ],
+} as const;
+
 integration("week 4 core integration", () => {
   let prisma: PrismaClient;
   let core: CoreModule | null = null;
@@ -544,6 +555,161 @@ integration("week 4 core integration", () => {
     });
     expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
     expect(enrichment.lastError).toContain("OpenAI rate limit exceeded");
+  });
+
+  it("skips OpenAI when rawOpenaiPayloadFetchedAt is set", async () => {
+    const user = await createUser();
+    const channel = await createChannel("UC-ENRICH-REUSE", "Reuse Channel");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: channel.id,
+        context: CACHED_CONTEXT,
+        fetchedAt: new Date(),
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.FAILED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+        rawOpenaiPayload: STORED_OPENAI_RAW_PAYLOAD,
+        rawOpenaiPayloadFetchedAt: new Date(),
+      },
+    });
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(enrichChannelWithOpenAiMock).not.toHaveBeenCalled();
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.COMPLETED);
+    expect(enrichment.summary).toBe(ENRICHMENT_RESULT.profile.summary);
+    expect(enrichment.brandFitNotes).toBe(ENRICHMENT_RESULT.profile.brandFitNotes);
+    expect(enrichment.confidence).toBe(ENRICHMENT_RESULT.profile.confidence);
+  });
+
+  it("skips YouTube fetch when youtubeFetchedAt is set", async () => {
+    const user = await createUser();
+    const channel = await createChannel("UC-ENRICH-YT-REUSE", "YouTube Reuse");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: channel.id,
+        context: CACHED_CONTEXT,
+        fetchedAt: new Date(),
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.FAILED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+        youtubeFetchedAt: new Date(),
+      },
+    });
+
+    enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(fetchYoutubeChannelContextMock).not.toHaveBeenCalled();
+  });
+
+  it("resets attempt markers to null on successful completion", async () => {
+    const user = await createUser();
+    const channel = await createChannel("UC-ENRICH-RESET", "Reset Markers");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
+    enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.youtubeFetchedAt).toBeNull();
+    expect(enrichment.rawOpenaiPayloadFetchedAt).toBeNull();
+  });
+
+  it("sets rawOpenaiPayloadFetchedAt even when the final transaction fails", async () => {
+    const user = await createUser();
+    const channel = await createChannel("UC-ENRICH-TX-FAIL", "Transaction Failure");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
+    enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
+
+    const db = await import("@scouting-platform/db");
+    const originalTransaction = db.prisma.$transaction.bind(db.prisma);
+    const transactionSpy = vi.spyOn(db.prisma, "$transaction");
+    transactionSpy.mockImplementation((async (arg: unknown, ...rest: unknown[]) => {
+      if (typeof arg === "function") {
+        return originalTransaction(async (tx) => {
+          await (arg as (client: unknown) => Promise<unknown>)(tx);
+          throw new Error("final transaction boom");
+        }, ...(rest as []));
+      }
+
+      return originalTransaction(arg as never, ...(rest as []));
+    }) as typeof db.prisma.$transaction);
+
+    try {
+      await expect(
+        getCore().executeChannelLlmEnrichment({
+          channelId: channel.id,
+          requestedByUserId: user.id,
+        }),
+      ).rejects.toThrow("final transaction boom");
+    } finally {
+      transactionSpy.mockRestore();
+    }
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.rawOpenaiPayloadFetchedAt).not.toBeNull();
+    expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
   });
 
   it("returns stale enrichment when completion age or channel freshness rules are violated", async () => {

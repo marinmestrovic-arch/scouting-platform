@@ -1,8 +1,44 @@
 # Codex Implementation Guide: Provider Spend Hardening
 
+- Status: In Progress
 - Source plan: `docs/plans/2026-03-provider-spend-hardening-plan.md`
 - Date: 2026-04-01
 - Owner: Ivan
+
+## Progress
+
+- 2026-04-01: Session 1 implemented by Codex.
+- 2026-04-01: Session 2 implemented by Codex.
+- 2026-04-01: Session 3 implemented by Codex.
+- Completed in code:
+  - Prisma schema additions for advanced report retry markers, enrichment attempt markers, and `YoutubeDiscoveryCache`
+  - Migration SQL files for the additive columns and discovery cache table
+  - OpenAI prompt slimming in `backend/packages/integrations/src/openai/channel-enrichment.ts`
+  - Migration safety coverage and OpenAI adapter test coverage for the slimmed prompt
+  - Retry-aware HypeAuditor execution that persists provider payloads before the final merge transaction and reuses them across retries
+  - Retry-aware YouTube/OpenAI enrichment execution that persists intermediate provider state and reuses stored payloads on retry
+  - Session 2 integration coverage for HypeAuditor cooldown/reuse paths and enrichment attempt-marker reuse/reset paths
+  - DB-backed YouTube discovery cache with per-user hashed cache keys and configurable TTL
+  - Structured provider spend telemetry across HypeAuditor, YouTube context, OpenAI, and YouTube discovery paths
+  - Session 3 week 3 integration coverage for discovery cache hits, expiry, and cache persistence
+- Local environment note:
+  - `DATABASE_URL` and `DATABASE_URL_TEST` were not exported in the shell and this worktree does not include a checked-in `.env`
+  - Local verification used the documented Postgres URLs from `.env.example` against the local Docker Postgres service
+- Verified:
+  - `pnpm --filter @scouting-platform/db exec vitest run src/migrations.test.ts`
+  - `pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts`
+  - `pnpm --filter @scouting-platform/db typecheck`
+  - `pnpm --filter @scouting-platform/integrations typecheck`
+  - `pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts src/hypeauditor/report.test.ts`
+  - `pnpm --filter @scouting-platform/core typecheck`
+  - `pnpm --filter @scouting-platform/core exec vitest run src/week3.integration.test.ts src/week4.integration.test.ts src/week5.integration.test.ts`
+  - `pnpm db:migrate:test`
+  - `pnpm --filter @scouting-platform/db exec vitest run src/postgres.integration.test.ts`
+- Local verification fixes:
+  - Added `backend/packages/core/vitest.config.ts` with `fileParallelism: false` so direct `vitest run ...` matches the package test script and DB-backed integration files do not deadlock each other
+  - Updated `backend/packages/core/src/approvals/index.ts` so fresh HypeAuditor executions reuse the already-parsed `result.insights`, while payload-reuse retries still derive from stored provider payloads
+- Remaining local verification caveat:
+  - `pnpm db:migrate` connected to local Postgres and applied `20260401120000_provider_spend_hardening_columns` plus `20260401130000_youtube_discovery_cache`, but `prisma migrate dev` then prompted for a new migration because this repo already has pre-existing schema-vs-migration drift outside the provider spend hardening scope
 
 This document is the implementation handoff for Codex. It is split into three sessions that must be
 executed in order. Each session is self-contained and testable before the next begins.
@@ -22,6 +58,8 @@ executed in order. Each session is self-contained and testable before the next b
 ---
 
 ## Session 1 — Schema + Prompt Slimming
+
+Status: Completed on 2026-04-01
 
 **Scope:** Two Prisma migrations + OpenAI prompt changes. No execution logic changes.
 
@@ -218,6 +256,8 @@ cd backend/packages/integrations && npx vitest run openai/channel-enrichment
 ---
 
 ## Session 2 — Execution Hardening (HypeAuditor + OpenAI + YouTube Context)
+
+Status: Completed on 2026-04-01
 
 **Scope:** Phase-split execution in `approvals/index.ts` and `enrichment/index.ts`. Requires Session 1
 migrations to be applied first.
@@ -527,6 +567,8 @@ cd backend/packages/core && npx vitest run week4 week5
 ---
 
 ## Session 3 — Discovery Cache + Telemetry
+
+Status: Completed on 2026-04-01
 
 **Scope:** DB-backed discovery cache in `runs/repository.ts` and structured spend logs across all
 three execution files. Requires Sessions 1 and 2 to be merged first.

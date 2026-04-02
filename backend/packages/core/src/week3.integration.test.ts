@@ -1,5 +1,20 @@
+import { createHash } from "node:crypto";
+
 import { PrismaClient, Role, RunRequestStatus, RunResultSource } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const discoverYoutubeChannelsMock = vi.fn();
+
+vi.mock("@scouting-platform/integrations", async () => {
+  const actual = await vi.importActual<typeof import("@scouting-platform/integrations")>(
+    "@scouting-platform/integrations",
+  );
+
+  return {
+    ...actual,
+    discoverYoutubeChannels: discoverYoutubeChannelsMock,
+  };
+});
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
 const integration = databaseUrl ? describe.sequential : describe.skip;
@@ -13,6 +28,18 @@ function jsonResponse(body: unknown, status = 200): Response {
       "content-type": "application/json",
     },
   });
+}
+
+function buildDiscoveryCacheKey(
+  query: string,
+  userId: string,
+  maxResults: number,
+): string {
+  const normalized = query.trim().toLowerCase().replaceAll(/\s+/g, " ");
+
+  return createHash("sha256")
+    .update(JSON.stringify({ query: normalized, userId, maxResults }))
+    .digest("hex");
 }
 
 integration("week 3 core integration", () => {
@@ -47,9 +74,15 @@ integration("week 3 core integration", () => {
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     vi.restoreAllMocks();
     vi.resetModules();
+    const actualIntegrations = await vi.importActual<typeof import("@scouting-platform/integrations")>(
+      "@scouting-platform/integrations",
+    );
+    discoverYoutubeChannelsMock.mockReset();
+    discoverYoutubeChannelsMock.mockImplementation(actualIntegrations.discoverYoutubeChannels);
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        youtube_discovery_cache,
         run_results,
         run_requests,
         saved_segments,
@@ -729,5 +762,178 @@ integration("week 3 core integration", () => {
     });
     expect(resultsCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns cached results on second run with same query and user", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "cache-user@example.com",
+        name: "Cache User",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    await getCore().setUserYoutubeApiKey({
+      userId: user.id,
+      rawKey: "yt-key-1",
+      actorUserId: user.id,
+    });
+
+    discoverYoutubeChannelsMock.mockResolvedValue([
+      {
+        youtubeChannelId: "UC-CACHE-1",
+        title: "Cached Creator",
+        handle: "@cached-creator",
+        description: "Cached discovery result",
+        thumbnailUrl: "https://img.example.com/cache.jpg",
+      },
+    ]);
+
+    const firstRun = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Cache Run One",
+        query: "gaming cache",
+      },
+    });
+    const secondRun = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Cache Run Two",
+        query: "gaming cache",
+      },
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: firstRun.id,
+      requestedByUserId: user.id,
+    });
+    await getCore().executeRunDiscover({
+      runRequestId: secondRun.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(discoverYoutubeChannelsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls YouTube again after cache expiry", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "expired-cache-user@example.com",
+        name: "Expired Cache User",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    await getCore().setUserYoutubeApiKey({
+      userId: user.id,
+      rawKey: "yt-key-1",
+      actorUserId: user.id,
+    });
+
+    const query = "gaming expired cache";
+    const cacheKey = buildDiscoveryCacheKey(query, user.id, 50);
+
+    await prisma.youtubeDiscoveryCache.create({
+      data: {
+        cacheKey,
+        userId: user.id,
+        query,
+        maxResults: 50,
+        payload: [
+          {
+            youtubeChannelId: "UC-OLD-CACHE",
+            title: "Old Cache",
+            handle: "@old-cache",
+            description: "Old cached result",
+            thumbnailUrl: "https://img.example.com/old-cache.jpg",
+          },
+        ],
+        fetchedAt: new Date(Date.now() - 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      },
+    });
+
+    discoverYoutubeChannelsMock.mockResolvedValue([
+      {
+        youtubeChannelId: "UC-FRESH-CACHE",
+        title: "Fresh Cache",
+        handle: "@fresh-cache",
+        description: "Fresh discovery result",
+        thumbnailUrl: "https://img.example.com/fresh-cache.jpg",
+      },
+    ]);
+
+    const runRequest = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Expired Cache Run",
+        query,
+      },
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: runRequest.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(discoverYoutubeChannelsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes a cache entry after a fresh call", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "cache-write-user@example.com",
+        name: "Cache Write User",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    await getCore().setUserYoutubeApiKey({
+      userId: user.id,
+      rawKey: "yt-key-1",
+      actorUserId: user.id,
+    });
+
+    const query = "gaming cache write";
+    discoverYoutubeChannelsMock.mockResolvedValue([
+      {
+        youtubeChannelId: "UC-CACHE-WRITE",
+        title: "Cache Write Creator",
+        handle: "@cache-write",
+        description: "Cache write result",
+        thumbnailUrl: "https://img.example.com/cache-write.jpg",
+      },
+    ]);
+
+    const runRequest = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Cache Write Run",
+        query,
+      },
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: runRequest.id,
+      requestedByUserId: user.id,
+    });
+
+    const cacheEntry = await prisma.youtubeDiscoveryCache.findUnique({
+      where: {
+        cacheKey: buildDiscoveryCacheKey(query, user.id, 50),
+      },
+    });
+
+    expect(cacheEntry).not.toBeNull();
+    expect(cacheEntry?.query).toBe(query);
+    expect(cacheEntry?.userId).toBe(user.id);
+    expect(cacheEntry?.maxResults).toBe(50);
   });
 });

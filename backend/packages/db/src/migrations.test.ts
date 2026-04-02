@@ -54,6 +54,14 @@ const week8LaunchReadinessIndexesMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260328113000_week8_launch_readiness_indexes/migration.sql",
 );
+const providerSpendHardeningColumnsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260401120000_provider_spend_hardening_columns/migration.sql",
+);
+const youtubeDiscoveryCacheMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260401130000_youtube_discovery_cache/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -220,6 +228,37 @@ describe("client metadata fields migration", () => {
     expect(migrationSql).toContain('"domain" TEXT');
     expect(migrationSql).toContain('"country_region" TEXT');
     expect(migrationSql).toContain('"city" TEXT');
+  });
+});
+
+describe("provider spend hardening columns migration", () => {
+  it("adds retry and fetched-at markers for report requests and enrichments", () => {
+    const migrationSql = readFileSync(providerSpendHardeningColumnsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('ALTER TABLE "advanced_report_requests"');
+    expect(migrationSql).toContain('"provider_fetched_at"');
+    expect(migrationSql).toContain('"last_provider_attempt_at"');
+    expect(migrationSql).toContain('"next_provider_attempt_at"');
+    expect(migrationSql).toContain('ALTER TABLE "channel_enrichments"');
+    expect(migrationSql).toContain('"raw_openai_payload_fetched_at"');
+    expect(migrationSql).toContain('"youtube_fetched_at"');
+  });
+});
+
+describe("youtube discovery cache migration", () => {
+  it("creates the youtube discovery cache table, indexes, and user foreign key", () => {
+    const migrationSql = readFileSync(youtubeDiscoveryCacheMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TABLE "youtube_discovery_cache"');
+    expect(migrationSql).toContain('"cache_key"   TEXT         NOT NULL');
+    expect(migrationSql).toContain('"payload"     JSONB        NOT NULL');
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "youtube_discovery_cache_cache_key_key"',
+    );
+    expect(migrationSql).toContain('CREATE INDEX "youtube_discovery_cache_expires_at_idx"');
+    expect(migrationSql).toContain(
+      'ADD CONSTRAINT "youtube_discovery_cache_user_id_fkey"',
+    );
   });
 });
 
