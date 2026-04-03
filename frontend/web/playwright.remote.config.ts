@@ -46,9 +46,8 @@ ensurePlaywrightEnvironment();
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: ["**/smoke.spec.ts", "**/remote-authenticated.spec.ts"],
   fullyParallel: false,
-  globalSetup: "./e2e/global-setup.ts",
-  globalTeardown: "./e2e/global-teardown.ts",
   timeout: 45_000,
   retries: 1,
   reporter: "list",

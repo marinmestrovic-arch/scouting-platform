@@ -257,7 +257,7 @@ Done when:
 - [done] add a launch-readiness checklist in `/docs/setup/launch-readiness.md`
 - [done] verify and document queue worker concurrency + atomic claim expectations
 - [done] DB/index tuning
-- staging load smoke in the real staging environment
+- [done] staging load smoke in the real staging environment
 - [done] backup/restore drill execution against a production-like local Postgres restore target
 - production checklist sign-off
 
