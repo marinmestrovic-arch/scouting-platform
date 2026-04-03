@@ -101,6 +101,89 @@ jobs:
       - name: Playwright smoke
         run: pnpm --filter @scouting-platform/web test:smoke
 
+  deploy-dokku:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'bobasaki/scouting-platform'
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-dokku-production
+      cancel-in-progress: false
+    env:
+      DOKKU_HOST: ${{ vars.DOKKU_HOST }}
+      DOKKU_WEB_APP: ${{ vars.DOKKU_WEB_APP }}
+      DOKKU_WORKER_APP: ${{ vars.DOKKU_WORKER_APP }}
+      DOKKU_WEB_URL: ${{ vars.DOKKU_WEB_URL }}
+      DOKKU_DEPLOY_SSH_KEY: ${{ secrets.DOKKU_DEPLOY_SSH_KEY }}
+      DOKKU_KNOWN_HOSTS: ${{ secrets.DOKKU_KNOWN_HOSTS }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate deploy configuration
+        run: |
+          for name in \
+            DOKKU_HOST \
+            DOKKU_WEB_APP \
+            DOKKU_WORKER_APP \
+            DOKKU_WEB_URL \
+            DOKKU_DEPLOY_SSH_KEY \
+            DOKKU_KNOWN_HOSTS
+          do
+            if [ -z "${!name}" ]; then
+              echo "Missing required deploy setting: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Configure SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DOKKU_DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DOKKU_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          cat <<EOF > ~/.ssh/config
+          Host dokku-production
+            HostName $DOKKU_HOST
+            User dokku
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Add Dokku remotes
+        run: |
+          git remote add dokku-web dokku-production:$DOKKU_WEB_APP
+          git remote add dokku-worker dokku-production:$DOKKU_WORKER_APP
+
+      - name: Deploy worker
+        run: git push dokku-worker HEAD:main
+
+      - name: Apply migrations
+        run: ssh dokku-production run "$DOKKU_WORKER_APP" pnpm --filter @scouting-platform/db db:migrate:deploy
+
+      - name: Deploy web
+        run: git push dokku-web HEAD:main
+
+      - name: Smoke check login page
+        run: curl --fail --silent --show-error --location "$DOKKU_WEB_URL/login" > /dev/null
+
+      - name: Gather Dokku logs on failure
+        if: failure()
+        run: |
+          ssh dokku-production logs "$DOKKU_WORKER_APP" -n 200 || true
+          ssh dokku-production logs "$DOKKU_WEB_APP" -n 200 || true
+
   postgres-image-scan:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule'
     continue-on-error: true
