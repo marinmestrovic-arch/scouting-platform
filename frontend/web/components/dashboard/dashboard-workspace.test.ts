@@ -115,6 +115,8 @@ describe("dashboard workspace", () => {
     expect(html).toContain("Brief Link");
     expect(html).toContain("Influencer List");
     expect(html).toContain("Coverage");
+    expect(html).toContain("Status");
+    expect(html).toContain("Started");
     expect(html).toContain("Actions");
     expect(html).toContain('href="/runs/run-1"');
     expect(html).toContain(">Gaming run<");
@@ -123,6 +125,8 @@ describe("dashboard workspace", () => {
     expect(html).toContain(">Manager<");
     expect(html).toContain('href="https://example.com/brief"');
     expect(html).toContain("60% coverage · 12/20");
+    expect(html).toContain(">Completed<");
+    expect(html).toContain(">2026-03-15 12:00 UTC<");
     expect(html).toContain("Export");
     expect(html).toContain("HubSpot");
     expect(html).toContain("All campaign managers");

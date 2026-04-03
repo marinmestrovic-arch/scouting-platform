@@ -44,7 +44,7 @@ The Playwright smoke suite now covers:
 
 - `pnpm infra:up`
 - confirm bootstrap completes without manual intervention
-- confirm seeded admin login works at `http://localhost:3000/login`
+- confirm seeded admin login works at `https://scouting.marsilux.com/login`
 - confirm web and worker boot cleanly from Docker logs
 - `pnpm infra:down`
 

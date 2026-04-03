@@ -38,7 +38,7 @@ function DashboardFallback() {
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Skeleton borderRadius="var(--radius-md)" height="2rem" width="5rem" />
       </div>
-      <SkeletonTable columns={7} rows={6} />
+      <SkeletonTable columns={9} rows={6} />
     </SkeletonPageBody>
   );
 }

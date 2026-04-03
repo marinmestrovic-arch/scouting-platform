@@ -16,9 +16,9 @@ vi.mock("../../../lib/cached-auth", () => ({
   getSession: getSessionMock,
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  listCampaignManagers: listCampaignManagersMock,
-  listCampaigns: listCampaignsMock,
+vi.mock("../../../lib/cached-data", () => ({
+  getCachedCampaignManagers: listCampaignManagersMock,
+  getCachedCampaigns: listCampaignsMock,
 }));
 
 vi.mock("../../../components/scouting/new-scouting-workspace", () => ({

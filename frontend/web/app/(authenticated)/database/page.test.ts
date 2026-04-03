@@ -1,9 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStringAsync } from "../../../lib/test-render";
 
-const { getSessionMock, databaseAdminWorkspaceMock } = vi.hoisted(() => ({
+const { getSessionMock, databaseAdminWorkspaceMock, getCachedCampaignsMock, getCachedClientsMock, getCachedDropdownValuesMock } =
+  vi.hoisted(() => ({
   getSessionMock: vi.fn(),
   databaseAdminWorkspaceMock: vi.fn(() => "database-admin-workspace"),
+  getCachedCampaignsMock: vi.fn(async () => ({
+    items: [],
+    filterOptions: { clients: [], markets: [] },
+    permissions: { canCreate: true, role: "user", userType: "campaign_manager" as const },
+  })),
+  getCachedClientsMock: vi.fn(async () => ({
+    items: [],
+    permissions: { canCreate: true },
+  })),
+  getCachedDropdownValuesMock: vi.fn(async () => ({
+    items: [],
+  })),
 }));
 
 vi.mock("../../../lib/cached-auth", () => ({
@@ -18,16 +31,10 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  listCampaigns: vi.fn(async () => ({
-    items: [],
-    filters: { clients: [], markets: [] },
-    permissions: { canCreate: true },
-  })),
-  listClients: vi.fn(async () => ({
-    items: [],
-    permissions: { canCreate: true },
-  })),
+vi.mock("../../../lib/cached-data", () => ({
+  getCachedCampaigns: getCachedCampaignsMock,
+  getCachedClients: getCachedClientsMock,
+  getCachedDropdownValues: getCachedDropdownValuesMock,
 }));
 
 import DatabasePage from "./page";

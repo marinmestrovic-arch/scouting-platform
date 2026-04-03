@@ -13,8 +13,8 @@ vi.mock("../../../../../lib/cached-auth", () => ({
   getSession: getSessionMock
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  listUsers: listUsersMock,
+vi.mock("../../../../../lib/cached-data", () => ({
+  getCachedUsers: listUsersMock,
 }));
 
 vi.mock("next/link", async () => {

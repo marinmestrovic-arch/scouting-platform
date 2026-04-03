@@ -18,8 +18,8 @@ vi.mock("../../../lib/cached-auth", () => ({
   getSession: getSessionMock,
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  listRecentRuns: listRecentRunsMock,
+vi.mock("../../../lib/cached-data", () => ({
+  getCachedRecentRuns: listRecentRunsMock,
 }));
 
 vi.mock("../../../components/dashboard/dashboard-workspace", () => ({

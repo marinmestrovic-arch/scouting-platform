@@ -21,8 +21,8 @@ vi.mock("../../../../lib/cached-auth", () => ({
   getSession: getSessionMock,
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  getChannelById: getChannelByIdMock,
+vi.mock("../../../../lib/cached-data", () => ({
+  getCachedChannelById: getChannelByIdMock,
 }));
 
 vi.mock("../../../../components/catalog/channel-detail-shell", () => ({

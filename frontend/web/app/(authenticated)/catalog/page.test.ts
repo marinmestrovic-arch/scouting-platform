@@ -21,9 +21,9 @@ vi.mock("../../../lib/cached-auth", () => ({
   getSession: getSessionMock,
 }));
 
-vi.mock("@scouting-platform/core", () => ({
-  listChannels: listChannelsMock,
-  listUserSegments: listUserSegmentsMock,
+vi.mock("../../../lib/cached-data", () => ({
+  getCachedChannels: listChannelsMock,
+  getCachedUserSegments: listUserSegmentsMock,
 }));
 
 vi.mock("../../../components/catalog/catalog-table-shell", () => ({
