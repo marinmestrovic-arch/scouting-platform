@@ -59,6 +59,8 @@ This guide assumes you can SSH into the host and run `dokku` commands directly.
 Set these on `scouting-web`:
 
 - `AUTH_SECRET`
+- `AUTH_TRUST_HOST=true`
+- `AUTH_URL` (for example `https://scouting.example.com`)
 - `APP_ENCRYPTION_KEY` (must be exactly 32 characters)
 - `NEXT_PUBLIC_APP_URL` (for example `https://scouting.example.com`)
 - `PG_BOSS_SCHEMA=pgboss`
@@ -83,6 +85,7 @@ Notes:
 - quote secrets if they contain `$`, `:`, spaces, or other shell-sensitive characters
 - `DATABASE_URL_TEST` is not needed in production
 - `AUTH_SECRET` is required on `scouting-web`; it is not required on `scouting-worker`
+- `AUTH_URL` should match the public HTTPS origin for the web app when running behind Dokku's proxy
 
 ## Provision the apps
 
@@ -116,6 +119,8 @@ Example configuration:
 ```bash
 dokku config:set scouting-web \
   AUTH_SECRET='replace-with-long-random-secret' \
+  AUTH_TRUST_HOST='true' \
+  AUTH_URL='https://scouting.example.com' \
   APP_ENCRYPTION_KEY='32-char-random-string-goes-here' \
   NEXT_PUBLIC_APP_URL='https://scouting.example.com' \
   PG_BOSS_SCHEMA='pgboss' \

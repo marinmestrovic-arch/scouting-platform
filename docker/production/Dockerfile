@@ -50,6 +50,14 @@ COPY . .
 RUN pnpm --filter @scouting-platform/db db:generate \
  && pnpm --filter @scouting-platform/web build
 
+# Next.js standalone output does not retain the native argon2 package tree.
+# Copy the minimal runtime closure explicitly for credential auth.
+RUN mkdir -p /workspace/runtime-node-modules/node_modules/@phc \
+ && cp -R /workspace/node_modules/.pnpm/argon2@*/node_modules/argon2 /workspace/runtime-node-modules/node_modules/argon2 \
+ && cp -R /workspace/node_modules/.pnpm/node-gyp-build@*/node_modules/node-gyp-build /workspace/runtime-node-modules/node_modules/node-gyp-build \
+ && cp -R /workspace/node_modules/.pnpm/node-addon-api@*/node_modules/node-addon-api /workspace/runtime-node-modules/node_modules/node-addon-api \
+ && cp -R /workspace/node_modules/.pnpm/@phc+format@*/node_modules/@phc/format /workspace/runtime-node-modules/node_modules/@phc/format
+
 # --- Stage 3: Production runtime ---
 FROM node:22-bookworm-slim AS runtime
 
@@ -66,6 +74,7 @@ WORKDIR /app
 COPY --from=build --chown=nextjs:nodejs /workspace/frontend/web/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /workspace/frontend/web/.next/static ./frontend/web/.next/static
 COPY --from=build --chown=nextjs:nodejs /workspace/frontend/web/public ./frontend/web/public
+COPY --from=build --chown=nextjs:nodejs /workspace/runtime-node-modules/node_modules ./node_modules
 
 USER nextjs
 ENV NODE_ENV=production
