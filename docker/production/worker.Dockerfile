@@ -13,13 +13,16 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=/pnpm:$PATH
 ENV HUSKY=0
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.6.1 --activate
 
 WORKDIR /workspace
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile --prod=false
+RUN pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 
