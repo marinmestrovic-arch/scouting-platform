@@ -5,15 +5,17 @@ import type { PgBoss } from "pg-boss";
 import { parseJobPayload } from "@scouting-platform/contracts";
 import { executeRunDiscover } from "@scouting-platform/core";
 
+import type { WorkerJobOptions } from "./runtime-config";
+
 type RunsDiscoverJob = {
   data: unknown;
 };
 
-export const runsDiscoverWorkerOptions = {
+export const runsDiscoverWorkerOptions: WorkerJobOptions = {
   teamSize: 1,
-  teamConcurrency: 1,
+  teamConcurrency: 2,
   batchSize: 1,
-} as const;
+};
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -25,10 +27,11 @@ function formatErrorMessage(error: unknown): string {
 
 export async function registerRunsDiscoverWorker(
   boss: Pick<PgBoss, "work">,
+  options: WorkerJobOptions = runsDiscoverWorkerOptions,
 ): Promise<void> {
   await boss.work(
     "runs.discover",
-    runsDiscoverWorkerOptions,
+    options,
     async (job: RunsDiscoverJob | RunsDiscoverJob[]) => {
       const jobs = Array.isArray(job) ? job : [job];
 

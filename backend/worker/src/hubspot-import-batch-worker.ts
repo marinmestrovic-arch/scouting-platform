@@ -5,15 +5,17 @@ import type { PgBoss } from "pg-boss";
 import { parseJobPayload } from "@scouting-platform/contracts";
 import { executeHubspotImportBatch } from "@scouting-platform/core";
 
+import type { WorkerJobOptions } from "./runtime-config";
+
 type HubspotImportBatchJob = {
   data: unknown;
 };
 
-export const hubspotImportBatchWorkerOptions = {
+export const hubspotImportBatchWorkerOptions: WorkerJobOptions = {
   teamSize: 1,
   teamConcurrency: 1,
   batchSize: 1,
-} as const;
+};
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -25,10 +27,11 @@ function formatErrorMessage(error: unknown): string {
 
 export async function registerHubspotImportBatchWorker(
   boss: Pick<PgBoss, "work">,
+  options: WorkerJobOptions = hubspotImportBatchWorkerOptions,
 ): Promise<void> {
   await boss.work(
     "hubspot.import.batch",
-    hubspotImportBatchWorkerOptions,
+    options,
     async (job: HubspotImportBatchJob | HubspotImportBatchJob[]) => {
       const jobs = Array.isArray(job) ? job : [job];
 

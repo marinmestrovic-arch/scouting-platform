@@ -5,15 +5,17 @@ import type { PgBoss } from "pg-boss";
 import { parseJobPayload } from "@scouting-platform/contracts";
 import { executeCsvExportBatch } from "@scouting-platform/core";
 
+import type { WorkerJobOptions } from "./runtime-config";
+
 type ExportsCsvGenerateJob = {
   data: unknown;
 };
 
-export const exportsCsvGenerateWorkerOptions = {
+export const exportsCsvGenerateWorkerOptions: WorkerJobOptions = {
   teamSize: 1,
   teamConcurrency: 1,
   batchSize: 1,
-} as const;
+};
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -25,10 +27,11 @@ function formatErrorMessage(error: unknown): string {
 
 export async function registerExportsCsvGenerateWorker(
   boss: Pick<PgBoss, "work">,
+  options: WorkerJobOptions = exportsCsvGenerateWorkerOptions,
 ): Promise<void> {
   await boss.work(
     "exports.csv.generate",
-    exportsCsvGenerateWorkerOptions,
+    options,
     async (job: ExportsCsvGenerateJob | ExportsCsvGenerateJob[]) => {
       const jobs = Array.isArray(job) ? job : [job];
 

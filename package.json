@@ -39,7 +39,8 @@
     "db:studio": "sh scripts/with-local-env.sh pnpm --filter @scouting-platform/db db:studio",
     "db:seed:admin": "sh scripts/with-local-env.sh tsx scripts/seed-admin.ts",
     "db:seed:workspace": "sh scripts/with-local-env.sh tsx scripts/seed-workspace.ts",
-    "db:reset:demo": "sh scripts/with-local-env.sh tsx scripts/reset-demo.ts"
+    "db:reset:demo": "sh scripts/with-local-env.sh tsx scripts/reset-demo.ts",
+    "capacity:check": "sh scripts/with-local-env.sh tsx scripts/capacity-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.23.0",

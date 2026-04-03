@@ -177,5 +177,28 @@ if (!databaseUrl) {
       expect(requestColumns[0]?.last_provider_attempt_at).toBe("last_provider_attempt_at");
       expect(requestColumns[0]?.next_provider_attempt_at).toBe("next_provider_attempt_at");
     });
+
+    it("sees catalog capacity indexes after migrations are applied", async () => {
+      const indexRows = await prisma.$queryRaw<Array<{ indexname: string | null }>>`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'channels'
+          AND indexname IN (
+            'channels_created_at_id_idx',
+            'channels_title_trgm_idx',
+            'channels_handle_trgm_idx',
+            'channels_youtube_channel_id_trgm_idx'
+          )
+        ORDER BY indexname ASC
+      `;
+
+      expect(indexRows.map((row) => row.indexname)).toEqual([
+        "channels_created_at_id_idx",
+        "channels_handle_trgm_idx",
+        "channels_title_trgm_idx",
+        "channels_youtube_channel_id_trgm_idx",
+      ]);
+    });
   });
 }

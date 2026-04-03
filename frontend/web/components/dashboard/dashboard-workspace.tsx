@@ -4,6 +4,7 @@ import type { ListRecentRunsResponse, ListRunsQuery } from "@scouting-platform/c
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
+import { useDocumentVisibility } from "../../lib/document-visibility";
 import { getCsvPreviewHref, getHubspotPreviewHref } from "../../lib/navigation";
 import {
   formatCampaignManagerLabel,
@@ -97,6 +98,7 @@ export function DashboardWorkspace({
   );
   const [filters, setFilters] = useState<DashboardFiltersState>(initialFilters);
   const [reloadToken, setReloadToken] = useState(0);
+  const isDocumentVisible = useDocumentVisibility();
 
   useEffect(() => {
     let didCancel = false;
@@ -128,7 +130,10 @@ export function DashboardWorkspace({
           error: null,
         });
 
-        if (recentRuns.items.some((run) => shouldPollRunStatus(run.status))) {
+        if (
+          isDocumentVisible &&
+          recentRuns.items.some((run) => shouldPollRunStatus(run.status))
+        ) {
           timeoutId = setTimeout(() => {
             void loadRuns(true);
           }, RUN_STATUS_POLL_INTERVAL_MS);
@@ -156,7 +161,7 @@ export function DashboardWorkspace({
         clearTimeout(timeoutId);
       }
     };
-  }, [filters, initialData, reloadToken]);
+  }, [filters, initialData, isDocumentVisible, reloadToken]);
 
   const filterOptions = requestState.status === "ready" ? requestState.data.filterOptions : null;
   const campaignManagerOptions: SearchableSelectOption[] = useMemo(

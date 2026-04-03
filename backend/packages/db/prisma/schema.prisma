@@ -370,6 +370,10 @@ model Channel {
   hubspotImportBatchRows HubspotImportBatchRow[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
+  @@index([createdAt, id], map: "channels_created_at_id_idx")
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "channels_title_trgm_idx")
+  @@index([handle(ops: raw("gin_trgm_ops"))], type: Gin, map: "channels_handle_trgm_idx")
+  @@index([youtubeChannelId(ops: raw("gin_trgm_ops"))], type: Gin, map: "channels_youtube_channel_id_trgm_idx")
   @@map("channels")
 }
 

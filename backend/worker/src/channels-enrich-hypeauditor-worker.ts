@@ -5,15 +5,17 @@ import type { PgBoss } from "pg-boss";
 import { parseJobPayload } from "@scouting-platform/contracts";
 import { executeAdvancedReportRequest } from "@scouting-platform/core";
 
+import type { WorkerJobOptions } from "./runtime-config";
+
 type ChannelsEnrichHypeAuditorJob = {
   data: unknown;
 };
 
-export const channelsEnrichHypeAuditorWorkerOptions = {
+export const channelsEnrichHypeAuditorWorkerOptions: WorkerJobOptions = {
   teamSize: 1,
   teamConcurrency: 1,
   batchSize: 1,
-} as const;
+};
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -25,10 +27,11 @@ function formatErrorMessage(error: unknown): string {
 
 export async function registerChannelsEnrichHypeAuditorWorker(
   boss: Pick<PgBoss, "work">,
+  options: WorkerJobOptions = channelsEnrichHypeAuditorWorkerOptions,
 ): Promise<void> {
   await boss.work(
     "channels.enrich.hypeauditor",
-    channelsEnrichHypeAuditorWorkerOptions,
+    options,
     async (job: ChannelsEnrichHypeAuditorJob | ChannelsEnrichHypeAuditorJob[]) => {
       const jobs = Array.isArray(job) ? job : [job];
 

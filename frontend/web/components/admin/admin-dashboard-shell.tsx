@@ -9,6 +9,7 @@ import type {
 import Link from "next/link";
 import React, { useEffect, useState, type ReactElement } from "react";
 
+import { useDocumentVisibility } from "../../lib/document-visibility";
 import {
   AdminDashboardApiError,
   fetchAdminDashboard,
@@ -415,6 +416,7 @@ export function AdminDashboardShell() {
   const [dashboardState, setDashboardState] = useState<AdminDashboardState>(INITIAL_DASHBOARD_STATE);
   const [reloadToken, setReloadToken] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isDocumentVisible = useDocumentVisibility();
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -460,7 +462,12 @@ export function AdminDashboardShell() {
   }, [reloadToken]);
 
   useEffect(() => {
-    if (dashboardState.status !== "ready" || !shouldPollAdminDashboard(dashboardState.data) || isRefreshing) {
+    if (
+      dashboardState.status !== "ready" ||
+      !isDocumentVisible ||
+      !shouldPollAdminDashboard(dashboardState.data) ||
+      isRefreshing
+    ) {
       return;
     }
 
@@ -471,7 +478,7 @@ export function AdminDashboardShell() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [dashboardState, isRefreshing]);
+  }, [dashboardState, isDocumentVisible, isRefreshing]);
 
   function handleReload(): void {
     setReloadToken((value) => value + 1);

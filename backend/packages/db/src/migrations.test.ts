@@ -62,6 +62,10 @@ const youtubeDiscoveryCacheMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260401130000_youtube_discovery_cache/migration.sql",
 );
+const capacityHardeningCatalogIndexesMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260403153000_capacity_hardening_catalog_indexes/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -259,6 +263,18 @@ describe("youtube discovery cache migration", () => {
     expect(migrationSql).toContain(
       'ADD CONSTRAINT "youtube_discovery_cache_user_id_fkey"',
     );
+  });
+});
+
+describe("capacity hardening catalog indexes migration", () => {
+  it("installs pg_trgm and adds hot-path catalog indexes", () => {
+    const migrationSql = readFileSync(capacityHardeningCatalogIndexesMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(migrationSql).toContain('CREATE INDEX "channels_created_at_id_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "channels_title_trgm_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "channels_handle_trgm_idx"');
+    expect(migrationSql).toContain('CREATE INDEX "channels_youtube_channel_id_trgm_idx"');
   });
 });
 

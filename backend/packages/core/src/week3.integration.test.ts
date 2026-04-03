@@ -32,13 +32,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function buildDiscoveryCacheKey(
   query: string,
-  userId: string,
   maxResults: number,
 ): string {
   const normalized = query.trim().toLowerCase().replaceAll(/\s+/g, " ");
 
   return createHash("sha256")
-    .update(JSON.stringify({ query: normalized, userId, maxResults }))
+    .update(JSON.stringify({ query: normalized, maxResults }))
     .digest("hex");
 }
 
@@ -338,6 +337,107 @@ integration("week 3 core integration", () => {
     expect(recentRuns.items[9]?.name).toBe("Owner Run 3");
     expect(recentRuns.items.some((run) => run.name === "Owner Run 2")).toBe(false);
     expect(recentRuns.items.some((run) => run.name === "Other User Run")).toBe(false);
+  });
+
+  it("derives dashboard filter options from distinct scoped run metadata", async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: "owner-filters@example.com",
+        name: "Owner Filters",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+    const managerA = await prisma.user.create({
+      data: {
+        email: "manager-a@example.com",
+        name: "Manager A",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+    const managerB = await prisma.user.create({
+      data: {
+        email: "manager-b@example.com",
+        name: "Manager B",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+    const otherUser = await prisma.user.create({
+      data: {
+        email: "other-filters@example.com",
+        name: "Other Filters",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    await prisma.runRequest.createMany({
+      data: [
+        {
+          requestedByUserId: owner.id,
+          name: "Owner Filter Run One",
+          query: "owner-filter-1",
+          status: RunRequestStatus.COMPLETED,
+          client: "Sony",
+          market: "DACH",
+          campaignManagerUserId: managerA.id,
+        },
+        {
+          requestedByUserId: owner.id,
+          name: "Owner Filter Run Two",
+          query: "owner-filter-2",
+          status: RunRequestStatus.COMPLETED,
+          client: "Sony",
+          market: "Nordics",
+          campaignManagerUserId: managerA.id,
+        },
+        {
+          requestedByUserId: owner.id,
+          name: "Owner Filter Run Three",
+          query: "owner-filter-3",
+          status: RunRequestStatus.COMPLETED,
+          client: "LEGO",
+          market: "DACH",
+          campaignManagerUserId: managerB.id,
+        },
+        {
+          requestedByUserId: otherUser.id,
+          name: "Other Filter Run",
+          query: "other-filter",
+          status: RunRequestStatus.COMPLETED,
+          client: "Hidden Client",
+          market: "Hidden Market",
+          campaignManagerUserId: otherUser.id,
+        },
+      ],
+    });
+
+    const recentRuns = await getCore().listRecentRuns({
+      userId: owner.id,
+      role: "user",
+      limit: 5,
+    });
+
+    expect(recentRuns.filterOptions.campaignManagers).toEqual([
+      {
+        id: managerA.id,
+        email: "manager-a@example.com",
+        name: "Manager A",
+      },
+      {
+        id: managerB.id,
+        email: "manager-b@example.com",
+        name: "Manager B",
+      },
+    ]);
+    expect(recentRuns.filterOptions.clients).toEqual(["LEGO", "Sony"]);
+    expect(recentRuns.filterOptions.markets).toEqual(["DACH", "Nordics"]);
   });
 
   it("executes discovery and writes minimal run results", async () => {
@@ -836,7 +936,7 @@ integration("week 3 core integration", () => {
     });
 
     const query = "gaming expired cache";
-    const cacheKey = buildDiscoveryCacheKey(query, user.id, 50);
+    const cacheKey = buildDiscoveryCacheKey(query, 50);
 
     await prisma.youtubeDiscoveryCache.create({
       data: {
@@ -927,7 +1027,7 @@ integration("week 3 core integration", () => {
 
     const cacheEntry = await prisma.youtubeDiscoveryCache.findUnique({
       where: {
-        cacheKey: buildDiscoveryCacheKey(query, user.id, 50),
+        cacheKey: buildDiscoveryCacheKey(query, 50),
       },
     });
 
@@ -935,5 +1035,73 @@ integration("week 3 core integration", () => {
     expect(cacheEntry?.query).toBe(query);
     expect(cacheEntry?.userId).toBe(user.id);
     expect(cacheEntry?.maxResults).toBe(50);
+  });
+
+  it("shares cached discovery results across managers with the same normalized query", async () => {
+    const firstUser = await prisma.user.create({
+      data: {
+        email: "cache-first@example.com",
+        name: "Cache First",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+    const secondUser = await prisma.user.create({
+      data: {
+        email: "cache-second@example.com",
+        name: "Cache Second",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    await getCore().setUserYoutubeApiKey({
+      userId: firstUser.id,
+      rawKey: "yt-key-1",
+      actorUserId: firstUser.id,
+    });
+    await getCore().setUserYoutubeApiKey({
+      userId: secondUser.id,
+      rawKey: "yt-key-2",
+      actorUserId: secondUser.id,
+    });
+
+    discoverYoutubeChannelsMock.mockResolvedValue([
+      {
+        youtubeChannelId: "UC-CROSS-USER-CACHE",
+        title: "Shared Cache Creator",
+        handle: "@shared-cache",
+        description: "Shared discovery result",
+        thumbnailUrl: "https://img.example.com/shared-cache.jpg",
+      },
+    ]);
+
+    const firstRun = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: firstUser.id,
+        name: "Shared Cache Run One",
+        query: "  Shared  Cache Query ",
+      },
+    });
+    const secondRun = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: secondUser.id,
+        name: "Shared Cache Run Two",
+        query: "shared cache query",
+      },
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: firstRun.id,
+      requestedByUserId: firstUser.id,
+    });
+    await getCore().executeRunDiscover({
+      runRequestId: secondRun.id,
+      requestedByUserId: secondUser.id,
+    });
+
+    expect(discoverYoutubeChannelsMock).toHaveBeenCalledTimes(1);
   });
 });

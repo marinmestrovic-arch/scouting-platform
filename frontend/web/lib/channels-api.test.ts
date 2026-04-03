@@ -18,6 +18,18 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
+function getFetchRequestUrl(input: string | URL | Request): string {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  return input.url;
+}
+
 function buildChannelDetailPayload() {
   return {
     id: "53adac17-f39d-4731-a61f-194150fbc431",
@@ -382,6 +394,69 @@ describe("channels api helpers", () => {
         message: "Channel not found.",
       },
     });
+  });
+
+  it("caps concurrent batch enrichment requests", async () => {
+    const channelIds = ["channel-1", "channel-2", "channel-3", "channel-4", "channel-5", "channel-6"];
+    const pendingResponses: Array<{
+      channelId: string;
+      resolve: (response: Response) => void;
+    }> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const requestUrl = getFetchRequestUrl(input);
+      const channelId = requestUrl.split("/").at(-2) ?? "unknown-channel";
+
+      return new Promise<Response>((resolve) => {
+        pendingResponses.push({
+          channelId,
+          resolve,
+        });
+      });
+    });
+
+    const responsePromise = requestChannelEnrichmentBatch(channelIds);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(pendingResponses).toHaveLength(4);
+
+    const firstPending = pendingResponses.shift();
+
+    if (!firstPending) {
+      throw new Error("Expected first pending enrichment request");
+    }
+
+    firstPending.resolve(
+      jsonResponse({
+        channelId: firstPending.channelId,
+        enrichment: buildChannelDetailPayload().enrichment,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(5);
+
+    while (pendingResponses.length > 0) {
+      const pending = pendingResponses.shift();
+
+      if (!pending) {
+        continue;
+      }
+
+      pending.resolve(
+        jsonResponse({
+          channelId: pending.channelId,
+          enrichment: buildChannelDetailPayload().enrichment,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const response = await responsePromise;
+
+    expect(response).toHaveLength(6);
   });
 
   it("surfaces actionable enrichment request errors from the API", async () => {

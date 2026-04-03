@@ -25,6 +25,7 @@ import {
   type BatchChannelEnrichmentRequestResult,
   fetchChannels,
 } from "../../lib/channels-api";
+import { useDocumentVisibility } from "../../lib/document-visibility";
 import {
   createCsvExportBatch,
   fetchCsvExportBatchDetail,
@@ -1640,6 +1641,7 @@ export function CatalogTableShell({
   const [latestHubspotPushBatch, setLatestHubspotPushBatch] =
     useState<CatalogHubspotPushBatchState>(IDLE_HUBSPOT_PUSH_BATCH_STATE);
   const [latestHubspotPushBatchReloadToken, setLatestHubspotPushBatchReloadToken] = useState(0);
+  const isDocumentVisible = useDocumentVisibility();
 
   useEffect(() => {
     setDraftFilters((current) => {
@@ -1699,7 +1701,7 @@ export function CatalogTableShell({
           error: null,
         });
 
-        if (shouldPollCatalogEnrichmentRows(data)) {
+        if (isDocumentVisible && shouldPollCatalogEnrichmentRows(data)) {
           timeoutId = setTimeout(() => {
             void loadChannels(true);
           }, CATALOG_ENRICHMENT_POLL_INTERVAL_MS);
@@ -1730,7 +1732,7 @@ export function CatalogTableShell({
         clearTimeout(timeoutId);
       }
     };
-  }, [appliedStateKey, initialData, pageSize, reloadToken]);
+  }, [appliedStateKey, initialData, isDocumentVisible, pageSize, reloadToken]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1903,7 +1905,7 @@ export function CatalogTableShell({
     const shouldPollCsvExportBatch = shouldPollCatalogCsvExportBatch(latestCsvExportBatch);
     const shouldPollHubspotBatch = shouldPollCatalogHubspotPushBatch(latestHubspotPushBatch);
 
-    if (!shouldPollCsvExportBatch && !shouldPollHubspotBatch) {
+    if (!isDocumentVisible || (!shouldPollCsvExportBatch && !shouldPollHubspotBatch)) {
       return;
     }
 
@@ -1920,7 +1922,7 @@ export function CatalogTableShell({
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [latestCsvExportBatch, latestHubspotPushBatch]);
+  }, [isDocumentVisible, latestCsvExportBatch, latestHubspotPushBatch]);
 
   function replaceCatalogState(state: CatalogUrlState): void {
     router.replace(buildCatalogHref(pathname, state));

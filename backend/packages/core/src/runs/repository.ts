@@ -81,13 +81,12 @@ const YOUTUBE_DISCOVERY_CACHE_TTL_MINUTES = Number(
 
 function buildDiscoveryCacheKey(
   query: string,
-  userId: string,
   maxResults: number,
 ): string {
   const normalized = query.trim().toLowerCase().replaceAll(/\s+/g, " ");
 
   return createHash("sha256")
-    .update(JSON.stringify({ query: normalized, userId, maxResults }))
+    .update(JSON.stringify({ query: normalized, maxResults }))
     .digest("hex");
 }
 
@@ -414,34 +413,70 @@ async function getRunFilterOptions(input: {
   userId: string;
   role: "admin" | "user";
 }): Promise<RunFilterOptions> {
-  const runs = await prisma.runRequest.findMany({
-    where: buildRunScopeWhere({
-      userId: input.userId,
-      role: input.role,
-    }),
-    select: {
-      client: true,
-      market: true,
-      campaignManagerUser: {
-        select: campaignManagerSelect,
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
+  const scopeWhere = buildRunScopeWhere({
+    userId: input.userId,
+    role: input.role,
   });
+  const [campaignManagerGroups, clientGroups, marketGroups] = await Promise.all([
+    prisma.runRequest.groupBy({
+      by: ["campaignManagerUserId"],
+      where: {
+        ...scopeWhere,
+        campaignManagerUserId: {
+          not: null,
+        },
+      },
+    }),
+    prisma.runRequest.groupBy({
+      by: ["client"],
+      where: {
+        ...scopeWhere,
+        client: {
+          not: null,
+        },
+      },
+    }),
+    prisma.runRequest.groupBy({
+      by: ["market"],
+      where: {
+        ...scopeWhere,
+        market: {
+          not: null,
+        },
+      },
+    }),
+  ]);
+  const campaignManagerIds = campaignManagerGroups
+    .map((group) => group.campaignManagerUserId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const campaignManagerUsers =
+    campaignManagerIds.length > 0
+      ? await prisma.user.findMany({
+          where: {
+            id: {
+              in: campaignManagerIds,
+            },
+          },
+          select: campaignManagerSelect,
+        })
+      : [];
+  const campaignManagerUsersById = new Map(
+    campaignManagerUsers.map((campaignManager) => [campaignManager.id, campaignManager] as const),
+  );
 
   const campaignManagers = new Map<string, RunFilterOptions["campaignManagers"][number]>();
 
-  for (const run of runs) {
-    if (!run.campaignManagerUser) {
+  for (const campaignManagerId of campaignManagerIds) {
+    const campaignManagerUser = campaignManagerUsersById.get(campaignManagerId);
+
+    if (!campaignManagerUser) {
       continue;
     }
 
-    campaignManagers.set(run.campaignManagerUser.id, {
-      id: run.campaignManagerUser.id,
-      email: run.campaignManagerUser.email,
-      name: run.campaignManagerUser.name,
+    campaignManagers.set(campaignManagerUser.id, {
+      id: campaignManagerUser.id,
+      email: campaignManagerUser.email,
+      name: campaignManagerUser.name,
     });
   }
 
@@ -449,8 +484,8 @@ async function getRunFilterOptions(input: {
     campaignManagers: [...campaignManagers.values()].sort((left, right) =>
       (left.name?.trim() || left.email).localeCompare(right.name?.trim() || right.email),
     ),
-    clients: uniqueSorted(runs.map((run) => run.client)),
-    markets: uniqueSorted(runs.map((run) => run.market)),
+    clients: uniqueSorted(clientGroups.map((group) => group.client)),
+    markets: uniqueSorted(marketGroups.map((group) => group.market)),
   };
 }
 
@@ -761,11 +796,7 @@ export async function executeRunDiscover(input: {
 
     const MAX_RESULTS = 50;
     const now = new Date();
-    const cacheKey = buildDiscoveryCacheKey(
-      runRequest.query,
-      input.requestedByUserId,
-      MAX_RESULTS,
-    );
+    const cacheKey = buildDiscoveryCacheKey(runRequest.query, MAX_RESULTS);
     const cacheHit = await prisma.youtubeDiscoveryCache.findUnique({
       where: {
         cacheKey,

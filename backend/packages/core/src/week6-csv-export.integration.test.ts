@@ -401,6 +401,45 @@ integration("week 6 csv export core integration", () => {
     expect(fullCatalogDetail.rowCount).toBe(2);
   });
 
+  it("pages through large filtered exports without loading the full result set at once", async () => {
+    const exportsModule = await loadExports();
+    const manager = await createUser("manager@example.com");
+
+    await prisma.channel.createMany({
+      data: Array.from({ length: 525 }, (_, index) => ({
+        youtubeChannelId: `UC-PAGED-${index + 1}`,
+        title: `Paged Export Channel ${index + 1}`,
+      })),
+    });
+
+    const batch = await exportsModule.createCsvExportBatch({
+      requestedByUserId: manager.id,
+      scope: {
+        type: "filtered",
+        filters: {
+          query: "Paged Export Channel",
+        },
+      },
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'exports.csv.generate'
+    `);
+
+    await exportsModule.executeCsvExportBatch({
+      exportBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    const detail = await exportsModule.getCsvExportBatchById({
+      exportBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    expect(detail.status).toBe("completed");
+    expect(detail.rowCount).toBe(525);
+  });
+
   it("persists lastError and a failed audit when queue enqueueing fails", async () => {
     const manager = await createUser("manager@example.com");
     const channel = await createChannel({

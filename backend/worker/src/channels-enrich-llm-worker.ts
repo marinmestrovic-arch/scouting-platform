@@ -5,15 +5,17 @@ import type { PgBoss } from "pg-boss";
 import { parseJobPayload } from "@scouting-platform/contracts";
 import { executeChannelLlmEnrichment } from "@scouting-platform/core";
 
+import type { WorkerJobOptions } from "./runtime-config";
+
 type ChannelsEnrichLlmJob = {
   data: unknown;
 };
 
-export const channelsEnrichLlmWorkerOptions = {
+export const channelsEnrichLlmWorkerOptions: WorkerJobOptions = {
   teamSize: 1,
   teamConcurrency: 2,
   batchSize: 1,
-} as const;
+};
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -25,10 +27,11 @@ function formatErrorMessage(error: unknown): string {
 
 export async function registerChannelsEnrichLlmWorker(
   boss: Pick<PgBoss, "work">,
+  options: WorkerJobOptions = channelsEnrichLlmWorkerOptions,
 ): Promise<void> {
   await boss.work(
     "channels.enrich.llm",
-    channelsEnrichLlmWorkerOptions,
+    options,
     async (job: ChannelsEnrichLlmJob | ChannelsEnrichLlmJob[]) => {
       const jobs = Array.isArray(job) ? job : [job];
 

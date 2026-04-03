@@ -16,11 +16,12 @@ import type {
   CsvExportBatchSummary,
   CsvExportScopeType,
 } from "@scouting-platform/contracts";
-import { createCsvExportBatchRequestSchema, type CsvExportFilteredScope } from "@scouting-platform/contracts";
+import { createCsvExportBatchRequestSchema } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { recordAuditEvent } from "../audit";
 import { resolveChannelAdvancedReportStatus } from "../approvals/status";
+import { listChannels } from "../channels";
 import { resolveChannelEnrichmentStatus } from "../enrichment/status";
 import { ServiceError } from "../errors";
 import { enqueueCsvExportJob } from "./queue";
@@ -45,6 +46,7 @@ export const CSV_EXPORT_HEADER = [
   "advancedReportStatus",
   "advancedReportCompletedAt",
 ] as const;
+const CSV_EXPORT_CHANNEL_PAGE_SIZE = 500;
 
 const csvExportBatchActorSelect = {
   id: true,
@@ -339,29 +341,6 @@ function resolveStatuses(channel: ExportChannelRecord): {
   };
 }
 
-function matchesFilters(
-  channel: ExportChannelRecord,
-  filters: CsvExportFilteredScope["filters"],
-): boolean {
-  const statuses = resolveStatuses(channel);
-
-  if (
-    filters.enrichmentStatus?.length &&
-    !filters.enrichmentStatus.includes(statuses.enrichmentStatus)
-  ) {
-    return false;
-  }
-
-  if (
-    filters.advancedReportStatus?.length &&
-    !filters.advancedReportStatus.includes(statuses.advancedReportStatus)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
 function toExportRow(channel: ExportChannelRecord): ExportRow {
   const statuses = resolveStatuses(channel);
   const contactEmails = uniquePreservingOrder(channel.contacts.map((contact) => contact.email));
@@ -392,46 +371,6 @@ function escapeCsvCell(value: string): string {
   }
 
   return `"${value.replaceAll(`"`, `""`)}"`;
-}
-
-function buildCsvContent(rows: ExportRow[]): string {
-  const header = CSV_EXPORT_HEADER.join(",");
-  const body = rows.map((row) =>
-    CSV_EXPORT_HEADER.map((column) => escapeCsvCell(row[column])).join(","),
-  );
-
-  return [header, ...body].join("\n");
-}
-
-function buildChannelWhere(filters: CsvExportFilteredScope["filters"]): Prisma.ChannelWhereInput | undefined {
-  const query = filters.query?.trim();
-
-  if (!query) {
-    return undefined;
-  }
-
-  return {
-    OR: [
-      {
-        title: {
-          contains: query,
-          mode: "insensitive",
-        },
-      },
-      {
-        handle: {
-          contains: query,
-          mode: "insensitive",
-        },
-      },
-      {
-        youtubeChannelId: {
-          contains: query,
-          mode: "insensitive",
-        },
-      },
-    ],
-  };
 }
 
 async function validateSelectedChannelIds(channelIds: string[]): Promise<void> {
@@ -491,36 +430,67 @@ async function loadSelectedChannels(channelIds: string[]): Promise<ExportChannel
     .filter((channel): channel is ExportChannelRecord => channel !== null);
 }
 
-async function loadFilteredChannels(filters: CsvExportFilteredScope["filters"]): Promise<ExportChannelRecord[]> {
-  const where = buildChannelWhere(filters);
-  const channels = await prisma.channel.findMany({
-    ...(where ? { where } : {}),
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: exportChannelSelect,
-  });
-
-  if (!filters.enrichmentStatus?.length && !filters.advancedReportStatus?.length) {
-    return channels;
-  }
-
-  return channels.filter((channel) => matchesFilters(channel, filters));
+function buildCsvRowsContent(rows: readonly ExportRow[]): string {
+  return rows
+    .map((row) => CSV_EXPORT_HEADER.map((column) => escapeCsvCell(row[column])).join(","))
+    .join("\n");
 }
 
 async function buildCsvExport(scope: CsvExportBatchScope): Promise<{
   csvContent: string;
   rowCount: number;
 }> {
-  const channels =
-    scope.type === "selected"
-      ? await loadSelectedChannels(scope.channelIds)
-      : await loadFilteredChannels(scope.filters);
-  const rows = channels.map(toExportRow);
+  const chunks = [CSV_EXPORT_HEADER.join(",")];
+  let rowCount = 0;
+
+  if (scope.type === "selected") {
+    for (let start = 0; start < scope.channelIds.length; start += CSV_EXPORT_CHANNEL_PAGE_SIZE) {
+      const channelIds = scope.channelIds.slice(start, start + CSV_EXPORT_CHANNEL_PAGE_SIZE);
+      const channels = await loadSelectedChannels(channelIds);
+      const rows = channels.map(toExportRow);
+
+      if (rows.length === 0) {
+        continue;
+      }
+
+      chunks.push(buildCsvRowsContent(rows));
+      rowCount += rows.length;
+    }
+  } else {
+    for (let page = 1; ; page += 1) {
+      const summaryPage = await listChannels({
+        page,
+        pageSize: CSV_EXPORT_CHANNEL_PAGE_SIZE,
+        ...(scope.filters.query ? { query: scope.filters.query } : {}),
+        ...(scope.filters.enrichmentStatus?.length
+          ? { enrichmentStatus: scope.filters.enrichmentStatus }
+          : {}),
+        ...(scope.filters.advancedReportStatus?.length
+          ? { advancedReportStatus: scope.filters.advancedReportStatus }
+          : {}),
+      });
+
+      if (summaryPage.items.length === 0) {
+        break;
+      }
+
+      const channels = await loadSelectedChannels(summaryPage.items.map((channel) => channel.id));
+      const rows = channels.map(toExportRow);
+
+      if (rows.length > 0) {
+        chunks.push(buildCsvRowsContent(rows));
+        rowCount += rows.length;
+      }
+
+      if (summaryPage.page * summaryPage.pageSize >= summaryPage.total) {
+        break;
+      }
+    }
+  }
 
   return {
-    csvContent: buildCsvContent(rows),
-    rowCount: rows.length,
+    csvContent: chunks.join("\n"),
+    rowCount,
   };
 }
 

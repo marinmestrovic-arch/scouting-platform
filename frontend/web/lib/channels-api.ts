@@ -20,6 +20,7 @@ const GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE =
   "Unable to request channel enrichment. Please try again.";
 const GENERIC_CHANNEL_ADVANCED_REPORT_REQUEST_ERROR_MESSAGE =
   "Unable to request channel advanced report. Please try again.";
+const BATCH_CHANNEL_ENRICHMENT_CONCURRENCY_LIMIT = 4;
 const INVALID_CHANNELS_RESPONSE_ERROR_MESSAGE = "Received an invalid response from the server.";
 const INVALID_CHANNEL_DETAIL_RESPONSE_ERROR_MESSAGE =
   "Received an invalid channel detail response from the server.";
@@ -112,6 +113,46 @@ function normalizeRequestError(error: unknown, fallbackMessage: string): Error {
   }
 
   return new Error(normalizeErrorMessage(error, fallbackMessage));
+}
+
+async function mapWithConcurrencyLimit<Input, Output>(
+  items: readonly Input[],
+  concurrencyLimit: number,
+  mapper: (item: Input, index: number) => Promise<Output>,
+): Promise<Output[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const workItems = items.map((item, index) => ({
+    index,
+    item,
+  }));
+  const results = new Array<Output>(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const currentWorkItem = workItems[currentIndex];
+
+      if (!currentWorkItem) {
+        return;
+      }
+
+      results[currentWorkItem.index] = await mapper(
+        currentWorkItem.item,
+        currentWorkItem.index,
+      );
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => worker()),
+  );
+
+  return results;
 }
 
 export async function fetchChannels(
@@ -268,8 +309,10 @@ export async function requestChannelEnrichmentBatch(
 ): Promise<BatchChannelEnrichmentRequestResult[]> {
   const uniqueChannelIds = [...new Set(channelIds)];
 
-  return Promise.all(
-    uniqueChannelIds.map(async (channelId) => {
+  return mapWithConcurrencyLimit(
+    uniqueChannelIds,
+    BATCH_CHANNEL_ENRICHMENT_CONCURRENCY_LIMIT,
+    async (channelId) => {
       try {
         const response = await requestChannelEnrichment(channelId);
 
@@ -285,7 +328,7 @@ export async function requestChannelEnrichmentBatch(
           error: normalizeRequestError(error, GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE),
         } satisfies BatchChannelEnrichmentRequestFailure;
       }
-    }),
+    },
   );
 }
 

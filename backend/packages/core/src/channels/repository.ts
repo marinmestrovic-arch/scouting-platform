@@ -682,6 +682,35 @@ function buildChannelListResolvedStatusWhereSql(input: {
   return Prisma.sql`${enrichmentStatusFilter} ${advancedReportStatusFilter}`;
 }
 
+function buildChannelListResolvedStatusJoinSql(input: {
+  enrichmentStatus?: ContractChannelEnrichmentStatus[];
+  advancedReportStatus?: ChannelAdvancedReportStatus[];
+}): Prisma.Sql {
+  const enrichmentJoin =
+    input.enrichmentStatus && input.enrichmentStatus.length > 0
+      ? Prisma.sql`
+          LEFT JOIN channel_enrichments ce
+            ON ce.channel_id = c.id
+        `
+      : Prisma.empty;
+  const advancedReportJoin =
+    input.advancedReportStatus && input.advancedReportStatus.length > 0
+      ? Prisma.sql`
+          LEFT JOIN LATERAL (
+            SELECT
+              arr.status::text AS status,
+              arr.completed_at
+            FROM advanced_report_requests arr
+            WHERE arr.channel_id = c.id
+            ORDER BY arr.created_at DESC, arr.id DESC
+            LIMIT 1
+          ) latest_arr ON true
+        `
+      : Prisma.empty;
+
+  return Prisma.sql`${enrichmentJoin} ${advancedReportJoin}`;
+}
+
 async function listChannelIdsForResolvedFilters(input: ListChannelsInput): Promise<{
   ids: string[];
   total: number;
@@ -689,20 +718,11 @@ async function listChannelIdsForResolvedFilters(input: ListChannelsInput): Promi
   const query = input.query?.trim();
   const skip = (input.page - 1) * input.pageSize;
   const searchWhereSql = buildChannelListSearchWhereSql(query);
+  const joinSql = buildChannelListResolvedStatusJoinSql(input);
   const resolvedStatusWhereSql = buildChannelListResolvedStatusWhereSql(input);
   const baseSql = Prisma.sql`
     FROM channels c
-    LEFT JOIN channel_enrichments ce
-      ON ce.channel_id = c.id
-    LEFT JOIN LATERAL (
-      SELECT
-        arr.status::text AS status,
-        arr.completed_at
-      FROM advanced_report_requests arr
-      WHERE arr.channel_id = c.id
-      ORDER BY arr.created_at DESC, arr.id DESC
-      LIMIT 1
-    ) latest_arr ON true
+    ${joinSql}
     WHERE 1 = 1
     ${searchWhereSql}
     ${resolvedStatusWhereSql}
