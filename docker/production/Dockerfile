@@ -20,7 +20,7 @@ COPY backend/packages/db/package.json ./backend/packages/db/
 COPY shared/packages/contracts/package.json ./shared/packages/contracts/
 COPY shared/packages/config/package.json ./shared/packages/config/
 
-RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts
 
 # --- Stage 2: Build ---
 FROM node:22-bookworm-slim AS build
