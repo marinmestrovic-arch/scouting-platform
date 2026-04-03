@@ -19,7 +19,7 @@ WORKDIR /workspace
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile --prod=false
+RUN pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 
