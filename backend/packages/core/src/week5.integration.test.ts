@@ -4,7 +4,6 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
-import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADVANCED_REPORT_FRESH_WINDOW_DAYS } from "./approvals/status";
@@ -112,7 +111,8 @@ integration("week 5 core integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.HYPEAUDITOR_API_KEY = "auth-id:auth-token";
 
-    prisma = createPrismaClient({ databaseUrl });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

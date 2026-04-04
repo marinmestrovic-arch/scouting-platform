@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { PrismaClient, Role, RunRequestStatus, RunResultSource } from "@prisma/client";
-import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const discoverYoutubeChannelsMock = vi.fn();
@@ -58,7 +57,8 @@ integration("week 3 core integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
 
-    prisma = createPrismaClient({ databaseUrl });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

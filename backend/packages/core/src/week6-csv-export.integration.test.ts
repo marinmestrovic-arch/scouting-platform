@@ -4,7 +4,6 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
-import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -19,7 +18,8 @@ integration("week 6 csv export core integration", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
 
-    prisma = createPrismaClient({ databaseUrl });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

@@ -5,7 +5,6 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
-import { createPrismaClient } from "@scouting-platform/db";
 import { adminDashboardResponseSchema } from "@scouting-platform/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,7 +27,8 @@ integration("week 5 admin dashboard API integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week5-admin-dashboard-auth-secret";
 
-    prisma = createPrismaClient({ databaseUrl });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     dashboardRoute = await import("./admin/dashboard/route");
