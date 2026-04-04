@@ -43,6 +43,8 @@
     "capacity:check": "sh scripts/with-local-env.sh tsx scripts/capacity-check.ts"
   },
   "devDependencies": {
+    "@prisma/client": "^7.0.0",
+    "@scouting-platform/db": "workspace:*",
     "@eslint/js": "^9.23.0",
     "@types/node": "^22.13.10",
     "eslint": "^9.23.0",

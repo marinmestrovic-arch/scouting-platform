@@ -3,6 +3,7 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchYoutubeChannelContextMock = vi.fn();
@@ -100,13 +101,7 @@ integration("week 4 core integration", () => {
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     process.env.OPENAI_API_KEY = "test-openai-key";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

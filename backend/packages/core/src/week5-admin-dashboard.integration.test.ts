@@ -5,6 +5,7 @@ import {
   PrismaClient,
   Role,
 } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -27,13 +28,7 @@ integration("week 5 admin dashboard core integration", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

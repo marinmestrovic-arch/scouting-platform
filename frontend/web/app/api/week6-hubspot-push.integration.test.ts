@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -23,13 +24,7 @@ integration("week 6 hubspot push API integration", () => {
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week6-hubspot-push-api-auth-secret";
     process.env.HUBSPOT_API_KEY = "hubspot-key";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     core = await import("@scouting-platform/core");

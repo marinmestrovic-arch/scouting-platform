@@ -1,5 +1,6 @@
 import process from "node:process";
 
+import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 type GlobalWithPrisma = typeof globalThis & {
@@ -7,13 +8,33 @@ type GlobalWithPrisma = typeof globalThis & {
 };
 
 export type DbTransactionClient = Prisma.TransactionClient;
+export type CreatePrismaClientOptions = {
+  databaseUrl?: string;
+};
 export type DbTransactionOptions = {
   isolationLevel?: Prisma.TransactionIsolationLevel;
   maxWait?: number;
   timeout?: number;
 };
 
-export function createPrismaClient(): PrismaClient {
+function getDatabaseUrl({ databaseUrl }: CreatePrismaClientOptions): string | undefined {
+  const resolvedDatabaseUrl = databaseUrl ?? process.env.DATABASE_URL;
+  const trimmedDatabaseUrl = resolvedDatabaseUrl?.trim();
+
+  return trimmedDatabaseUrl ? trimmedDatabaseUrl : undefined;
+}
+
+export function createPrismaClient(options: CreatePrismaClientOptions = {}): PrismaClient {
+  const databaseUrl = getDatabaseUrl(options);
+
+  if (databaseUrl) {
+    return new PrismaClient({
+      adapter: new PrismaPg({
+        connectionString: databaseUrl,
+      }),
+    });
+  }
+
   return new PrismaClient();
 }
 

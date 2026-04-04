@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -22,13 +23,7 @@ integration("week 2 API integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week2-integration-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     segmentsRoute = await import("./segments/route");

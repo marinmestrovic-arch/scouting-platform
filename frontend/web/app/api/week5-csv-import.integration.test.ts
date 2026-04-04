@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { CSV_IMPORT_FILE_SIZE_LIMIT_BYTES } from "@scouting-platform/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,13 +24,7 @@ integration("week 5 csv import API integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week5-csv-import-api-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     core = await import("@scouting-platform/core");

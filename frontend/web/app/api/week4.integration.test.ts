@@ -4,6 +4,7 @@ import {
   Role,
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
 } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -30,13 +31,7 @@ integration("week 4 API integration", () => {
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week4-integration-auth-secret";
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     core = await import("@scouting-platform/core");
