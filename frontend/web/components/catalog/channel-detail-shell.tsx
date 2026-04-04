@@ -1065,7 +1065,8 @@ export function ChannelDetailShell({
     const canReuseInitialData = reloadToken === 0 && !!initialData;
 
     async function loadChannel(polling = false) {
-      if (!polling && !canReuseInitialData) {
+      const isBackgroundRefresh = polling || reloadToken > 0;
+      if (!isBackgroundRefresh && !canReuseInitialData) {
         setRequestState(INITIAL_REQUEST_STATE);
       }
 
@@ -1105,7 +1106,7 @@ export function ChannelDetailShell({
           return;
         }
 
-        if (polling) {
+        if (isBackgroundRefresh) {
           return;
         }
 
