@@ -15,12 +15,9 @@ integration("campaigns core integration", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
+    const { createPrismaClient } = await import("@scouting-platform/db");
+    prisma = createPrismaClient({
+      databaseUrl,
     });
 
     await prisma.$connect();
