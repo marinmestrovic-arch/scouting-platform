@@ -22,7 +22,10 @@ WORKDIR /workspace
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+# Prisma generate runs during root postinstall and only needs a syntactically
+# valid datasource URL while the image is being built.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public \
+    pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 

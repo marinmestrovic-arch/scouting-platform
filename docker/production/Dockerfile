@@ -46,8 +46,10 @@ COPY --from=deps /workspace/shared/packages/contracts/node_modules ./shared/pack
 COPY --from=deps /workspace/shared/packages/config/node_modules ./shared/packages/config/node_modules
 COPY . .
 
-# Generate Prisma client, then build the web app.
-RUN pnpm --filter @scouting-platform/db db:generate \
+# Generate Prisma client, then build the web app. Prisma only needs a
+# syntactically valid datasource URL at build time.
+RUN export DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public \
+ && pnpm --filter @scouting-platform/db db:generate \
  && pnpm --filter @scouting-platform/web build
 
 # Next.js standalone output does not retain the native argon2 package tree.
