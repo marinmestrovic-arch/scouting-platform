@@ -30,13 +30,8 @@ integration("week 4 API integration", () => {
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week4-integration-auth-secret";
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     core = await import("@scouting-platform/core");

@@ -4,7 +4,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@prisma/client": "^6.5.0",
+    "@prisma/client": "^7.0.0",
     "@scouting-platform/contracts": "workspace:*",
     "@scouting-platform/db": "workspace:*",
     "@scouting-platform/integrations": "workspace:*",

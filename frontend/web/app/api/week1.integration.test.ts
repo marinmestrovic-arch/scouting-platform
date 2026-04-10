@@ -33,13 +33,8 @@ integration("week 1 API integration", () => {
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week1-integration-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     adminUsersRoute = await import("./admin/users/route");

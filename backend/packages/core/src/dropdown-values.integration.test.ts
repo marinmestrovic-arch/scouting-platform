@@ -12,13 +12,8 @@ integration("dropdown values core integration", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });

@@ -57,13 +57,8 @@ integration("week 3 core integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });
