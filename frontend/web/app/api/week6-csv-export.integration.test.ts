@@ -28,13 +28,8 @@ integration("week 6 csv export API integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week6-csv-export-api-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     core = await import("@scouting-platform/core");

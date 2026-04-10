@@ -27,13 +27,8 @@ integration("week 5 admin dashboard API integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week5-admin-dashboard-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     dashboardRoute = await import("./admin/dashboard/route");

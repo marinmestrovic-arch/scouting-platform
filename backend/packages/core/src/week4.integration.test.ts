@@ -100,13 +100,8 @@ integration("week 4 core integration", () => {
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     process.env.OPENAI_API_KEY = "test-openai-key";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const db = await import("@scouting-platform/db");
+    prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
   });
@@ -679,8 +674,19 @@ integration("week 4 core integration", () => {
     enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
 
     const db = await import("@scouting-platform/db");
-    const originalTransaction = db.prisma.$transaction.bind(db.prisma);
-    const transactionSpy = vi.spyOn(db.prisma, "$transaction");
+    await db.prisma.$connect();
+    const cachedPrisma = (
+      globalThis as typeof globalThis & {
+        __scoutingPrisma?: PrismaClient;
+      }
+    ).__scoutingPrisma;
+
+    if (!cachedPrisma) {
+      throw new Error("Expected @scouting-platform/db prisma client to be initialized");
+    }
+
+    const originalTransaction = cachedPrisma.$transaction.bind(cachedPrisma);
+    const transactionSpy = vi.spyOn(cachedPrisma, "$transaction");
     transactionSpy.mockImplementation((async (arg: unknown, ...rest: unknown[]) => {
       if (typeof arg === "function") {
         return originalTransaction(async (tx) => {
@@ -690,7 +696,7 @@ integration("week 4 core integration", () => {
       }
 
       return originalTransaction(arg as never, ...(rest as []));
-    }) as typeof db.prisma.$transaction);
+    }) as typeof cachedPrisma.$transaction);
 
     try {
       await expect(

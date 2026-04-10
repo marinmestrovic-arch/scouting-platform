@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { PrismaClient, Role } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 import { hashPassword } from "@scouting-platform/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -27,13 +28,7 @@ integration("credentials auth flow", () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.AUTH_SECRET = process.env.AUTH_SECRET ?? "week1-auth-secret";
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    prisma = createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
     ({ authConfig } = await import("./auth"));

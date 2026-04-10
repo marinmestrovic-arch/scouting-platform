@@ -1,6 +1,7 @@
 import process from "node:process";
 
 import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "@scouting-platform/db";
 
 function parseDatabaseName(databaseUrl: string): string {
   const url = new URL(databaseUrl);
@@ -24,13 +25,7 @@ async function main(): Promise<void> {
   const testDatabaseName = parseDatabaseName(databaseUrlTest);
   const escapedTestDatabaseName = testDatabaseName.replace(/'/g, "''");
   const quotedTestDatabaseName = testDatabaseName.replace(/"/g, "\"\"");
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl,
-      },
-    },
-  });
+  const prisma = createPrismaClient({ databaseUrl });
 
   try {
     const rows = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(

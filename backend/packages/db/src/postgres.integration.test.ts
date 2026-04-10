@@ -1,6 +1,7 @@
 import process from "node:process";
 
 import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "./index";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim();
@@ -13,13 +14,7 @@ if (!databaseUrl) {
   });
 } else {
   describe("postgres integration", () => {
-    const prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: databaseUrl,
-        },
-      },
-    });
+    const prisma = createPrismaClient({ databaseUrl });
 
     beforeAll(async () => {
       await prisma.$connect();
