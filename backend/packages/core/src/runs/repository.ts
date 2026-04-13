@@ -81,12 +81,13 @@ const YOUTUBE_DISCOVERY_CACHE_TTL_MINUTES = Number(
 
 function buildDiscoveryCacheKey(
   query: string,
+  userId: string,
   maxResults: number,
 ): string {
   const normalized = query.trim().toLowerCase().replaceAll(/\s+/g, " ");
 
   return createHash("sha256")
-    .update(JSON.stringify({ query: normalized, maxResults }))
+    .update(JSON.stringify({ query: normalized, userId, maxResults }))
     .digest("hex");
 }
 
@@ -796,7 +797,11 @@ export async function executeRunDiscover(input: {
 
     const MAX_RESULTS = 50;
     const now = new Date();
-    const cacheKey = buildDiscoveryCacheKey(runRequest.query, MAX_RESULTS);
+    const cacheKey = buildDiscoveryCacheKey(
+      runRequest.query,
+      input.requestedByUserId,
+      MAX_RESULTS,
+    );
     const cacheHit = await prisma.youtubeDiscoveryCache.findUnique({
       where: {
         cacheKey,

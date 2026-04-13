@@ -32,12 +32,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function buildDiscoveryCacheKey(
   query: string,
+  userId: string,
   maxResults: number,
 ): string {
   const normalized = query.trim().toLowerCase().replaceAll(/\s+/g, " ");
 
   return createHash("sha256")
-    .update(JSON.stringify({ query: normalized, maxResults }))
+    .update(JSON.stringify({ query: normalized, userId, maxResults }))
     .digest("hex");
 }
 
@@ -931,7 +932,7 @@ integration("week 3 core integration", () => {
     });
 
     const query = "gaming expired cache";
-    const cacheKey = buildDiscoveryCacheKey(query, 50);
+    const cacheKey = buildDiscoveryCacheKey(query, user.id, 50);
 
     await prisma.youtubeDiscoveryCache.create({
       data: {
@@ -1022,7 +1023,7 @@ integration("week 3 core integration", () => {
 
     const cacheEntry = await prisma.youtubeDiscoveryCache.findUnique({
       where: {
-        cacheKey: buildDiscoveryCacheKey(query, 50),
+        cacheKey: buildDiscoveryCacheKey(query, user.id, 50),
       },
     });
 
@@ -1032,7 +1033,7 @@ integration("week 3 core integration", () => {
     expect(cacheEntry?.maxResults).toBe(50);
   });
 
-  it("shares cached discovery results across managers with the same normalized query", async () => {
+  it("does not share cached discovery results across managers with the same normalized query", async () => {
     const firstUser = await prisma.user.create({
       data: {
         email: "cache-first@example.com",
@@ -1097,6 +1098,18 @@ integration("week 3 core integration", () => {
       requestedByUserId: secondUser.id,
     });
 
-    expect(discoverYoutubeChannelsMock).toHaveBeenCalledTimes(1);
+    expect(discoverYoutubeChannelsMock).toHaveBeenCalledTimes(2);
+
+    const cacheEntries = await prisma.youtubeDiscoveryCache.findMany({
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    expect(cacheEntries).toHaveLength(2);
+    expect(new Set(cacheEntries.map((entry) => entry.cacheKey)).size).toBe(2);
+    expect(cacheEntries.map((entry) => entry.userId).sort()).toEqual(
+      [firstUser.id, secondUser.id].sort(),
+    );
   });
 });

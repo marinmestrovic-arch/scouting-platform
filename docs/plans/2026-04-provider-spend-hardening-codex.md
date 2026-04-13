@@ -1,6 +1,6 @@
 # Codex Implementation Guide: Provider Spend Hardening
 
-- Status: In Progress
+- Status: Completed
 - Source plan: `docs/plans/2026-03-provider-spend-hardening-plan.md`
 - Date: 2026-04-01
 - Owner: Ivan
@@ -10,6 +10,7 @@
 - 2026-04-01: Session 1 implemented by Codex.
 - 2026-04-01: Session 2 implemented by Codex.
 - 2026-04-01: Session 3 implemented by Codex.
+- 2026-04-13: Final discovery-cache hardening completed by Codex; cache keys now include `userId`, and week 3 integration coverage asserts cross-user cache separation.
 - Completed in code:
   - Prisma schema additions for advanced report retry markers, enrichment attempt markers, and `YoutubeDiscoveryCache`
   - Migration SQL files for the additive columns and discovery cache table
@@ -39,6 +40,7 @@
   - Updated `backend/packages/core/src/approvals/index.ts` so fresh HypeAuditor executions reuse the already-parsed `result.insights`, while payload-reuse retries still derive from stored provider payloads
 - Remaining local verification caveat:
   - `pnpm db:migrate` connected to local Postgres and applied `20260401120000_provider_spend_hardening_columns` plus `20260401130000_youtube_discovery_cache`, but `prisma migrate dev` then prompted for a new migration because this repo already has pre-existing schema-vs-migration drift outside the provider spend hardening scope
+  - 2026-04-13 follow-up verification in this worktree could not rerun the DB-backed integration suite because `localhost:5432` refused connections and `docker compose up -d postgres` could not reach the Docker daemon
 
 This document is the implementation handoff for Codex. It is split into three sessions that must be
 executed in order. Each session is self-contained and testable before the next begins.

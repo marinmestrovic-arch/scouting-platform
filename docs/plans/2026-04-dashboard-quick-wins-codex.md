@@ -1,14 +1,30 @@
 # Codex Implementation Guide: Dashboard Quick Wins
 
-- Status: Not Started
+- Status: Completed
 - Date: 2026-04-03
 - Owner: Ivan
+- Completed: 2026-04-13
+
+## Progress
+
+- 2026-04-13: Reviewed the current dashboard implementation and confirmed all three quick wins were already present in code.
+- Completed in code:
+  - Dashboard status column wired to `formatRunStatusLabel()` with existing `dashboard-workspace__status` styling.
+  - Dashboard started column wired to `formatRunTimestamp(run.createdAt)`.
+  - Dashboard skeleton fallback updated to `columns={9}`.
+- Verified by inspection:
+  - `frontend/web/components/dashboard/dashboard-workspace.tsx`
+  - `frontend/web/app/(authenticated)/dashboard/page.tsx`
+- Verification caveat:
+  - `pnpm --filter @scouting-platform/web test` could not run in this worktree because `node_modules` is missing and `vitest` is not available on the path.
 
 ## Context
 
 An app review identified that the dashboard table is missing two critical columns: run status and creation date. The data and formatting utilities already exist — they just need to be wired into the dashboard table. This is a small, self-contained UI change touching only 2 files.
 
 ## Task 1: Add Status column to dashboard table
+
+Status: Completed on 2026-04-13
 
 **Why:** Runs have a `status` field (`queued | running | completed | failed`) but the dashboard table doesn't show it. Users can't tell which runs are still in flight.
 
@@ -37,6 +53,8 @@ An app review identified that the dashboard table is missing two critical column
 
 ## Task 2: Add Started date column to dashboard table
 
+Status: Completed on 2026-04-13
+
 **Why:** 50 unsorted runs with no date make the table hard to scan. `createdAt` is already on every `RecentRunItem`.
 
 **File:** `frontend/web/components/dashboard/dashboard-workspace.tsx`
@@ -53,13 +71,15 @@ An app review identified that the dashboard table is missing two critical column
 
 ## Task 3: Update skeleton fallback column count
 
+Status: Completed on 2026-04-13
+
 **File:** `frontend/web/app/(authenticated)/dashboard/page.tsx`
 
 Change `<SkeletonTable columns={7} rows={6} />` to `columns={9}` to account for the two new columns (Status + Started).
 
 ## Verification
 
-1. Run `pnpm --filter @scouting-platform/web exec vitest run` to check for any existing test breakage.
-2. Visit `https://scouting.marsilux.com/dashboard` and verify the dashboard table renders the new Status and Started columns correctly.
-3. Confirm status pills show correct colors (yellow for queued/running, blue for completed, red for failed).
-4. Confirm the skeleton loading state shows the correct number of columns.
+1. Code inspection completed on 2026-04-13 for the dashboard table and fallback skeleton files.
+2. `pnpm --filter @scouting-platform/web test` attempted on 2026-04-13, but the worktree is missing `node_modules`, so `vitest` was not available.
+3. Live dashboard verification at `https://scouting.marsilux.com/dashboard` not performed from this session.
+4. Status color behavior and loading skeleton column count were verified by existing code paths and class usage, not by a browser run in this session.

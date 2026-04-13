@@ -44,13 +44,14 @@ The Playwright smoke suite now covers:
 
 - `pnpm infra:up`
 - confirm bootstrap completes without manual intervention
-- confirm seeded admin login works at `https://scouting.marsilux.com/login`
+- confirm seeded admin login works at `http://localhost:3000/login`
 - confirm web and worker boot cleanly from Docker logs
 - `pnpm infra:down`
 
 Notes for local verification:
 
 - A clean Docker boot was verified for `postgres`, `web`, and `worker`.
+- Use the local URL above for Docker validation. Do not use the hosted app for this step.
 - When the local database still contains test-created queued jobs with fake provider credentials, worker logs can show expected YouTube-provider failures after startup. Treat that as test-data noise, not a worker boot failure.
 - Local Docker verification does not replace the real staging rehearsal below.
 
@@ -91,7 +92,9 @@ Current intended worker caps:
 
 ## Operations and rollback
 
-- staging deploy commands are current
+- the deployment runbook matches the environment being promoted:
+  - Railway staging rehearsals use [`/docs/setup/staging-railway.md`](./staging-railway.md)
+  - Dokku production deploys use [`/docs/setup/dokku.md`](./dokku.md)
 - rollback steps are current and tested to the safe migration boundary
 - Postgres backup/restore drill has been completed once using [`/docs/setup/postgres-backup-restore-drill.md`](./postgres-backup-restore-drill.md)
 - the last successful drill date is recorded by the operator outside the repo

@@ -140,11 +140,16 @@ if (!databaseUrl) {
         SELECT to_regclass('youtube_discovery_cache')::text AS relation_name
       `;
       const enrichmentColumns = await prisma.$queryRaw<
-        Array<{ raw_openai_payload_fetched_at: string | null; youtube_fetched_at: string | null }>
+        Array<{
+          raw_openai_payload_fetched_at: string | null;
+          youtube_fetched_at: string | null;
+          structured_profile: string | null;
+        }>
       >`
         SELECT
           MAX(CASE WHEN column_name = 'raw_openai_payload_fetched_at' THEN column_name END) AS raw_openai_payload_fetched_at,
-          MAX(CASE WHEN column_name = 'youtube_fetched_at' THEN column_name END) AS youtube_fetched_at
+          MAX(CASE WHEN column_name = 'youtube_fetched_at' THEN column_name END) AS youtube_fetched_at,
+          MAX(CASE WHEN column_name = 'structured_profile' THEN column_name END) AS structured_profile
         FROM information_schema.columns
         WHERE table_name = 'channel_enrichments'
       `;
@@ -168,6 +173,7 @@ if (!databaseUrl) {
         "raw_openai_payload_fetched_at",
       );
       expect(enrichmentColumns[0]?.youtube_fetched_at).toBe("youtube_fetched_at");
+      expect(enrichmentColumns[0]?.structured_profile).toBe("structured_profile");
       expect(requestColumns[0]?.provider_fetched_at).toBe("provider_fetched_at");
       expect(requestColumns[0]?.last_provider_attempt_at).toBe("last_provider_attempt_at");
       expect(requestColumns[0]?.next_provider_attempt_at).toBe("next_provider_attempt_at");

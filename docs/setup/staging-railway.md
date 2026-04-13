@@ -3,6 +3,10 @@
 This runbook makes staging deployment repeatable from repository configuration. Cloud provisioning is
 still a manual operator step.
 
+Important:
+- treat this as the Railway staging runbook
+- the repository's automated production deploy currently targets Dokku; use [`/docs/setup/dokku.md`](./dokku.md) for that path
+
 For launch gating, pair this with:
 
 - [`/docs/setup/launch-readiness.md`](./launch-readiness.md)

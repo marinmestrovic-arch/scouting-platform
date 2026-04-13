@@ -49,6 +49,26 @@ function buildChannelDetailPayload() {
       topics: ["space", "launches"],
       brandFitNotes: "Strong fit for launch providers.",
       confidence: 0.82,
+      structuredProfile: {
+        metadata: {
+          language: "en",
+          contentFormats: ["long_form"],
+          sponsorSignals: ["host_read_ads"],
+          geoHints: ["US"],
+          uploadCadenceHint: "weekly",
+        },
+        niche: {
+          primary: "space_news",
+          secondary: ["launch_coverage"],
+          confidence: 0.85,
+        },
+        brandSafety: {
+          status: "safe",
+          flags: [],
+          rationale: "Coverage is news-oriented and contains no visible safety concerns.",
+          confidence: 0.79,
+        },
+      },
     },
     advancedReport: {
       requestId: "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b",
@@ -295,6 +315,7 @@ describe("channels api helpers", () => {
       }),
     );
     expect(response.enrichment.topics).toEqual(["space", "launches"]);
+    expect(response.enrichment.structuredProfile?.niche.primary).toBe("space_news");
   });
 
   it("requests enrichment from POST /api/channels/:id/enrich", async () => {
