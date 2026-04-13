@@ -13,13 +13,19 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=/pnpm:$PATH
 ENV HUSKY=0
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.6.1 --activate
 
 WORKDIR /workspace
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile --prod=false
+# Prisma generate runs during root postinstall and only needs a syntactically
+# valid datasource URL while the image is being built.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public \
+    pnpm install --frozen-lockfile
 
 ENV NODE_ENV=production
 

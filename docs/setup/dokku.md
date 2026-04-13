@@ -59,6 +59,8 @@ This guide assumes you can SSH into the host and run `dokku` commands directly.
 Set these on `scouting-web`:
 
 - `AUTH_SECRET`
+- `AUTH_TRUST_HOST=true`
+- `AUTH_URL` (for example `https://scouting.example.com`)
 - `APP_ENCRYPTION_KEY` (must be exactly 32 characters)
 - `NEXT_PUBLIC_APP_URL` (for example `https://scouting.example.com`)
 - `PG_BOSS_SCHEMA=pgboss`
@@ -83,6 +85,7 @@ Notes:
 - quote secrets if they contain `$`, `:`, spaces, or other shell-sensitive characters
 - `DATABASE_URL_TEST` is not needed in production
 - `AUTH_SECRET` is required on `scouting-web`; it is not required on `scouting-worker`
+- `AUTH_URL` should match the public HTTPS origin for the web app when running behind Dokku's proxy
 
 ## Provision the apps
 
@@ -116,6 +119,8 @@ Example configuration:
 ```bash
 dokku config:set scouting-web \
   AUTH_SECRET='replace-with-long-random-secret' \
+  AUTH_TRUST_HOST='true' \
+  AUTH_URL='https://scouting.example.com' \
   APP_ENCRYPTION_KEY='32-char-random-string-goes-here' \
   NEXT_PUBLIC_APP_URL='https://scouting.example.com' \
   PG_BOSS_SCHEMA='pgboss' \
@@ -207,6 +212,48 @@ For follow-on deploys:
 
 This order matters because the web image is intentionally slim and is not the place to run Prisma
 migration commands.
+
+## GitHub Actions auto-deploy
+
+The repository CI workflow can auto-deploy to Dokku after a successful push to `main`.
+
+Important:
+
+- the deploy job is guarded to run only in the upstream repository: `bobasaki/scouting-platform`
+- pushes to fork branches or `origin/main` will still run CI, but they will not deploy
+- deploy order stays the same as the manual runbook: worker -> migrations -> web -> smoke check
+
+Configure these in the upstream GitHub repository under Settings -> Secrets and variables -> Actions.
+
+Repository variables:
+
+- `DOKKU_HOST` (for example `46.225.18.236`)
+- `DOKKU_WEB_APP=scouting-web`
+- `DOKKU_WORKER_APP=scouting-worker`
+- `DOKKU_WEB_URL` (for example `https://scouting.example.com`)
+
+Repository secrets:
+
+- `DOKKU_DEPLOY_SSH_KEY`
+- `DOKKU_KNOWN_HOSTS`
+
+Recommended values:
+
+- `DOKKU_DEPLOY_SSH_KEY` should be the private key for a Dokku deploy user/keypair that has access to both apps
+- `DOKKU_KNOWN_HOSTS` should be the exact host key line for the Dokku server, for example:
+
+```bash
+ssh-keyscan -H 46.225.18.236
+```
+
+After those are configured in the upstream repo, every successful push to `upstream/main` will:
+
+1. push the current commit to `scouting-worker`
+2. run `db:migrate:deploy` through the worker app
+3. push the same commit to `scouting-web`
+4. smoke-check the login page URL
+
+If deployment fails, the workflow tails recent Dokku logs for both apps to make diagnosis faster.
 
 ## Rollback notes
 

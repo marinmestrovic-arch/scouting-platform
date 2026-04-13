@@ -23,8 +23,6 @@ function isReady() {
       "db",
       "execute",
       "--stdin",
-      "--schema",
-      "prisma/schema.prisma",
     ],
     {
       cwd: process.cwd(),

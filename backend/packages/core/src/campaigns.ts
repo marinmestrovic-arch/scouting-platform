@@ -124,14 +124,15 @@ export async function listCampaigns(input: {
 }): Promise<ListCampaignsResponse> {
   const parsedQuery = listCampaignsQuerySchema.partial().parse(input.query ?? {});
 
+  await ensureMarketReferenceData();
+
   const where: Prisma.CampaignWhereInput = {
     ...(parsedQuery.clientId ? { clientId: parsedQuery.clientId } : {}),
     ...(parsedQuery.marketId ? { marketId: parsedQuery.marketId } : {}),
     ...(typeof parsedQuery.active === "boolean" ? { isActive: parsedQuery.active } : {}),
   };
 
-  // Run all queries in parallel — getRequestUser, campaigns, clients, markets.
-  // ensureMarketReferenceData is only needed during campaign creation, not reads.
+  // Run all queries in parallel once market reference data is guaranteed to exist.
   const [requestUser, campaigns, clients, markets] = await Promise.all([
     getRequestUser(input.userId),
     prisma.campaign.findMany({

@@ -49,9 +49,7 @@ function getOrCreatePrismaClient(): PrismaClient {
 
   const prismaClient = createPrismaClient();
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.__scoutingPrisma = prismaClient;
-  }
+  globalForPrisma.__scoutingPrisma = prismaClient;
 
   return prismaClient;
 }
