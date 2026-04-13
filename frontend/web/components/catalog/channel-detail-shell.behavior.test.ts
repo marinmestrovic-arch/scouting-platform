@@ -7,12 +7,14 @@ const {
   requestChannelAdvancedReportMock,
   requestChannelEnrichmentMock,
   useEffectMock,
+  useRefMock,
   useStateMock,
 } = vi.hoisted(() => ({
   fetchChannelDetailMock: vi.fn(),
   requestChannelAdvancedReportMock: vi.fn(),
   requestChannelEnrichmentMock: vi.fn(),
   useEffectMock: vi.fn(),
+  useRefMock: vi.fn(),
   useStateMock: vi.fn(),
 }));
 
@@ -30,6 +32,7 @@ vi.mock("react", async () => {
   return {
     ...actual,
     useEffect: useEffectMock,
+    useRef: useRefMock,
     useState: useStateMock,
   };
 });
@@ -124,6 +127,8 @@ function renderShell(options?: {
     type: "idle" | "submitting" | "success" | "error";
     message: string;
   };
+  initialData?: ChannelDetail | null;
+  reloadOriginChannelId?: string | null;
   runEffects?: boolean;
 }) {
   const setRequestState = vi.fn();
@@ -131,9 +136,14 @@ function renderShell(options?: {
   const setEnrichmentActionState = vi.fn();
   const setAdvancedReportActionState = vi.fn();
   const cleanups: Array<() => void> = [];
+  const reloadOriginChannelIdRef = {
+    current: options?.reloadOriginChannelId ?? null,
+  };
 
   useStateMock.mockReset();
   useEffectMock.mockReset();
+  useRefMock.mockReset();
+  useRefMock.mockReturnValueOnce(reloadOriginChannelIdRef);
   useStateMock
     .mockReturnValueOnce([
       options?.requestState ?? {
@@ -170,13 +180,22 @@ function renderShell(options?: {
     }
   });
 
-  const element = ChannelDetailShell({
-    channelId: options?.channelId ?? "53adac17-f39d-4731-a61f-194150fbc431",
-  }) as ChannelDetailShellElement;
+  const props: Parameters<typeof ChannelDetailShell>[0] =
+    options?.initialData !== undefined
+      ? {
+          channelId: options.channelId ?? "53adac17-f39d-4731-a61f-194150fbc431",
+          initialData: options.initialData,
+        }
+      : {
+          channelId: options?.channelId ?? "53adac17-f39d-4731-a61f-194150fbc431",
+        };
+
+  const element = ChannelDetailShell(props) as ChannelDetailShellElement;
 
   return {
     cleanups,
     element,
+    reloadOriginChannelIdRef,
     setAdvancedReportActionState,
     setEnrichmentActionState,
     setReloadToken,
@@ -286,6 +305,81 @@ describe("channel detail shell behavior", () => {
 
     expect(signal?.aborted).toBe(true);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(321);
+  });
+
+  it("keeps visible data in place during same-channel reloads", async () => {
+    const currentChannel = createChannelDetail();
+    const refreshedChannel = createChannelDetail({
+      updatedAt: "2026-03-10T10:00:00.000Z",
+    });
+    fetchChannelDetailMock.mockResolvedValueOnce(refreshedChannel);
+
+    const { setRequestState } = renderShell({
+      channelId: currentChannel.id,
+      initialData: currentChannel,
+      reloadOriginChannelId: currentChannel.id,
+      reloadToken: 1,
+      requestState: {
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      },
+    });
+
+    expect(setRequestState).not.toHaveBeenCalledWith({
+      status: "loading",
+      data: null,
+      error: null,
+    });
+    expect(fetchChannelDetailMock).toHaveBeenCalledWith(currentChannel.id, expect.any(AbortSignal));
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setRequestState).toHaveBeenCalledWith({
+      status: "ready",
+      data: refreshedChannel,
+      error: null,
+    });
+  });
+
+  it("treats channel changes after a prior reload as a fresh load", async () => {
+    const previousChannel = createChannelDetail();
+    const nextChannel = createChannelDetail({
+      id: "404e4567-e89b-12d3-a456-426614174000",
+      youtubeChannelId: "UC999",
+      title: "Fresh Channel",
+      handle: "@freshchannel",
+    });
+    fetchChannelDetailMock.mockResolvedValueOnce(nextChannel);
+
+    const { setRequestState } = renderShell({
+      channelId: nextChannel.id,
+      initialData: nextChannel,
+      reloadOriginChannelId: previousChannel.id,
+      reloadToken: 1,
+      requestState: {
+        status: "ready",
+        data: previousChannel,
+        error: null,
+      },
+    });
+
+    expect(setRequestState).toHaveBeenNthCalledWith(1, {
+      status: "loading",
+      data: null,
+      error: null,
+    });
+    expect(fetchChannelDetailMock).toHaveBeenCalledWith(nextChannel.id, expect.any(AbortSignal));
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setRequestState).toHaveBeenNthCalledWith(2, {
+      status: "ready",
+      data: nextChannel,
+      error: null,
+    });
   });
 
   it("maps 404 detail responses into a not-found request state", async () => {
