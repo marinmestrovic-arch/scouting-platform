@@ -30,6 +30,24 @@ function getRequiredEnv(env: NodeJS.ProcessEnv, name: "DATABASE_URL"): string {
   return value;
 }
 
+function getRequiredExactByteLengthEnv(
+  env: NodeJS.ProcessEnv,
+  name: "APP_ENCRYPTION_KEY",
+  byteLength: number,
+): string {
+  const value = env[name]?.trim();
+
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+
+  if (Buffer.byteLength(value, "utf8") !== byteLength) {
+    throw new Error(`${name} must be exactly ${byteLength} bytes`);
+  }
+
+  return value;
+}
+
 function parsePositiveInt(
   env: NodeJS.ProcessEnv,
   name: string,
@@ -65,11 +83,13 @@ function buildWorkerJobOptions(
 export function getWorkerRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): WorkerRuntimeConfig {
+  getRequiredExactByteLengthEnv(env, "APP_ENCRYPTION_KEY", 32);
+
   return {
     databaseUrl: getRequiredEnv(env, "DATABASE_URL"),
     pgBossSchema: env.PG_BOSS_SCHEMA?.trim() || "pgboss",
     jobs: {
-      runsDiscover: buildWorkerJobOptions(env, "WORKER_RUNS_DISCOVER_CONCURRENCY", 2),
+      runsDiscover: buildWorkerJobOptions(env, "WORKER_RUNS_DISCOVER_CONCURRENCY", 1),
       channelsEnrichLlm: buildWorkerJobOptions(env, "WORKER_CHANNELS_ENRICH_LLM_CONCURRENCY", 2),
       channelsEnrichHypeauditor: buildWorkerJobOptions(
         env,
