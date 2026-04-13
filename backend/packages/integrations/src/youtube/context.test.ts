@@ -80,6 +80,13 @@ describe("fetchYoutubeChannelContext", () => {
           items: [
             {
               id: "video-1",
+              contentDetails: {
+                duration: "PT2M",
+              },
+              snippet: {
+                categoryId: "20",
+                tags: [" gaming ", "commentary"],
+              },
               statistics: {
                 viewCount: "100",
                 likeCount: "10",
@@ -88,6 +95,13 @@ describe("fetchYoutubeChannelContext", () => {
             },
             {
               id: "video-2",
+              contentDetails: {
+                duration: "PT15M",
+              },
+              snippet: {
+                categoryId: "24",
+                tags: ["analysis"],
+              },
               statistics: {
                 viewCount: "200",
                 likeCount: "20",
@@ -121,23 +135,142 @@ describe("fetchYoutubeChannelContext", () => {
           title: "Latest video",
           description: "Video description",
           publishedAt: "2024-01-10T12:00:00Z",
+          durationSeconds: 120,
+          isShort: true,
           viewCount: 100,
           likeCount: 10,
           commentCount: 5,
+          categoryId: "20",
+          tags: ["gaming", "commentary"],
         },
         {
           youtubeVideoId: "video-2",
           title: "Second video",
           description: null,
           publishedAt: "2024-01-09T12:00:00Z",
+          durationSeconds: 900,
+          isShort: false,
           viewCount: 200,
           likeCount: 20,
           commentCount: 10,
+          categoryId: "24",
+          tags: ["analysis"],
         },
       ],
       diagnostics: {
         warnings: [],
       },
+    });
+  });
+
+  it("continues paging uploads until it inspects enough videos to find 12 long-form uploads", async () => {
+    const firstPageItems = Array.from({ length: 25 }, (_, index) => ({
+      contentDetails: {
+        videoId: `video-${index + 1}`,
+      },
+      snippet: {
+        title: `Video ${index + 1}`,
+        publishedAt: `2024-01-${String((index % 9) + 1).padStart(2, "0")}T12:00:00Z`,
+      },
+    }));
+    const secondPageItems = Array.from({ length: 25 }, (_, index) => ({
+      contentDetails: {
+        videoId: `video-${index + 26}`,
+      },
+      snippet: {
+        title: `Video ${index + 26}`,
+        publishedAt: `2024-02-${String((index % 9) + 1).padStart(2, "0")}T12:00:00Z`,
+      },
+    }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              id: "UC-CONTEXT-PAGED",
+              snippet: {
+                title: "Channel Name",
+              },
+              contentDetails: {
+                relatedPlaylists: {
+                  uploads: "UU-CONTEXT-PAGED",
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          nextPageToken: "page-2",
+          items: firstPageItems,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: Array.from({ length: 25 }, (_, index) => ({
+            id: `video-${index + 1}`,
+            contentDetails: {
+              duration: index < 10 ? "PT15M" : "PT59S",
+            },
+            snippet: {
+              categoryId: "20",
+              tags: ["batch-one"],
+            },
+            statistics: {
+              viewCount: String(100 + index),
+              likeCount: String(10 + index),
+              commentCount: String(1 + index),
+            },
+          })),
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: secondPageItems,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: Array.from({ length: 25 }, (_, index) => ({
+            id: `video-${index + 26}`,
+            contentDetails: {
+              duration: index < 2 ? "PT20M" : "PT45S",
+            },
+            snippet: {
+              categoryId: "24",
+              tags: ["batch-two"],
+            },
+            statistics: {
+              viewCount: String(200 + index),
+              likeCount: String(20 + index),
+              commentCount: String(2 + index),
+            },
+          })),
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await fetchYoutubeChannelContext({
+      apiKey: "yt-key",
+      channelId: "UC-CONTEXT-PAGED",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(context.recentVideos).toHaveLength(50);
+    expect(context.recentVideos.filter((video) => video.isShort === false)).toHaveLength(12);
+    expect(context.recentVideos[0]).toMatchObject({
+      durationSeconds: 900,
+      isShort: false,
+      categoryId: "20",
+      tags: ["batch-one"],
+    });
+    expect(context.recentVideos[49]).toMatchObject({
+      durationSeconds: 45,
+      isShort: true,
+      categoryId: "24",
+      tags: ["batch-two"],
     });
   });
 
@@ -258,9 +391,13 @@ describe("fetchYoutubeChannelContext", () => {
         title: "Latest video",
         description: null,
         publishedAt: "2024-01-10T12:00:00Z",
+        durationSeconds: null,
+        isShort: null,
         viewCount: null,
         likeCount: null,
         commentCount: null,
+        categoryId: null,
+        tags: [],
       },
     ]);
     expect(context.diagnostics.warnings).toEqual([

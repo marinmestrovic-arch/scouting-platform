@@ -66,6 +66,10 @@ const capacityHardeningCatalogIndexesMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260403153000_capacity_hardening_catalog_indexes/migration.sql",
 );
+const enrichmentStructuredProfileMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260413110000_batch1_enrichment_structured_profile/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -275,6 +279,15 @@ describe("capacity hardening catalog indexes migration", () => {
     expect(migrationSql).toContain('CREATE INDEX "channels_title_trgm_idx"');
     expect(migrationSql).toContain('CREATE INDEX "channels_handle_trgm_idx"');
     expect(migrationSql).toContain('CREATE INDEX "channels_youtube_channel_id_trgm_idx"');
+  });
+});
+
+describe("batch 1 enrichment structured profile migration", () => {
+  it("adds a nullable structured_profile column to channel enrichments", () => {
+    const migrationSql = readFileSync(enrichmentStructuredProfileMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('ALTER TABLE "channel_enrichments"');
+    expect(migrationSql).toContain('"structured_profile" JSONB');
   });
 });
 

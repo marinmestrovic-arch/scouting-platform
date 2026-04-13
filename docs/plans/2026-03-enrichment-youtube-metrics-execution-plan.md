@@ -3,6 +3,10 @@
 - Status: Draft
 - Date: 2026-03-09
 - Owner: Ivan
+- Execution status:
+  - Batch 1 completed on 2026-04-13
+  - Batch 2 completed on 2026-04-13
+  - Batch 3 pending
 
 ---
 
@@ -139,6 +143,8 @@ The following are out of scope for this plan:
 
 ## Batch 1: Extend Existing Structured LLM Enrichment
 
+- Status: Completed on 2026-04-13
+
 ### Goal
 
 Extend the existing Week 4 structured enrichment output instead of replacing it.
@@ -190,24 +196,26 @@ Recommended shape:
 
 ### Execution Notes
 
-- update the OpenAI prompt and response schema together
-- validate the full structured response with zod
-- persist both:
+- [done] update the OpenAI prompt and response schema together
+- [done] validate the full structured response with zod
+- [done] persist both:
   - compatibility fields (`summary/topics/brandFitNotes/confidence`)
   - the new structured object
-- keep `channels.enrich.llm` as the only enrichment job
+- [done] keep `channels.enrich.llm` as the only enrichment job
 
 ### Done When
 
-- LLM enrichment remains worker-owned and queue topology stays unchanged
-- current enrichment fields still work unchanged
-- richer structured output is validated and persisted
-- channel detail can expose the additive structured object
-- parsing, persistence, and API tests cover the new shape
+- [done] LLM enrichment remains worker-owned and queue topology stays unchanged
+- [done] current enrichment fields still work unchanged
+- [done] richer structured output is validated and persisted
+- [done] channel detail can expose the additive structured object
+- [done] parsing, persistence, and API tests cover the new shape
 
 ---
 
 ## Batch 2: Expand Cached YouTube Context for Recent Videos
+
+- Status: Completed on 2026-04-13
 
 ### Goal
 
@@ -217,31 +225,31 @@ Extend cached YouTube context so it contains enough normalized recent-video data
 
 Use the uploads playlist and inspect recent uploads until one of these is true:
 
-- 12 long-form videos have been identified, or
-- 50 recent uploads have been inspected
+- [done] 12 long-form videos have been identified, or
+- [done] 50 recent uploads have been inspected
 
 This avoids the current mismatch where a 12-video long-form metric is impossible if only a small recent-upload window is fetched.
 
 ### Provider Calls
 
-- keep YouTube provider parsing in `backend/packages/integrations`
-- use `playlistItems.list` to gather upload video IDs
-- use `videos.list` for those IDs to fetch normalized metadata
-- batch IDs efficiently and remain quota-conscious
+- [done] keep YouTube provider parsing in `backend/packages/integrations`
+- [done] use `playlistItems.list` to gather upload video IDs
+- [done] use `videos.list` for those IDs to fetch normalized metadata
+- [done] batch IDs efficiently and remain quota-conscious
 
 ### Normalized Recent Video Fields
 
 Each cached recent video should include:
 
-- `youtubeVideoId`
-- `publishedAt`
-- `durationSeconds`
-- `isShort`
-- `viewCount`
-- `likeCount`
-- `commentCount`
-- `categoryId`
-- `tags`
+- [done] `youtubeVideoId`
+- [done] `publishedAt`
+- [done] `durationSeconds`
+- [done] `isShort`
+- [done] `viewCount`
+- [done] `likeCount`
+- [done] `commentCount`
+- [done] `categoryId`
+- [done] `tags`
 
 ### Shorts Rule
 
@@ -249,17 +257,18 @@ Shorts classification must be deterministic and centralized.
 
 For this slice:
 
-- `isShort = durationSeconds <= 180`
-- `isLongForm = durationSeconds > 180`
+- [done] `isShort = durationSeconds <= 180`
+- [done] `isLongForm = durationSeconds > 180`
 
 Use one shared helper in `backend/packages/core` so enrichment and metric derivation use the same rule.
+- [done] one shared helper in `backend/packages/core` now drives enrichment and metric-path Shorts classification
 
 ### Done When
 
-- cached YouTube context stores normalized recent-video fields
-- the fetch window supports the later 12-long-form metric rule
-- parsing and caching tests cover the new fields
-- Shorts classification is shared and deterministic
+- [done] cached YouTube context stores normalized recent-video fields
+- [done] the fetch window supports the later 12-long-form metric rule
+- [done] parsing and caching tests cover the new fields
+- [done] Shorts classification is shared and deterministic
 
 ---
 

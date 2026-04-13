@@ -18,6 +18,30 @@ export const channelEnrichmentStatusSchema = z.enum([
   "stale",
 ]);
 
+export const channelStructuredProfileSchema = z.object({
+  metadata: z.object({
+    language: z.string().trim().min(1),
+    contentFormats: z
+      .array(z.enum(["long_form", "shorts", "live_stream", "podcast", "mixed", "other"]))
+      .min(1)
+      .max(10),
+    sponsorSignals: z.array(z.string().trim().min(1)).max(20),
+    geoHints: z.array(z.string().trim().min(1)).max(20),
+    uploadCadenceHint: z.string().trim().min(1),
+  }),
+  niche: z.object({
+    primary: z.string().trim().min(1),
+    secondary: z.array(z.string().trim().min(1)).max(10),
+    confidence: z.number().min(0).max(1),
+  }),
+  brandSafety: z.object({
+    status: z.enum(["safe", "caution", "unsafe"]),
+    flags: z.array(z.string().trim().min(1)).max(20),
+    rationale: z.string().trim().min(1),
+    confidence: z.number().min(0).max(1),
+  }),
+});
+
 export const channelEnrichmentSummarySchema = z.object({
   status: channelEnrichmentStatusSchema,
   updatedAt: isoDatetimeSchema.nullable(),
@@ -36,6 +60,7 @@ export const channelEnrichmentDetailSchema = channelEnrichmentSummarySchema.exte
   topics: z.array(z.string()).nullable(),
   brandFitNotes: z.string().nullable(),
   confidence: z.number().min(0).max(1).nullable(),
+  structuredProfile: channelStructuredProfileSchema.nullable().optional(),
 });
 
 export const listChannelsQuerySchema = catalogChannelFiltersSchema.extend({
@@ -145,6 +170,7 @@ export type ChannelSummary = z.infer<typeof channelSummarySchema>;
 export type ChannelDetail = z.infer<typeof channelDetailSchema>;
 export type ListChannelsResponse = z.infer<typeof listChannelsResponseSchema>;
 export type ChannelEnrichmentStatus = z.infer<typeof channelEnrichmentStatusSchema>;
+export type ChannelStructuredProfile = z.infer<typeof channelStructuredProfileSchema>;
 export type ChannelEnrichmentSummary = z.infer<typeof channelEnrichmentSummarySchema>;
 export type ChannelEnrichmentDetail = z.infer<typeof channelEnrichmentDetailSchema>;
 export type ChannelManualOverrideField = z.infer<typeof channelManualOverrideFieldSchema>;

@@ -2,6 +2,7 @@ import type { YoutubeChannelContext } from "@scouting-platform/integrations";
 
 const CHANNEL_URL_PREFIX = "https://www.youtube.com/channel/";
 const HANDLE_URL_PREFIX = "https://www.youtube.com/";
+const YOUTUBE_SHORTS_MAX_DURATION_SECONDS = 180;
 
 export type DerivedYoutubeMetrics = {
   normalizedHandle: string | null;
@@ -19,6 +20,33 @@ function dedupeWarnings(warnings: readonly string[]): string[] {
         .filter((warning) => warning.length > 0),
     ),
   );
+}
+
+function normalizeNullableDurationSeconds(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return Math.round(value);
+}
+
+function normalizeStringList(values: readonly string[] | null | undefined): string[] {
+  if (!values) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function normalizeNullableTrimmed(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 export function normalizeYoutubeHandle(value: string | null): string | null {
@@ -66,9 +94,45 @@ export function computeYoutubeAverageViews(context: YoutubeChannelContext): numb
   return Math.round(context.viewCount / context.videoCount);
 }
 
+export function isYoutubeShortVideo(durationSeconds: number | null | undefined): boolean | null {
+  const normalizedDurationSeconds = normalizeNullableDurationSeconds(durationSeconds);
+
+  if (normalizedDurationSeconds === null) {
+    return null;
+  }
+
+  return normalizedDurationSeconds <= YOUTUBE_SHORTS_MAX_DURATION_SECONDS;
+}
+
+export function isYoutubeLongFormVideo(durationSeconds: number | null | undefined): boolean | null {
+  const isShort = isYoutubeShortVideo(durationSeconds);
+  return isShort === null ? null : !isShort;
+}
+
+export function normalizeYoutubeContext(context: YoutubeChannelContext): YoutubeChannelContext {
+  return {
+    ...context,
+    recentVideos: context.recentVideos.map((video) => {
+      const durationSeconds = normalizeNullableDurationSeconds(video.durationSeconds);
+
+      return {
+        ...video,
+        durationSeconds,
+        isShort: isYoutubeShortVideo(durationSeconds),
+        categoryId: normalizeNullableTrimmed(video.categoryId),
+        tags: normalizeStringList(video.tags),
+      };
+    }),
+    diagnostics: {
+      warnings: dedupeWarnings(context.diagnostics?.warnings ?? []),
+    },
+  };
+}
+
 export function deriveYoutubeMetrics(context: YoutubeChannelContext): DerivedYoutubeMetrics {
-  const normalizedHandle = normalizeYoutubeHandle(context.handle);
-  const eligibleVideos = context.recentVideos.filter(
+  const normalizedContext = normalizeYoutubeContext(context);
+  const normalizedHandle = normalizeYoutubeHandle(normalizedContext.handle);
+  const eligibleVideos = normalizedContext.recentVideos.filter(
     (video) =>
       typeof video.viewCount === "number" &&
       video.viewCount > 0 &&
@@ -76,14 +140,14 @@ export function deriveYoutubeMetrics(context: YoutubeChannelContext): DerivedYou
       typeof video.commentCount === "number",
   );
 
-  const warnings = [...(context.diagnostics?.warnings ?? [])];
+  const warnings = [...normalizedContext.diagnostics.warnings];
 
-  if (context.recentVideos.length > 0) {
+  if (normalizedContext.recentVideos.length > 0) {
     if (eligibleVideos.length === 0) {
       warnings.push("No recent uploads contained complete statistics for engagement-rate derivation.");
-    } else if (eligibleVideos.length < context.recentVideos.length) {
+    } else if (eligibleVideos.length < normalizedContext.recentVideos.length) {
       warnings.push(
-        `Engagement rate derived from ${eligibleVideos.length} of ${context.recentVideos.length} recent uploads with complete statistics.`,
+        `Engagement rate derived from ${eligibleVideos.length} of ${normalizedContext.recentVideos.length} recent uploads with complete statistics.`,
       );
     }
   }
@@ -101,10 +165,10 @@ export function deriveYoutubeMetrics(context: YoutubeChannelContext): DerivedYou
   return {
     normalizedHandle,
     canonicalUrl: buildCanonicalYoutubeUrl(context.youtubeChannelId, normalizedHandle),
-    averageViews: computeYoutubeAverageViews(context),
+    averageViews: computeYoutubeAverageViews(normalizedContext),
     engagementRate,
     context: {
-      ...context,
+      ...normalizedContext,
       handle: normalizedHandle,
       diagnostics: {
         warnings: dedupeWarnings(warnings),

@@ -15,9 +15,11 @@ import {
   type ChannelEnrichmentStatus as ContractChannelEnrichmentStatus,
   type ChannelInsights as ContractChannelInsights,
   type ChannelManualOverrideField,
+  type ChannelStructuredProfile as ContractChannelStructuredProfile,
   type ChannelManualOverrideOperation,
   type LatestCompletedAdvancedReport,
   type PatchChannelManualOverridesResponse,
+  channelStructuredProfileSchema,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
@@ -51,6 +53,7 @@ export type ChannelEnrichmentDetail = ChannelEnrichmentSummary & {
   topics: string[] | null;
   brandFitNotes: string | null;
   confidence: number | null;
+  structuredProfile: ContractChannelStructuredProfile | null;
 };
 
 export type ChannelAdvancedReportSummary = ContractChannelAdvancedReportSummary;
@@ -136,6 +139,7 @@ const channelEnrichmentDetailSelect = {
   topics: true,
   brandFitNotes: true,
   confidence: true,
+  structuredProfile: true,
 } as const;
 
 const latestAdvancedReportSelect = {
@@ -417,6 +421,7 @@ function toChannelEnrichmentDetail(
     topics: Prisma.JsonValue | null;
     brandFitNotes: string | null;
     confidence: number | null;
+    structuredProfile: Prisma.JsonValue | null;
   } | null,
 ): ChannelEnrichmentDetail {
   const base = toChannelEnrichmentSummary(channelUpdatedAt, enrichment);
@@ -427,7 +432,15 @@ function toChannelEnrichmentDetail(
     topics: enrichment ? toTopics(enrichment.topics) : null,
     brandFitNotes: enrichment?.brandFitNotes ?? null,
     confidence: enrichment?.confidence ?? null,
+    structuredProfile: enrichment ? toStructuredProfile(enrichment.structuredProfile) : null,
   };
+}
+
+function toStructuredProfile(
+  value: Prisma.JsonValue | null,
+): ContractChannelStructuredProfile | null {
+  const parsed = channelStructuredProfileSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function toAudienceCountries(value: Prisma.JsonValue | null) {
@@ -588,6 +601,7 @@ function toChannelDetail(channel: {
     topics: Prisma.JsonValue | null;
     brandFitNotes: string | null;
     confidence: number | null;
+    structuredProfile: Prisma.JsonValue | null;
   } | null;
   insights: ChannelInsightsRow | null;
   advancedReportRequests: LatestAdvancedReportRow[];

@@ -192,6 +192,26 @@ integration("week 4 API integration", () => {
         topics: ["gaming", "commentary"],
         brandFitNotes: "Strong fit for gaming peripherals.",
         confidence: 0.82,
+        structuredProfile: {
+          metadata: {
+            language: "en",
+            contentFormats: ["long_form"],
+            sponsorSignals: [],
+            geoHints: ["US"],
+            uploadCadenceHint: "weekly",
+          },
+          niche: {
+            primary: "gaming_commentary",
+            secondary: ["live_service_games"],
+            confidence: 0.84,
+          },
+          brandSafety: {
+            status: "safe",
+            flags: [],
+            rationale: "No visible safety concerns in the stored enrichment.",
+            confidence: 0.79,
+          },
+        },
       },
     });
 
@@ -221,5 +241,6 @@ integration("week 4 API integration", () => {
     expect(detailPayload.enrichment.topics).toEqual(["gaming", "commentary"]);
     expect(detailPayload.enrichment.brandFitNotes).toBe("Strong fit for gaming peripherals.");
     expect(detailPayload.enrichment.confidence).toBe(0.82);
+    expect(detailPayload.enrichment.structuredProfile?.niche.primary).toBe("gaming_commentary");
   });
 });

@@ -1,9 +1,27 @@
 import { z } from "zod";
 
+const DEFAULT_MAX_INSPECTED_UPLOADS = 50;
+const DEFAULT_MIN_LONG_FORM_VIDEOS = 12;
+const PLAYLIST_ITEMS_PAGE_SIZE = 25;
+const YOUTUBE_SHORTS_MAX_DURATION_SECONDS = 180;
+
 const contextInputSchema = z.object({
   apiKey: z.string().trim().min(1),
   channelId: z.string().trim().min(1),
-  maxVideos: z.number().int().min(1).max(10).default(10),
+  maxVideos: z.number().int().min(1).max(DEFAULT_MAX_INSPECTED_UPLOADS).default(
+    DEFAULT_MAX_INSPECTED_UPLOADS,
+  ),
+  minLongFormVideos: z.number().int().min(1).max(DEFAULT_MAX_INSPECTED_UPLOADS).default(
+    DEFAULT_MIN_LONG_FORM_VIDEOS,
+  ),
+}).superRefine((value, context) => {
+  if (value.minLongFormVideos > value.maxVideos) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "minLongFormVideos cannot exceed maxVideos",
+      path: ["minLongFormVideos"],
+    });
+  }
 });
 
 const channelResponseSchema = z.object({
@@ -47,6 +65,7 @@ const channelResponseSchema = z.object({
 });
 
 const playlistItemsResponseSchema = z.object({
+  nextPageToken: z.string().optional(),
   items: z
     .array(
       z.object({
@@ -71,6 +90,17 @@ const videosResponseSchema = z.object({
     .array(
       z.object({
         id: z.string().trim().min(1),
+        contentDetails: z
+          .object({
+            duration: z.string().optional(),
+          })
+          .optional(),
+        snippet: z
+          .object({
+            categoryId: z.string().optional(),
+            tags: z.array(z.string()).optional(),
+          })
+          .optional(),
         statistics: z
           .object({
             viewCount: z.string().optional(),
@@ -137,9 +167,13 @@ export const youtubeChannelContextSchema = z.object({
       title: z.string().trim().min(1),
       description: z.string().trim().nullable(),
       publishedAt: z.string().trim().nullable(),
+      durationSeconds: z.number().int().nonnegative().nullable().optional().default(null),
+      isShort: z.boolean().nullable().optional().default(null),
       viewCount: z.number().nullable().optional().default(null),
       likeCount: z.number().nullable().optional().default(null),
       commentCount: z.number().nullable().optional().default(null),
+      categoryId: z.string().trim().nullable().optional().default(null),
+      tags: z.array(z.string().trim().min(1)).optional().default([]),
     }),
   ),
   diagnostics: z
@@ -169,16 +203,23 @@ type YoutubeChannelContextDraft = {
     title: string;
     description: string | null;
     publishedAt: string | null;
+    durationSeconds: number | null;
+    isShort: boolean | null;
     viewCount: number | null;
     likeCount: number | null;
     commentCount: number | null;
+    categoryId: string | null;
+    tags: string[];
   }>;
   diagnostics: {
     warnings: string[];
   };
 };
 
-export type FetchYoutubeChannelContextInput = z.input<typeof contextInputSchema>;
+export type YoutubeShortClassifier = (durationSeconds: number | null) => boolean | null;
+export type FetchYoutubeChannelContextInput = z.input<typeof contextInputSchema> & {
+  classifyIsShort?: YoutubeShortClassifier;
+};
 
 export class YoutubeChannelContextProviderError extends Error {
   readonly code: YoutubeChannelContextErrorCode;
@@ -226,6 +267,56 @@ function toNullableNumber(value: string | undefined): number | null {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toTrimmedStringArray(values: string[] | undefined): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function parseDurationToSeconds(value: string | undefined): number | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const match =
+    /^P(?:(?<days>\d+)D)?(?:T(?:(?<hours>\d+)H)?(?:(?<minutes>\d+)M)?(?:(?<seconds>\d+)S)?)?$/iu.exec(
+      trimmed,
+    );
+
+  if (!match?.groups) {
+    return null;
+  }
+
+  const days = Number(match.groups.days ?? 0);
+  const hours = Number(match.groups.hours ?? 0);
+  const minutes = Number(match.groups.minutes ?? 0);
+  const seconds = Number(match.groups.seconds ?? 0);
+
+  if (![days, hours, minutes, seconds].every(Number.isFinite)) {
+    return null;
+  }
+
+  return days * 24 * 60 * 60 + hours * 60 * 60 + minutes * 60 + seconds;
+}
+
+function defaultClassifyIsShort(durationSeconds: number | null): boolean | null {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds < 0) {
+    return null;
+  }
+
+  return durationSeconds <= YOUTUBE_SHORTS_MAX_DURATION_SECONDS;
 }
 
 async function parseJsonResponse(response: Response): Promise<unknown> {
@@ -327,7 +418,12 @@ function buildChannelsUrl(input: z.output<typeof contextInputSchema>): string {
   return `${YOUTUBE_CHANNELS_URL}?${params.toString()}`;
 }
 
-function buildPlaylistItemsUrl(apiKey: string, uploadsPlaylistId: string, maxVideos: number): string {
+function buildPlaylistItemsUrl(
+  apiKey: string,
+  uploadsPlaylistId: string,
+  maxVideos: number,
+  pageToken?: string,
+): string {
   const params = new URLSearchParams({
     key: apiKey,
     part: "snippet,contentDetails",
@@ -335,13 +431,17 @@ function buildPlaylistItemsUrl(apiKey: string, uploadsPlaylistId: string, maxVid
     maxResults: String(maxVideos),
   });
 
+  if (pageToken) {
+    params.set("pageToken", pageToken);
+  }
+
   return `${YOUTUBE_PLAYLIST_ITEMS_URL}?${params.toString()}`;
 }
 
 function buildVideosUrl(apiKey: string, videoIds: string[]): string {
   const params = new URLSearchParams({
     key: apiKey,
-    part: "statistics",
+    part: "statistics,contentDetails,snippet",
     id: videoIds.join(","),
     maxResults: String(videoIds.length),
   });
@@ -360,6 +460,7 @@ function toWarningMessage(error: unknown): string {
 export async function fetchYoutubeChannelContext(
   rawInput: FetchYoutubeChannelContextInput,
 ): Promise<YoutubeChannelContext> {
+  const classifyIsShort = rawInput.classifyIsShort ?? defaultClassifyIsShort;
   const input = contextInputSchema.parse(rawInput);
   const channelResponse = await fetch(buildChannelsUrl(input), {
     method: "GET",
@@ -382,76 +483,118 @@ export async function fetchYoutubeChannelContext(
 
   const warnings: string[] = [];
 
-  const recentVideos: YoutubeChannelContextDraft["recentVideos"] =
-    uploadsPlaylistId === null
-      ? []
-      : await (async () => {
-          const playlistResponse = await fetch(
-            buildPlaylistItemsUrl(input.apiKey, uploadsPlaylistId, input.maxVideos),
-            {
-              method: "GET",
-            },
-          );
-          await assertSuccessResponseOrThrow(playlistResponse);
+  const recentVideos: YoutubeChannelContextDraft["recentVideos"] = [];
+  let nextPageToken: string | undefined;
+  let shouldContinue = uploadsPlaylistId !== null;
 
-          const parsedPlaylist = parsePlaylistItemsResponse(await parseJsonResponse(playlistResponse));
-
-          return parsedPlaylist.items.map((item) => ({
-            youtubeVideoId: toNullableTrimmed(item.contentDetails?.videoId),
-            title: item.snippet.title.trim(),
-            description: toNullableTrimmed(item.snippet.description),
-            publishedAt: toNullableTrimmed(item.snippet.publishedAt),
-            viewCount: null,
-            likeCount: null,
-            commentCount: null,
-          }));
-        })();
-
-  const recentVideoIds = recentVideos
-    .map((video) => video.youtubeVideoId)
-    .filter((videoId): videoId is string => Boolean(videoId));
-
-  if (recentVideos.length > 0 && recentVideoIds.length === 0) {
-    warnings.push("Recent uploads are missing video identifiers; engagement rate cannot be derived.");
-  }
-
-  if (recentVideoIds.length > 0) {
-    try {
-      const videosResponse = await fetch(buildVideosUrl(input.apiKey, recentVideoIds), {
+  while (shouldContinue && uploadsPlaylistId !== null && recentVideos.length < input.maxVideos) {
+    const remainingVideos = input.maxVideos - recentVideos.length;
+    const playlistResponse = await fetch(
+      buildPlaylistItemsUrl(
+        input.apiKey,
+        uploadsPlaylistId,
+        Math.min(PLAYLIST_ITEMS_PAGE_SIZE, remainingVideos),
+        nextPageToken,
+      ),
+      {
         method: "GET",
-      });
-      await assertSuccessResponseOrThrow(videosResponse);
+      },
+    );
+    await assertSuccessResponseOrThrow(playlistResponse);
 
-      const parsedVideos = parseVideosResponse(await parseJsonResponse(videosResponse));
-      const statsByVideoId = new Map(
-        parsedVideos.items.map((item) => [
-          item.id,
-          {
-            viewCount: toNullableNumber(item.statistics?.viewCount),
-            likeCount: toNullableNumber(item.statistics?.likeCount),
-            commentCount: toNullableNumber(item.statistics?.commentCount),
-          },
-        ]),
-      );
+    const parsedPlaylist = parsePlaylistItemsResponse(await parseJsonResponse(playlistResponse));
+    const pageRecentVideos = parsedPlaylist.items
+      .slice(0, remainingVideos)
+      .map((item) => ({
+        youtubeVideoId: toNullableTrimmed(item.contentDetails?.videoId),
+        title: item.snippet.title.trim(),
+        description: toNullableTrimmed(item.snippet.description),
+        publishedAt: toNullableTrimmed(item.snippet.publishedAt),
+        durationSeconds: null,
+        isShort: null,
+        viewCount: null,
+        likeCount: null,
+        commentCount: null,
+        categoryId: null,
+        tags: [],
+      }));
 
-      recentVideos.forEach((video) => {
-        if (!video.youtubeVideoId) {
-          return;
-        }
+    const pageRecentVideoIds = pageRecentVideos
+      .map((video) => video.youtubeVideoId)
+      .filter((videoId): videoId is string => Boolean(videoId));
 
-        const stats = statsByVideoId.get(video.youtubeVideoId);
-
-        if (!stats) {
-          return;
-        }
-
-        video.viewCount = stats.viewCount;
-        video.likeCount = stats.likeCount;
-        video.commentCount = stats.commentCount;
-      });
-    } catch (error) {
-      warnings.push(`Recent video statistics unavailable: ${toWarningMessage(error)}`);
+    if (pageRecentVideos.length > 0 && pageRecentVideoIds.length === 0) {
+      warnings.push("Recent uploads are missing video identifiers; engagement rate cannot be derived.");
     }
+
+    if (pageRecentVideoIds.length > 0) {
+      try {
+        const videosResponse = await fetch(buildVideosUrl(input.apiKey, pageRecentVideoIds), {
+          method: "GET",
+        });
+        await assertSuccessResponseOrThrow(videosResponse);
+
+        const parsedVideos = parseVideosResponse(await parseJsonResponse(videosResponse));
+        const statsByVideoId = new Map(
+          parsedVideos.items.map((item) => {
+            const durationSeconds = parseDurationToSeconds(item.contentDetails?.duration);
+
+            return [
+              item.id,
+              {
+                durationSeconds,
+                isShort: classifyIsShort(durationSeconds),
+                viewCount: toNullableNumber(item.statistics?.viewCount),
+                likeCount: toNullableNumber(item.statistics?.likeCount),
+                commentCount: toNullableNumber(item.statistics?.commentCount),
+                categoryId: toNullableTrimmed(item.snippet?.categoryId),
+                tags: toTrimmedStringArray(item.snippet?.tags),
+              },
+            ];
+          }),
+        );
+
+        pageRecentVideos.forEach((video) => {
+          if (!video.youtubeVideoId) {
+            return;
+          }
+
+          const stats = statsByVideoId.get(video.youtubeVideoId);
+
+          if (!stats) {
+            return;
+          }
+
+          video.durationSeconds = stats.durationSeconds;
+          video.isShort = stats.isShort;
+          video.viewCount = stats.viewCount;
+          video.likeCount = stats.likeCount;
+          video.commentCount = stats.commentCount;
+          video.categoryId = stats.categoryId;
+          video.tags = stats.tags;
+        });
+      } catch (error) {
+        warnings.push(`Recent video statistics unavailable: ${toWarningMessage(error)}`);
+        recentVideos.push(...pageRecentVideos);
+        break;
+      }
+    }
+
+    recentVideos.push(...pageRecentVideos);
+
+    const longFormVideos = recentVideos.filter((video) => video.isShort === false).length;
+
+    if (
+      longFormVideos >= input.minLongFormVideos ||
+      recentVideos.length >= input.maxVideos ||
+      !parsedPlaylist.nextPageToken ||
+      pageRecentVideos.length === 0
+    ) {
+      shouldContinue = false;
+      continue;
+    }
+
+    nextPageToken = parsedPlaylist.nextPageToken;
   }
 
   const context: YoutubeChannelContextDraft = {

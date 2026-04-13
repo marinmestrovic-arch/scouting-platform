@@ -463,6 +463,7 @@ model ChannelEnrichment {
   topics            Json?
   brandFitNotes     String?                 @map("brand_fit_notes") @db.Text
   confidence        Float?
+  structuredProfile Json?                   @map("structured_profile")
   createdAt         DateTime                @default(now()) @map("created_at")
   updatedAt         DateTime                @updatedAt @map("updated_at")
   channel           Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)

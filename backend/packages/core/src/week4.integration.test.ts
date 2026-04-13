@@ -41,18 +41,26 @@ const CACHED_CONTEXT = {
       title: "Latest video",
       description: "Video description",
       publishedAt: "2024-01-10T12:00:00Z",
+      durationSeconds: 780,
+      isShort: false,
       viewCount: 100,
       likeCount: 10,
       commentCount: 5,
+      categoryId: "20",
+      tags: ["gaming", "commentary"],
     },
     {
       youtubeVideoId: "video-2",
       title: "Second video",
       description: null,
       publishedAt: "2024-01-09T12:00:00Z",
+      durationSeconds: 840,
+      isShort: false,
       viewCount: 200,
       likeCount: 20,
       commentCount: 10,
+      categoryId: "24",
+      tags: ["analysis"],
     },
   ],
   diagnostics: {
@@ -66,6 +74,26 @@ const ENRICHMENT_RESULT = {
     topics: ["gaming", "commentary"],
     brandFitNotes: "Strong fit for gaming peripherals.",
     confidence: 0.82,
+    structuredProfile: {
+      metadata: {
+        language: "en",
+        contentFormats: ["long_form"],
+        sponsorSignals: ["affiliate_links"],
+        geoHints: ["US"],
+        uploadCadenceHint: "weekly",
+      },
+      niche: {
+        primary: "gaming_commentary",
+        secondary: ["live_service_games"],
+        confidence: 0.84,
+      },
+      brandSafety: {
+        status: "safe",
+        flags: [],
+        rationale: "Commentary content appears broadly brand safe from the cached context.",
+        confidence: 0.79,
+      },
+    },
   },
   rawPayload: {
     id: "resp-1",
@@ -77,7 +105,12 @@ const STORED_OPENAI_RAW_PAYLOAD = {
   choices: [
     {
       message: {
-        content: JSON.stringify(ENRICHMENT_RESULT.profile),
+        content: JSON.stringify({
+          summary: ENRICHMENT_RESULT.profile.summary,
+          topics: ENRICHMENT_RESULT.profile.topics,
+          brandFitNotes: ENRICHMENT_RESULT.profile.brandFitNotes,
+          confidence: ENRICHMENT_RESULT.profile.confidence,
+        }),
       },
     },
   ],
@@ -341,6 +374,15 @@ integration("week 4 core integration", () => {
     });
 
     expect(fetchYoutubeChannelContextMock).toHaveBeenCalledTimes(1);
+    expect(fetchYoutubeChannelContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "yt-key-1",
+        channelId: "UC-ENRICH-1",
+        maxVideos: 50,
+        minLongFormVideos: 12,
+        classifyIsShort: expect.any(Function),
+      }),
+    );
 
     const contextRow = await prisma.channelYoutubeContext.findUniqueOrThrow({
       where: {
@@ -381,6 +423,7 @@ integration("week 4 core integration", () => {
     expect(enrichment.topics).toEqual(ENRICHMENT_RESULT.profile.topics);
     expect(enrichment.brandFitNotes).toBe(ENRICHMENT_RESULT.profile.brandFitNotes);
     expect(enrichment.confidence).toBe(ENRICHMENT_RESULT.profile.confidence);
+    expect(enrichment.structuredProfile).toEqual(ENRICHMENT_RESULT.profile.structuredProfile);
     expect(enrichment.lastError).toBeNull();
     expect(enrichment.rawOpenaiPayload).toMatchObject(ENRICHMENT_RESULT.rawPayload);
 
@@ -448,9 +491,13 @@ integration("week 4 core integration", () => {
           title: "Latest video",
           description: null,
           publishedAt: "2024-01-10T12:00:00Z",
+          durationSeconds: 60,
+          isShort: true,
           viewCount: null,
           likeCount: null,
           commentCount: null,
+          categoryId: "20",
+          tags: ["shorts"],
         },
       ],
       diagnostics: {
@@ -591,6 +638,7 @@ integration("week 4 core integration", () => {
     expect(enrichment.summary).toBe(ENRICHMENT_RESULT.profile.summary);
     expect(enrichment.brandFitNotes).toBe(ENRICHMENT_RESULT.profile.brandFitNotes);
     expect(enrichment.confidence).toBe(ENRICHMENT_RESULT.profile.confidence);
+    expect(enrichment.structuredProfile).toBeNull();
   });
 
   it("skips YouTube fetch when youtubeFetchedAt is set", async () => {

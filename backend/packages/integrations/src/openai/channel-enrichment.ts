@@ -7,11 +7,39 @@ import type { YoutubeChannelContext } from "../youtube/context";
 
 const OPENAI_MODEL_FALLBACK = "gpt-5-nano";
 
-const outputSchema = z.object({
+const baseOutputSchema = z.object({
   summary: z.string().trim().min(1),
   topics: z.array(z.string().trim().min(1)).min(1).max(20),
   brandFitNotes: z.string().trim().min(1),
   confidence: z.number().min(0).max(1),
+});
+
+const structuredProfileSchema = z.object({
+  metadata: z.object({
+    language: z.string().trim().min(1),
+    contentFormats: z
+      .array(z.enum(["long_form", "shorts", "live_stream", "podcast", "mixed", "other"]))
+      .min(1)
+      .max(10),
+    sponsorSignals: z.array(z.string().trim().min(1)).max(20),
+    geoHints: z.array(z.string().trim().min(1)).max(20),
+    uploadCadenceHint: z.string().trim().min(1),
+  }),
+  niche: z.object({
+    primary: z.string().trim().min(1),
+    secondary: z.array(z.string().trim().min(1)).max(10),
+    confidence: z.number().min(0).max(1),
+  }),
+  brandSafety: z.object({
+    status: z.enum(["safe", "caution", "unsafe"]),
+    flags: z.array(z.string().trim().min(1)).max(20),
+    rationale: z.string().trim().min(1),
+    confidence: z.number().min(0).max(1),
+  }),
+});
+
+const outputSchema = baseOutputSchema.extend({
+  structuredProfile: structuredProfileSchema,
 });
 
 const inputSchema = z.object({
@@ -51,7 +79,11 @@ export type OpenAiChannelEnrichmentErrorCode =
   | "OPENAI_INVALID_RESPONSE"
   | "OPENAI_ENRICHMENT_FAILED";
 
+export type OpenAiStructuredProfile = z.infer<typeof structuredProfileSchema>;
 export type OpenAiChannelEnrichment = z.infer<typeof outputSchema>;
+export type StoredOpenAiChannelEnrichment = z.infer<typeof baseOutputSchema> & {
+  structuredProfile: OpenAiStructuredProfile | null;
+};
 export type EnrichChannelWithOpenAiInput = z.input<typeof inputSchema>;
 export type EnrichChannelWithOpenAiResult = {
   profile: OpenAiChannelEnrichment;
@@ -112,9 +144,13 @@ function slimYoutubeContext(ctx: z.output<typeof inputSchema>["youtubeContext"])
     title: string;
     description: string | null;
     publishedAt: string | null;
+    durationSeconds: number | null;
+    isShort: boolean | null;
     viewCount: number | null;
     likeCount: number | null;
     commentCount: number | null;
+    categoryId: string | null;
+    tags: string[];
   }[];
 } {
   return {
@@ -131,9 +167,13 @@ function slimYoutubeContext(ctx: z.output<typeof inputSchema>["youtubeContext"])
       title: video.title,
       description: video.description ? video.description.slice(0, 200) : null,
       publishedAt: video.publishedAt,
+      durationSeconds: video.durationSeconds ?? null,
+      isShort: video.isShort ?? null,
       viewCount: video.viewCount ?? null,
       likeCount: video.likeCount ?? null,
       commentCount: video.commentCount ?? null,
+      categoryId: video.categoryId ?? null,
+      tags: video.tags.slice(0, 10),
     })),
   };
 }
@@ -150,6 +190,35 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
         "Explain the most relevant sponsor/brand fit observations, including constraints if visible.",
       confidence:
         "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
+      structuredProfile: {
+        metadata: {
+          language:
+            "Infer the dominant audience or creator language as a short machine-readable code or label.",
+          contentFormats:
+            "Return one or more values from: long_form, shorts, live_stream, podcast, mixed, other.",
+          sponsorSignals:
+            "List recurring sponsor or monetization signals visible from titles/descriptions if any.",
+          geoHints:
+            "List geographic market hints such as country, language region, or audience region abbreviations.",
+          uploadCadenceHint:
+            "Summarize the visible upload cadence as a short label such as daily, weekly, monthly, irregular.",
+        },
+        niche: {
+          primary: "Return the primary niche as a short machine-readable tag.",
+          secondary: "Return additional niche tags when strongly supported.",
+          confidence:
+            "Return a number from 0 to 1 reflecting confidence in the niche classification.",
+        },
+        brandSafety: {
+          status: "Return exactly one of: safe, caution, unsafe.",
+          flags:
+            "List notable brand-safety flags as short machine-readable tags. Return an empty array if none.",
+          rationale:
+            "Explain the brand-safety assessment in one concise sentence grounded in the visible content.",
+          confidence:
+            "Return a number from 0 to 1 reflecting confidence in the brand-safety assessment.",
+        },
+      },
     },
   });
 }
@@ -189,9 +258,7 @@ function toRawPayload(response: OpenAiCompletionResponse): Record<string, unknow
   return JSON.parse(JSON.stringify(response)) as Record<string, unknown>;
 }
 
-export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
-  rawPayload: unknown,
-): OpenAiChannelEnrichment {
+function parseOpenAiChannelEnrichmentContent(rawPayload: unknown): unknown {
   const content = extractTextContent(
     (rawPayload as OpenAiCompletionResponse | null | undefined)?.choices?.[0]?.message?.content,
   );
@@ -216,17 +283,50 @@ export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
     );
   }
 
+  return parsedContent;
+}
+
+function invalidOutputError(): never {
+  throw new OpenAiChannelEnrichmentError(
+    "OPENAI_INVALID_RESPONSE",
+    502,
+    "OpenAI returned invalid enrichment output",
+  );
+}
+
+export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
+  rawPayload: unknown,
+): OpenAiChannelEnrichment {
+  const parsedContent = parseOpenAiChannelEnrichmentContent(rawPayload);
   const profile = outputSchema.safeParse(parsedContent);
 
   if (!profile.success) {
-    throw new OpenAiChannelEnrichmentError(
-      "OPENAI_INVALID_RESPONSE",
-      502,
-      "OpenAI returned invalid enrichment output",
-    );
+    invalidOutputError();
   }
 
   return profile.data;
+}
+
+export function extractStoredOpenAiChannelEnrichmentProfileFromRawPayload(
+  rawPayload: unknown,
+): StoredOpenAiChannelEnrichment {
+  const parsedContent = parseOpenAiChannelEnrichmentContent(rawPayload);
+  const currentProfile = outputSchema.safeParse(parsedContent);
+
+  if (currentProfile.success) {
+    return currentProfile.data;
+  }
+
+  const legacyProfile = baseOutputSchema.safeParse(parsedContent);
+
+  if (!legacyProfile.success) {
+    invalidOutputError();
+  }
+
+  return {
+    ...legacyProfile.data,
+    structuredProfile: null,
+  };
 }
 
 function toProviderError(error: unknown): OpenAiChannelEnrichmentError {
@@ -281,7 +381,7 @@ export async function enrichChannelWithOpenAi(
         {
           role: "system",
           content:
-            "You analyze creator-channel context and must return valid JSON with summary, topics, brandFitNotes, and confidence.",
+            "You analyze creator-channel context and must return valid JSON with summary, topics, brandFitNotes, confidence, and structuredProfile.",
         },
         {
           role: "user",

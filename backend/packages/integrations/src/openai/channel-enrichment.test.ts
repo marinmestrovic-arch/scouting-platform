@@ -2,8 +2,38 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   OpenAiChannelEnrichmentError,
+  extractStoredOpenAiChannelEnrichmentProfileFromRawPayload,
   enrichChannelWithOpenAi,
 } from "./channel-enrichment";
+
+const STRUCTURED_PROFILE = {
+  metadata: {
+    language: "en",
+    contentFormats: ["long_form"],
+    sponsorSignals: ["affiliate_links"],
+    geoHints: ["US"],
+    uploadCadenceHint: "weekly",
+  },
+  niche: {
+    primary: "gaming_commentary",
+    secondary: ["live_service_games"],
+    confidence: 0.84,
+  },
+  brandSafety: {
+    status: "safe",
+    flags: [],
+    rationale: "Commentary focuses on mainstream gaming topics without visible safety concerns.",
+    confidence: 0.78,
+  },
+} as const;
+
+const VALID_PROFILE_PAYLOAD = {
+  summary: "Creator focused on gaming commentary.",
+  topics: ["gaming", "commentary"],
+  brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+  confidence: 0.82,
+  structuredProfile: STRUCTURED_PROFILE,
+} as const;
 
 const TEST_INPUT = {
   apiKey: "openai-key",
@@ -29,9 +59,13 @@ const TEST_INPUT = {
         title: "Video 1",
         description: "Description 1",
         publishedAt: "2024-01-01T00:00:00Z",
+        durationSeconds: 640,
+        isShort: false,
         viewCount: null,
         likeCount: null,
         commentCount: null,
+        categoryId: "20",
+        tags: ["gameplay", "commentary"],
       },
     ],
     diagnostics: {
@@ -49,12 +83,7 @@ describe("enrichChannelWithOpenAi", () => {
       choices: [
         {
           message: {
-            content: JSON.stringify({
-              summary: "Creator focused on gaming commentary.",
-              topics: ["gaming", "commentary"],
-              brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
-              confidence: 0.82,
-            }),
+            content: JSON.stringify(VALID_PROFILE_PAYLOAD),
           },
         },
       ],
@@ -70,9 +99,13 @@ describe("enrichChannelWithOpenAi", () => {
           title: `Video ${index + 1}`,
           description: index === 0 ? longDescription : `Description ${index + 1}`,
           publishedAt: "2024-01-01T00:00:00Z",
+          durationSeconds: index === 0 ? 120 : 600 + index,
+          isShort: index === 0,
           viewCount: index + 100,
           likeCount: index + 10,
           commentCount: index + 1,
+          categoryId: "20",
+          tags: [`tag-${index + 1}`, "gaming"],
         })),
         diagnostics: {
           warnings: ["some warning"],
@@ -99,7 +132,13 @@ describe("enrichChannelWithOpenAi", () => {
     const parsed = JSON.parse(content as string) as {
       youtubeContext: {
         description?: string;
-        recentVideos: Array<{ description: string | null }>;
+        recentVideos: Array<{
+          description: string | null;
+          durationSeconds: number | null;
+          isShort: boolean | null;
+          categoryId: string | null;
+          tags: string[];
+        }>;
       };
     };
 
@@ -110,6 +149,12 @@ describe("enrichChannelWithOpenAi", () => {
         (video) => video.description === null || video.description.length <= 200,
       ),
     ).toBe(true);
+    expect(parsed.youtubeContext.recentVideos[0]).toMatchObject({
+      durationSeconds: 120,
+      isShort: true,
+      categoryId: "20",
+      tags: ["tag-1", "gaming"],
+    });
   });
 
   it("uses gpt-5-nano by default and omits temperature", async () => {
@@ -119,12 +164,7 @@ describe("enrichChannelWithOpenAi", () => {
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                summary: "Creator focused on gaming commentary.",
-                topics: ["gaming", "commentary"],
-                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
-                confidence: 0.82,
-              }),
+              content: JSON.stringify(VALID_PROFILE_PAYLOAD),
             },
           },
         ],
@@ -161,12 +201,7 @@ describe("enrichChannelWithOpenAi", () => {
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                summary: "Creator focused on gaming commentary.",
-                topics: ["gaming", "commentary"],
-                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
-                confidence: 0.82,
-              }),
+              content: JSON.stringify(VALID_PROFILE_PAYLOAD),
             },
           },
         ],
@@ -208,12 +243,7 @@ describe("enrichChannelWithOpenAi", () => {
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                summary: "Creator focused on gaming commentary.",
-                topics: ["gaming", "commentary"],
-                brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
-                confidence: 0.82,
-              }),
+              content: JSON.stringify(VALID_PROFILE_PAYLOAD),
             },
           },
         ],
@@ -258,12 +288,7 @@ describe("enrichChannelWithOpenAi", () => {
               choices: [
                 {
                   message: {
-                    content: JSON.stringify({
-                      summary: "Creator focused on gaming commentary.",
-                      topics: ["gaming", "commentary"],
-                      brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
-                      confidence: 0.82,
-                    }),
+                    content: JSON.stringify(VALID_PROFILE_PAYLOAD),
                   },
                 },
               ],
@@ -273,13 +298,33 @@ describe("enrichChannelWithOpenAi", () => {
       },
     });
 
-    expect(result.profile).toEqual({
+    expect(result.profile).toEqual(VALID_PROFILE_PAYLOAD);
+    expect(result.rawPayload.id).toBe("resp-1");
+  });
+
+  it("can recover legacy stored payloads that predate structuredProfile", () => {
+    const profile = extractStoredOpenAiChannelEnrichmentProfileFromRawPayload({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              summary: "Creator focused on gaming commentary.",
+              topics: ["gaming", "commentary"],
+              brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
+              confidence: 0.82,
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(profile).toEqual({
       summary: "Creator focused on gaming commentary.",
       topics: ["gaming", "commentary"],
       brandFitNotes: "Strong fit for gaming peripherals and live-service titles.",
       confidence: 0.82,
+      structuredProfile: null,
     });
-    expect(result.rawPayload.id).toBe("resp-1");
   });
 
   it("throws when the model returns output that fails schema validation", async () => {
