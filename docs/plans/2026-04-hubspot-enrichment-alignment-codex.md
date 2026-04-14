@@ -1,4 +1,4 @@
-# Codex Implementation Guide: HubSpot Property Alignment & Enrichment Expansion
+# Codex Implementation Guide: HubSpot Push Alignment
 
 - Status: Not Started
 - Date: 2026-04-14
@@ -8,29 +8,42 @@
 
 ## Context
 
-An audit of the HubSpot integration revealed that:
+An audit of the HubSpot integration revealed three problems:
 
-1. The HubSpot push writes to 10 custom property names (`channel_id`, `youtube_channel_id`,
-   `creator_title`, `creator_handle`, `subscriber_count`, `view_count`, `video_count`,
-   `enrichment_summary`, `enrichment_topics`, `brand_fit_notes`) that **do not exist** in HubSpot.
-   HubSpot silently ignores unknown properties in PATCH requests, so the push appears to succeed
-   but writes nothing useful.
+1. **The HubSpot push is broken.** `buildHubspotContactProperties()` writes to 10 property names
+   (`channel_id`, `youtube_channel_id`, `creator_title`, `creator_handle`, `subscriber_count`,
+   `view_count`, `video_count`, `enrichment_summary`, `enrichment_topics`, `brand_fit_notes`)
+   that do not exist in HubSpot. HubSpot silently ignores unknown properties in PATCH requests,
+   so the push appears to succeed but writes nothing useful.
 
-2. HubSpot already has a well-structured set of custom properties designed for influencer
-   management — enumerations with curated option lists, numeric fields for metrics, and text
-   fields for URLs. The platform ignores all of them.
+2. **Computed metrics are not pushed.** The platform already derives `youtubeAverageViews`,
+   `youtubeEngagementRate`, and `youtubeFollowers` in `ChannelMetric`, but none of these reach
+   HubSpot. HubSpot has matching numeric properties (`youtube_video_average_views`,
+   `youtube_engagement_rate`, `youtube_followers`) waiting to be populated.
 
-3. The OpenAI enrichment produces free-text output (`summary`, `topics`, `brandFitNotes`,
-   `confidence`) that cannot populate HubSpot's enumeration dropdowns. Campaign managers
-   cannot filter creators by vertical, size, language, or type in HubSpot.
+3. **Creator-level facts derivable from YouTube API are not extracted.** The YouTube channels
+   API returns `defaultLanguage` in the snippet, but the platform does not parse or store it.
+   HubSpot has a `language` enumeration with 40+ values that could be populated.
 
-4. The platform's `influencerVertical` dropdown has 5 values (Gaming, Lifestyle, Beauty, Tech,
-   General) while HubSpot has 70+ verticals. The `influencerType` dropdown uses a completely
-   different taxonomy (YouTube Creator / Streamer / Podcaster) than HubSpot (Male / Female /
-   Couple / Family / Team / Animation / Kids / Faceless / Duo). These mismatches mean even
-   manually-set values don't transfer cleanly.
+### Design decision: No LLM enrichment changes
 
-### HubSpot Properties That Already Exist (Reference)
+The OpenAI enrichment (`summary`, `topics`, `brandFitNotes`, `confidence`) is doing the right
+job — synthesizing channel data into a human-readable evaluation for the scout. It should NOT be
+expanded to classify creators into HubSpot's dropdown taxonomies because:
+
+- **Classification is already handled.** The HubSpot preparation workflow lets the user set
+  `influencerVertical`, `influencerType`, `language`, and `countryRegion` as run-level defaults
+  with per-row overrides. This happens with campaign context, which the LLM does not have.
+- **LLM classification into rigid enums is unreliable.** A "PC builds and gaming" creator is
+  Gaming for one campaign and Tech for another. The user knows; the LLM guesses.
+- **Coupling enrichment to HubSpot's taxonomy creates maintenance debt.** If HubSpot's enum
+  options change, the prompt constants break.
+
+Instead, this plan derives what can be derived deterministically (size tier from subscriber count,
+language from YouTube API, best-effort vertical from enrichment topics) and leaves the rest to
+the human classification step that already exists.
+
+### HubSpot Properties (Reference)
 
 **Enumeration dropdowns (searchable/filterable):**
 
@@ -46,81 +59,59 @@ An audit of the HubSpot integration revealed that:
 - `influencer_type` — Male, Female, Couple, Family, Team, Animation, Kids, Faceless, Duo
 - `influencer_size` — Nano (1K - 5K), Micro (5K - 20K), Mid-tier (20K - 100K),
   Macro (100K - 500K), Mega (500K - 1M), Macro-tier (1M+)
-- `language` — 40+ values: English (US), English (UK), Spanish, French, German, Italian,
-  Portuguese, Dutch, Swedish, Danish, Norwegian, Finnish, Polish, Czech, Slovak, Hungarian,
-  Romanian, Bulgarian, Croatian, Serbian, Slovenian, Albanian, Greek, Ukrainian, Russian, Turkish,
-  Arabic, Hebrew, Hindi, Bengali, Tamil, Telugu, Marathi, Urdu, Indonesian, Malay, Thai,
-  Vietnamese, Filipino, Chinese, Japanese, Korean
+- `language` — English (US), English (UK), Spanish, French, German, Italian, Portuguese, Dutch,
+  Swedish, Danish, Norwegian, Finnish, Polish, Czech, Slovak, Hungarian, Romanian, Bulgarian,
+  Croatian, Serbian, Slovenian, Albanian, Greek, Ukrainian, Russian, Turkish, Arabic, Hebrew,
+  Hindi, Bengali, Tamil, Telugu, Marathi, Urdu, Indonesian, Malay, Thai, Vietnamese, Filipino,
+  Chinese, Japanese, Korean
 - `platforms` — YouTube, Instagram, TikTok, Twitter, Twitch, Kick
 - `contact_type` — Influencer, Agent, Client, Partner
 
 **Numeric fields:**
 
-- `youtube_followers` (number)
-- `youtube_video_average_views` (number)
-- `youtube_video_median_views` (number)
-- `youtube_engagement_rate` (number)
-- `youtube_shorts_average_views` (number)
-- `youtube_shorts_median_views` (number)
-- `instagram_followers` (number)
-- `instagram_engagement_rate` (number)
-- `tiktok_followers` (number)
-- `twitch_followers` (number)
+- `youtube_followers`, `youtube_video_average_views`, `youtube_video_median_views`,
+  `youtube_engagement_rate`, `youtube_shorts_average_views`, `youtube_shorts_median_views`
 
 **Text fields:**
 
-- `youtube_url` (string)
-- `youtube_handle` (string)
-- `influencer_url` (string — labeled "Social Media Link")
-
-**Date fields:**
-
-- `last_updated_youtube_video_average_views` (date)
+- `youtube_url`, `youtube_handle`, `influencer_url`
 
 ---
 
-## Architectural Guardrails
+## Constraints
 
-- ADR-002 precedence rules are unchanged: admin manual > CSV import > HypeAuditor > LLM >
-  heuristics > YouTube raw
-- Catalog remains canonical; HubSpot is a downstream consumer
-- Existing enrichment fields (`summary`, `topics`, `brandFitNotes`, `confidence`) remain as-is.
-  New structured fields are additive
-- The HubSpot push path (`buildHubspotContactProperties` + `upsertHubspotContact`) stays
-  unchanged in shape — only the property name mapping changes
-- No new queue families, no new worker processes
-- No frontend changes in this plan
-- The `channels.enrich.llm` worker remains the single enrichment execution path
-- New enrichment output fields are stored in the existing `channel_enrichments` table
+- ADR-002 precedence rules unchanged
+- No OpenAI prompt or output schema changes
+- No new queue families or worker processes
+- No frontend changes
+- Enrichment fields (`summary`, `topics`, `brandFitNotes`, `confidence`) untouched
+- HubSpot preparation workflow (import batch path) untouched
 
 ---
 
 ## Delivery Shape
 
-This work is split into **five sessions** that must be executed in order. Each session is
-self-contained and testable before the next begins.
+Four sessions, executed in order. Each is self-contained and testable.
 
-| Session | Scope | Risk |
-|---------|-------|------|
-| 1 | Fix HubSpot property mapping + push metrics | Zero — code-only, no schema changes |
-| 2 | Add `influencer_size` tier computation | Zero — pure derivation logic |
-| 3 | Schema migration for new enrichment fields | Low — additive nullable columns |
-| 4 | Expand OpenAI prompt with constrained outputs | Medium — prompt changes affect output |
-| 5 | Wire new enrichment fields to HubSpot push | Low — extends Session 1 mapping |
+| Session | Scope | Schema change? |
+|---------|-------|----------------|
+| 1 | Fix property mapping + push metrics | No |
+| 2 | Influencer size tier utility | No |
+| 3 | Extract language from YouTube API, store on channel, push | Yes — one column |
+| 4 | Best-effort topic→vertical mapping at push time | No |
 
 ---
 
 ## Session 1 — Fix HubSpot Property Mapping
 
-**Scope:** Rewrite `buildHubspotContactProperties()` to push to property names that actually exist
-in HubSpot. Push YouTube metrics that are already computed in `ChannelMetric` but currently not
-sent. No schema changes.
+**Scope:** Rewrite `buildHubspotContactProperties()` to push to property names that actually
+exist in HubSpot. Push YouTube metrics already computed in `ChannelMetric`. No schema changes.
 
 ### 1A. Update the channel push select
 
 File: `backend/packages/core/src/hubspot/index.ts`
 
-Expand `channelPushSelect` to include the additional metric fields needed for the new mapping:
+Expand `channelPushSelect` to include the metric fields needed for the new mapping:
 
 ```typescript
 const channelPushSelect = {
@@ -165,7 +156,7 @@ Changes vs current:
 
 File: `backend/packages/core/src/hubspot/index.ts`
 
-Replace the current `buildHubspotContactProperties` function with:
+Replace the current function body. The new function maps to property names that exist in HubSpot:
 
 ```typescript
 export function buildHubspotContactProperties(channel: PushChannelRecord): Record<string, string> {
@@ -175,9 +166,11 @@ export function buildHubspotContactProperties(channel: PushChannelRecord): Recor
     email: channel.contacts[0]?.email ?? "",
     contact_type: "Influencer",
     platforms: "YouTube",
-    youtube_url: channel.youtubeUrl ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
+    youtube_url: channel.youtubeUrl
+      ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
     youtube_handle: channel.handle ?? "",
-    influencer_url: channel.youtubeUrl ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
+    influencer_url: channel.youtubeUrl
+      ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
     youtube_followers: channel.metrics?.youtubeFollowers?.toString()
       ?? subscriberCount?.toString()
       ?? "",
@@ -188,17 +181,13 @@ export function buildHubspotContactProperties(channel: PushChannelRecord): Recor
 }
 ```
 
-Note: `computeInfluencerSizeTier` is defined in Session 2. For Session 1, add a temporary inline
-implementation at the top of the function:
+For Session 1, add `computeInfluencerSizeTier` as an inline function above
+`buildHubspotContactProperties`:
 
 ```typescript
 function computeInfluencerSizeTier(subscriberCount: bigint | null | undefined): string {
-  if (subscriberCount === null || subscriberCount === undefined) {
-    return "";
-  }
-
+  if (subscriberCount === null || subscriberCount === undefined) return "";
   const count = Number(subscriberCount);
-
   if (count >= 1_000_000) return "Macro-tier (1M+)";
   if (count >= 500_000) return "Mega (500K - 1M)";
   if (count >= 100_000) return "Macro (100K - 500K)";
@@ -209,8 +198,7 @@ function computeInfluencerSizeTier(subscriberCount: bigint | null | undefined): 
 }
 ```
 
-The tier labels **must** match the exact HubSpot `influencer_size` enum values listed above.
-Do not invent new labels.
+The tier labels **must** exactly match the HubSpot `influencer_size` enum values listed above.
 
 ### 1C. Tests
 
@@ -219,24 +207,28 @@ File: `backend/packages/core/src/hubspot/index.test.ts` (create if it does not e
 Test `buildHubspotContactProperties`:
 
 1. **Maps YouTube metrics to correct HubSpot property names**
-   Input: channel with `youtubeUrl`, `handle`, `youtubeFollowers: 150000n`, `youtubeAverageViews: 25000n`, `youtubeEngagementRate: 3.5`.
+   Input: channel with `youtubeUrl: "https://youtube.com/@test"`, `handle: "@test"`,
+   `youtubeFollowers: 150000n`, `youtubeAverageViews: 25000n`, `youtubeEngagementRate: 3.5`.
    Assert: output contains `youtube_url`, `youtube_handle`, `youtube_followers: "150000"`,
    `youtube_video_average_views: "25000"`, `youtube_engagement_rate: "3.5"`.
 
-2. **Sets contact_type to Influencer and platforms to YouTube**
+2. **Sets contact_type and platforms**
    Assert: `contact_type === "Influencer"`, `platforms === "YouTube"`.
 
 3. **Falls back to channel ID URL when youtubeUrl is null**
    Input: `youtubeUrl: null`, `youtubeChannelId: "UCxyz"`.
-   Assert: `youtube_url` and `influencer_url` both equal `"https://www.youtube.com/channel/UCxyz"`.
+   Assert: `youtube_url` and `influencer_url` both equal
+   `"https://www.youtube.com/channel/UCxyz"`.
 
 4. **Returns empty strings for missing metrics**
    Input: `metrics: null`.
-   Assert: `youtube_followers === ""`, `youtube_video_average_views === ""`, etc.
+   Assert: `youtube_followers`, `youtube_video_average_views`, `youtube_engagement_rate` are
+   all `""`.
 
 5. **Computes influencer_size tier correctly**
-   Test each tier boundary: 500 (empty), 1000 (Nano), 5000 (Micro), 20000 (Mid-tier),
-   100000 (Macro), 500000 (Mega), 1000000 (Macro-tier).
+   Test each boundary: 500 → `""`, 1000 → `"Nano (1K - 5K)"`, 5000 → `"Micro (5K - 20K)"`,
+   20000 → `"Mid-tier (20K - 100K)"`, 100000 → `"Macro (100K - 500K)"`,
+   500000 → `"Mega (500K - 1M)"`, 1000000 → `"Macro-tier (1M+)"`.
 
 6. **Does NOT include old property names**
    Assert: output does not have keys `channel_id`, `youtube_channel_id`, `creator_title`,
@@ -252,10 +244,10 @@ pnpm --filter @scouting-platform/core exec vitest run src/hubspot
 
 ---
 
-## Session 2 — Influencer Size Tier as a Shared Utility
+## Session 2 — Influencer Size Tier as Shared Utility
 
-**Scope:** Extract the `computeInfluencerSizeTier` function from Session 1's inline location into
-a shared utility so it can be reused by the enrichment pipeline and tested independently.
+**Scope:** Extract `computeInfluencerSizeTier` into its own file for independent testing and
+reuse.
 
 ### 2A. Create the utility
 
@@ -276,22 +268,12 @@ export type InfluencerSizeTier = (typeof INFLUENCER_SIZE_TIERS)[number]["label"]
 export function computeInfluencerSizeTier(
   subscriberCount: bigint | number | null | undefined,
 ): string {
-  if (subscriberCount === null || subscriberCount === undefined) {
-    return "";
-  }
-
+  if (subscriberCount === null || subscriberCount === undefined) return "";
   const count = Number(subscriberCount);
-
-  if (!Number.isFinite(count) || count < 0) {
-    return "";
-  }
-
+  if (!Number.isFinite(count) || count < 0) return "";
   for (const tier of INFLUENCER_SIZE_TIERS) {
-    if (count >= tier.min) {
-      return tier.label;
-    }
+    if (count >= tier.min) return tier.label;
   }
-
   return "";
 }
 ```
@@ -300,20 +282,19 @@ export function computeInfluencerSizeTier(
 
 File: `backend/packages/core/src/hubspot/index.ts`
 
-- Add `import { computeInfluencerSizeTier } from "./influencer-size";` at the top
-- Remove the inline `computeInfluencerSizeTier` function added in Session 1
-- Keep the `buildHubspotContactProperties` call to `computeInfluencerSizeTier` unchanged
+- Add `import { computeInfluencerSizeTier } from "./influencer-size";`
+- Remove the inline `computeInfluencerSizeTier` added in Session 1
 
 ### 2C. Tests
 
 File: `backend/packages/core/src/hubspot/influencer-size.test.ts` (new file)
 
-1. **Returns empty string for null/undefined** — `null` and `undefined` both return `""`
-2. **Returns empty string for sub-1K counts** — `999` returns `""`
-3. **Returns correct tier for each boundary** — test 1000, 4999, 5000, 19999, 20000, 99999,
-   100000, 499999, 500000, 999999, 1000000, 5000000
-4. **Handles bigint input** — `BigInt(250000)` returns `"Macro (100K - 500K)"`
-5. **Returns empty string for negative or NaN** — `-1`, `NaN`, `Infinity` all return `""`
+1. **Returns empty for null/undefined** — both return `""`
+2. **Returns empty for sub-1K** — `999` returns `""`
+3. **Correct tier at each boundary** — 1000, 4999, 5000, 19999, 20000, 99999, 100000, 499999,
+   500000, 999999, 1000000, 5000000
+4. **Handles bigint** — `BigInt(250000)` returns `"Macro (100K - 500K)"`
+5. **Returns empty for negative/NaN/Infinity** — all return `""`
 
 ### Session 2 verification
 
@@ -324,83 +305,207 @@ pnpm --filter @scouting-platform/core exec vitest run src/hubspot
 
 ---
 
-## Session 3 — Schema Migration for Enrichment Structured Fields
+## Session 3 — Extract Content Language from YouTube API
 
-**Scope:** Add nullable columns to `channel_enrichments` for the new LLM-derived structured
-fields that will map to HubSpot dropdowns. No execution logic changes.
+**Scope:** Parse `defaultLanguage` from the YouTube channels API response (already fetched but
+not extracted), store it on the `Channel` record, and push to HubSpot's `language` property.
 
-### 3A. Prisma schema changes
+### 3A. Expand YouTube channel response parsing
+
+File: `backend/packages/integrations/src/youtube/context.ts`
+
+In `channelResponseSchema`, add `defaultLanguage` to the channel snippet:
+
+```typescript
+snippet: z.object({
+  title: z.string(),
+  description: z.string().optional(),
+  customUrl: z.string().optional(),
+  publishedAt: z.string().optional(),
+  defaultLanguage: z.string().optional(),   // ← add this line
+  thumbnails: z
+    // ... rest unchanged
+```
+
+### 3B. Add defaultLanguage to YoutubeChannelContext
+
+File: `backend/packages/integrations/src/youtube/context.ts`
+
+Add to `youtubeChannelContextSchema`:
+
+```typescript
+defaultLanguage: z.string().trim().nullable(),
+```
+
+Add to `YoutubeChannelContextDraft` type:
+
+```typescript
+defaultLanguage: string | null;
+```
+
+In `fetchYoutubeChannelContext`, where the channel snippet is mapped to the context draft, add:
+
+```typescript
+defaultLanguage: channelSnippet.defaultLanguage?.trim() ?? null,
+```
+
+### 3C. BCP-47 to HubSpot language mapping
+
+File: `backend/packages/core/src/hubspot/language-mapping.ts` (new file)
+
+Create a static map from BCP-47 language codes to HubSpot `language` enum values:
+
+```typescript
+const BCP47_TO_HUBSPOT_LANGUAGE: Record<string, string> = {
+  en: "English (US)",
+  "en-us": "English (US)",
+  "en-gb": "English (UK)",
+  "en-au": "English (UK)",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  pt: "Portuguese",
+  nl: "Dutch",
+  sv: "Swedish",
+  da: "Danish",
+  no: "Norwegian",
+  nb: "Norwegian",
+  nn: "Norwegian",
+  fi: "Finnish",
+  pl: "Polish",
+  cs: "Czech",
+  sk: "Slovak",
+  hu: "Hungarian",
+  ro: "Romanian",
+  bg: "Bulgarian",
+  hr: "Croatian",
+  sr: "Serbian",
+  sl: "Slovenian",
+  sq: "Albanian",
+  el: "Greek",
+  uk: "Ukrainian",
+  ru: "Russian",
+  tr: "Turkish",
+  ar: "Arabic",
+  he: "Hebrew",
+  iw: "Hebrew",
+  hi: "Hindi",
+  bn: "Bengali",
+  ta: "Tamil",
+  te: "Telugu",
+  mr: "Marathi",
+  ur: "Urdu",
+  id: "Indonesian",
+  ms: "Malay",
+  th: "Thai",
+  vi: "Vietnamese",
+  fil: "Filipino",
+  tl: "Filipino",
+  zh: "Chinese",
+  "zh-cn": "Chinese",
+  "zh-tw": "Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+};
+
+export function mapYoutubeLanguageToHubspot(
+  bcp47: string | null | undefined,
+): string {
+  if (!bcp47?.trim()) return "";
+  const normalized = bcp47.trim().toLowerCase();
+  return BCP47_TO_HUBSPOT_LANGUAGE[normalized]
+    ?? BCP47_TO_HUBSPOT_LANGUAGE[normalized.split("-")[0]]
+    ?? "";
+}
+```
+
+### 3D. Prisma schema change
 
 File: `backend/packages/db/prisma/schema.prisma`
 
-Add the following nullable fields to the `ChannelEnrichment` model, after the `confidence` field:
+Add to the `Channel` model, after `thumbnailUrl`:
 
 ```prisma
-hubspotVertical      String?   @map("hubspot_vertical")
-hubspotInfluencerType String?  @map("hubspot_influencer_type")
-contentLanguage      String?   @map("content_language")
-brandSafetyStatus    String?   @map("brand_safety_status")
-brandSafetyFlags     Json?     @map("brand_safety_flags")
+contentLanguage  String?  @map("content_language")
 ```
 
-**Field semantics:**
-
-- `hubspotVertical` — One of the 70+ HubSpot `influencer_vertical` enum values. LLM picks the
-  best match from the constrained list. Stored as a plain string so it can be pushed directly
-  to HubSpot without mapping.
-- `hubspotInfluencerType` — One of the HubSpot `influencer_type` enum values (Male, Female,
-  Couple, Family, Team, Animation, Kids, Faceless, Duo). LLM classifies from channel context.
-- `contentLanguage` — One of the HubSpot `language` enum values. LLM identifies the primary
-  content language.
-- `brandSafetyStatus` — One of: `safe`, `caution`, `not_recommended`. Structured version of
-  the existing free-text `brandFitNotes`.
-- `brandSafetyFlags` — JSON array of string flags (e.g. `["violence", "profanity"]`). Pairs
-  with `brandSafetyStatus` to explain the classification.
-
-### 3B. Migration file
+### 3E. Migration file
 
 Create directory and file:
-`backend/packages/db/prisma/migrations/20260414120000_enrichment_hubspot_fields/migration.sql`
+`backend/packages/db/prisma/migrations/20260414120000_channel_content_language/migration.sql`
 
 ```sql
-ALTER TABLE "channel_enrichments"
-  ADD COLUMN "hubspot_vertical"       TEXT,
-  ADD COLUMN "hubspot_influencer_type" TEXT,
-  ADD COLUMN "content_language"       TEXT,
-  ADD COLUMN "brand_safety_status"    TEXT,
-  ADD COLUMN "brand_safety_flags"     JSONB;
+ALTER TABLE "channels" ADD COLUMN "content_language" TEXT;
 ```
 
-### 3C. Contract additions
+### 3F. Write language during enrichment execution
 
-File: `shared/packages/contracts/src/channels.ts`
+File: `backend/packages/core/src/enrichment/index.ts`
 
-Find the channel enrichment detail schema (the shape returned by `GET /api/channels/:id` that
-includes `summary`, `topics`, `brandFitNotes`, `confidence`). Add the new fields as nullable:
+Import the mapping:
+```typescript
+import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
+```
+
+In `executeChannelLlmEnrichment`, inside the final transaction where the `channel` record is
+updated (the `tx.channel.update` call that writes `handle`, `youtubeUrl`, `description`,
+`thumbnailUrl`), add:
 
 ```typescript
-hubspotVertical: z.string().nullable(),
-hubspotInfluencerType: z.string().nullable(),
-contentLanguage: z.string().nullable(),
-brandSafetyStatus: z.enum(["safe", "caution", "not_recommended"]).nullable(),
-brandSafetyFlags: z.array(z.string()).nullable(),
+contentLanguage: mapYoutubeLanguageToHubspot(youtubeContext.defaultLanguage),
 ```
 
-Update the corresponding select in the channel detail query
-(`backend/packages/core/src/channels/repository.ts` or wherever the enrichment detail is built)
-to include the new fields. Map them into the response with `?? null` fallbacks.
+If the mapped value is empty string, write `null` instead:
 
-### 3D. Migration test
+```typescript
+contentLanguage: mapYoutubeLanguageToHubspot(youtubeContext.defaultLanguage) || null,
+```
+
+### 3G. Push language to HubSpot
+
+File: `backend/packages/core/src/hubspot/index.ts`
+
+Add `contentLanguage: true` to `channelPushSelect`:
+
+```typescript
+const channelPushSelect = {
+  // ... existing fields ...
+  contentLanguage: true,
+  // ...
+};
+```
+
+Add to `buildHubspotContactProperties` return object:
+
+```typescript
+language: channel.contentLanguage ?? "",
+```
+
+### 3H. Tests
+
+File: `backend/packages/core/src/hubspot/language-mapping.test.ts` (new file)
+
+1. **Maps common BCP-47 codes** — `"en"` → `"English (US)"`, `"de"` → `"German"`,
+   `"hr"` → `"Croatian"`, `"ja"` → `"Japanese"`
+2. **Maps regional variants** — `"en-GB"` → `"English (UK)"`, `"zh-TW"` → `"Chinese"`,
+   `"pt-BR"` → `"Portuguese"`
+3. **Case insensitive** — `"EN"`, `"En"`, `"en"` all return `"English (US)"`
+4. **Returns empty for null/undefined/empty** — all return `""`
+5. **Returns empty for unknown codes** — `"xx"`, `"klingon"` return `""`
+6. **Falls back to base code** — `"fr-CA"` → `"French"` (not in map, but `"fr"` is)
 
 File: `backend/packages/db/src/migrations.test.ts`
 
-Add a test case for `20260414120000_enrichment_hubspot_fields`:
-
-- Assert migration SQL contains `ADD COLUMN "hubspot_vertical"`
-- Assert migration SQL contains `ADD COLUMN "hubspot_influencer_type"`
+Add a test case for `20260414120000_channel_content_language`:
 - Assert migration SQL contains `ADD COLUMN "content_language"`
-- Assert migration SQL contains `ADD COLUMN "brand_safety_status"`
-- Assert migration SQL contains `ADD COLUMN "brand_safety_flags"`
+
+File: `backend/packages/core/src/hubspot/index.test.ts`
+
+Add test case:
+- **Pushes content language** — channel with `contentLanguage: "German"` → output has
+  `language: "German"`
+- **Empty when contentLanguage is null** — output has `language: ""`
 
 ### Session 3 verification
 
@@ -408,280 +513,148 @@ Add a test case for `20260414120000_enrichment_hubspot_fields`:
 pnpm db:migrate:test
 pnpm --filter @scouting-platform/db typecheck
 pnpm --filter @scouting-platform/db exec vitest run src/migrations.test.ts
-pnpm --filter @scouting-platform/core typecheck
-pnpm --filter @scouting-platform/contracts typecheck
-```
-
----
-
-## Session 4 — Expand OpenAI Enrichment with Constrained Outputs
-
-**Scope:** Modify the OpenAI prompt and output schema to produce structured fields that match
-HubSpot's enum values exactly. Update the enrichment execution to persist the new fields.
-
-### 4A. Define the constrained value lists
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.ts`
-
-Add the following constants before the `outputSchema`:
-
-```typescript
-const HUBSPOT_VERTICALS = [
-  "Abandoned Places", "Adventure", "Animals", "Animations", "Anime", "Art", "ASMR",
-  "Astrology", "Aviation", "Books", "Budgeting", "Cars", "Chess", "Commentary",
-  "Conspiracy", "Construction", "Cosplay", "Crimes", "Cybersecurity", "Cycling",
-  "Dance", "DIY", "Documentary", "Editing", "Education", "Engineering",
-  "Entertainment", "Environment", "Family", "Fashion", "Finance", "Fishing",
-  "Fitness", "Food", "Football", "Gaming", "Guitars", "Health", "History",
-  "Home Decor", "Home Renovation", "Humor", "Hunting", "Infotainment", "Interview",
-  "Journalism", "Just Chatting", "Kids", "Lego", "Lifestyle", "Minecraft",
-  "Motivation", "Movies", "Music", "Mystery", "News", "Outdoor", "Painting",
-  "Parenting", "Pets", "Photography", "Plants", "Podcast", "Pokemon Cards",
-  "Politics", "Pop Culture", "Reviews", "Science", "Society", "Sport", "TCG",
-  "Tech", "Travel", "Variety", "Vlog", "Yoga",
-] as const;
-
-const HUBSPOT_INFLUENCER_TYPES = [
-  "Male", "Female", "Couple", "Family", "Team", "Animation", "Kids", "Faceless", "Duo",
-] as const;
-
-const HUBSPOT_LANGUAGES = [
-  "English (US)", "English (UK)", "Spanish", "French", "German", "Italian", "Portuguese",
-  "Dutch", "Swedish", "Danish", "Norwegian", "Finnish", "Polish", "Czech", "Slovak",
-  "Hungarian", "Romanian", "Bulgarian", "Croatian", "Serbian", "Slovenian", "Albanian",
-  "Greek", "Ukrainian", "Russian", "Turkish", "Arabic", "Hebrew", "Hindi", "Bengali",
-  "Tamil", "Telugu", "Marathi", "Urdu", "Indonesian", "Malay", "Thai", "Vietnamese",
-  "Filipino", "Chinese", "Japanese", "Korean",
-] as const;
-
-const BRAND_SAFETY_STATUSES = ["safe", "caution", "not_recommended"] as const;
-```
-
-### 4B. Expand the output schema
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.ts`
-
-Extend the existing `outputSchema` with the new fields. The existing four fields remain required.
-The new fields are **optional** so the enrichment does not fail if the LLM omits them:
-
-```typescript
-const outputSchema = z.object({
-  summary: z.string().trim().min(1),
-  topics: z.array(z.string().trim().min(1)).min(1).max(20),
-  brandFitNotes: z.string().trim().min(1),
-  confidence: z.number().min(0).max(1),
-  hubspotVertical: z.string().trim().optional().default(""),
-  hubspotInfluencerType: z.string().trim().optional().default(""),
-  contentLanguage: z.string().trim().optional().default(""),
-  brandSafetyStatus: z.enum(BRAND_SAFETY_STATUSES).optional().default("safe"),
-  brandSafetyFlags: z.array(z.string().trim()).optional().default([]),
-});
-```
-
-### 4C. Update the prompt
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.ts`
-
-Update the `buildPrompt` function to include instructions for the new fields with constrained
-value lists:
-
-```typescript
-function buildPrompt(input: z.output<typeof inputSchema>): string {
-  return JSON.stringify({
-    channel: input.channel,
-    youtubeContext: slimYoutubeContext(input.youtubeContext),
-    instructions: {
-      summary:
-        "Write a concise summary of the creator's content style, audience, and positioning.",
-      topics: "List the main repeatable content topics as short tags.",
-      brandFitNotes:
-        "Explain the most relevant sponsor/brand fit observations, including constraints if visible.",
-      confidence:
-        "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
-      hubspotVertical:
-        `Pick the SINGLE best-matching content vertical from this EXACT list. Return the exact string, do not invent new values: ${JSON.stringify(HUBSPOT_VERTICALS)}`,
-      hubspotInfluencerType:
-        `Classify the creator's on-screen presentation from this EXACT list. Return the exact string: ${JSON.stringify(HUBSPOT_INFLUENCER_TYPES)}`,
-      contentLanguage:
-        `Identify the primary language the creator speaks in their content. Pick from this EXACT list. Return the exact string: ${JSON.stringify(HUBSPOT_LANGUAGES)}`,
-      brandSafetyStatus:
-        'Classify brand safety as exactly one of: "safe", "caution", "not_recommended". Use "caution" for mature themes, controversial topics, or frequent profanity. Use "not_recommended" for extreme content, hate speech, or illegal activity.',
-      brandSafetyFlags:
-        'If brandSafetyStatus is not "safe", list the specific flags (e.g. "violence", "profanity", "drugs", "politics", "gambling", "sexual_content"). Return an empty array for "safe" creators.',
-    },
-  });
-}
-```
-
-### 4D. Update the system message
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.ts`
-
-Update the system message in `enrichChannelWithOpenAi` to mention the new fields:
-
-```typescript
-{
-  role: "system",
-  content:
-    "You analyze creator-channel context and must return valid JSON with summary, topics, brandFitNotes, confidence, hubspotVertical, hubspotInfluencerType, contentLanguage, brandSafetyStatus, and brandSafetyFlags.",
-},
-```
-
-### 4E. Persist new fields in enrichment execution
-
-File: `backend/packages/core/src/enrichment/index.ts`
-
-In `executeChannelLlmEnrichment`, find the `channelEnrichment` update inside the final
-transaction (the one that writes `summary`, `topics`, `brandFitNotes`, `confidence`). Add the
-new fields:
-
-```typescript
-await tx.channelEnrichment.update({
-  where: { channelId: input.channelId },
-  data: {
-    // ... existing fields ...
-    summary: enrichmentResult.profile.summary,
-    topics: enrichmentResult.profile.topics,
-    brandFitNotes: enrichmentResult.profile.brandFitNotes,
-    confidence: enrichmentResult.profile.confidence,
-    hubspotVertical: enrichmentResult.profile.hubspotVertical || null,
-    hubspotInfluencerType: enrichmentResult.profile.hubspotInfluencerType || null,
-    contentLanguage: enrichmentResult.profile.contentLanguage || null,
-    brandSafetyStatus: enrichmentResult.profile.brandSafetyStatus === "safe" ? null : enrichmentResult.profile.brandSafetyStatus,
-    brandSafetyFlags: enrichmentResult.profile.brandSafetyFlags.length > 0
-      ? enrichmentResult.profile.brandSafetyFlags
-      : undefined,
-    // ... existing fields ...
-  },
-});
-```
-
-Note: `brandSafetyStatus` stores `null` for "safe" creators to keep the common case clean.
-The push layer (Session 5) treats `null` as "safe".
-
-### 4F. Update the OpenAI profile type export
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.ts`
-
-The existing `OpenAiChannelEnrichment` type is inferred from `outputSchema`. Because the schema
-now includes the new fields, the type automatically includes them. No explicit change needed
-here, but verify that `extractOpenAiChannelEnrichmentProfileFromRawPayload` still works by
-running existing tests.
-
-### 4G. Tests
-
-File: `backend/packages/integrations/src/openai/channel-enrichment.test.ts`
-
-Add test cases:
-
-1. **Prompt includes constrained value lists**
-   Capture the prompt JSON. Assert it contains `hubspotVertical`, `hubspotInfluencerType`,
-   `contentLanguage`, `brandSafetyStatus`, `brandSafetyFlags` instruction keys.
-   Assert the `hubspotVertical` instruction string contains `"Gaming"` and `"ASMR"`.
-
-2. **Parses new fields from valid OpenAI response**
-   Mock response with `hubspotVertical: "Gaming"`, `hubspotInfluencerType: "Male"`,
-   `contentLanguage: "English (US)"`, `brandSafetyStatus: "caution"`,
-   `brandSafetyFlags: ["violence"]`.
-   Assert parsed profile contains all fields correctly.
-
-3. **Defaults missing new fields gracefully**
-   Mock response WITHOUT the new fields (only `summary`, `topics`, `brandFitNotes`, `confidence`).
-   Assert: `hubspotVertical === ""`, `brandSafetyStatus === "safe"`, `brandSafetyFlags === []`.
-   This ensures backward compatibility with cached raw payloads.
-
-4. **Rejects invalid brandSafetyStatus value**
-   Mock response with `brandSafetyStatus: "dangerous"`.
-   Assert: parsing still succeeds because the schema defaults to `"safe"` via `.optional().default("safe")`.
-   (Verify this is the desired fallback behavior and adjust schema if strict validation is preferred.)
-
-### Session 4 verification
-
-```bash
 pnpm --filter @scouting-platform/integrations typecheck
-pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts
 pnpm --filter @scouting-platform/core typecheck
+pnpm --filter @scouting-platform/core exec vitest run src/hubspot
 ```
 
 ---
 
-## Session 5 — Wire New Enrichment Fields to HubSpot Push
+## Session 4 — Best-Effort Topic-to-Vertical Mapping
 
-**Scope:** Extend the HubSpot push to include the new enrichment-derived fields so creators
-become searchable by vertical, type, and language in HubSpot.
+**Scope:** Create a lightweight dictionary that maps common enrichment topic words to HubSpot
+`influencer_vertical` enum values. Applied at push time — no storage, no LLM changes. This is
+best-effort: it reduces manual classification work for common verticals but does not replace the
+HubSpot preparation workflow for precision.
 
-### 5A. Expand push select to include new enrichment fields
+### 4A. Create the mapping
 
-File: `backend/packages/core/src/hubspot/index.ts`
-
-Add the new fields to the `enrichment` select inside `channelPushSelect`:
-
-```typescript
-enrichment: {
-  select: {
-    summary: true,
-    topics: true,
-    brandFitNotes: true,
-    hubspotVertical: true,
-    hubspotInfluencerType: true,
-    contentLanguage: true,
-    brandSafetyStatus: true,
-  },
-},
-```
-
-### 5B. Extend `buildHubspotContactProperties`
-
-File: `backend/packages/core/src/hubspot/index.ts`
-
-Add the new fields to the returned properties object inside `buildHubspotContactProperties`:
+File: `backend/packages/core/src/hubspot/vertical-mapping.ts` (new file)
 
 ```typescript
-// Add after the existing properties:
-influencer_vertical: channel.enrichment?.hubspotVertical ?? "",
-influencer_type: channel.enrichment?.hubspotInfluencerType ?? "",
-language: channel.enrichment?.contentLanguage ?? "",
-```
+const TOPIC_TO_VERTICAL: ReadonlyArray<{
+  keywords: readonly string[];
+  vertical: string;
+}> = [
+  { keywords: ["gaming", "games", "game", "playstation", "xbox", "nintendo", "steam", "esports", "twitch", "fortnite", "valorant", "league of legends"], vertical: "Gaming" },
+  { keywords: ["minecraft"], vertical: "Minecraft" },
+  { keywords: ["tech", "technology", "gadgets", "software", "hardware", "programming", "coding"], vertical: "Tech" },
+  { keywords: ["beauty", "makeup", "skincare", "cosmetics", "hair"], vertical: "Beauty" },
+  { keywords: ["fashion", "style", "clothing", "outfits"], vertical: "Fashion" },
+  { keywords: ["fitness", "gym", "workout", "exercise", "bodybuilding"], vertical: "Fitness" },
+  { keywords: ["food", "cooking", "recipe", "baking", "cuisine", "restaurant"], vertical: "Food" },
+  { keywords: ["travel", "traveling", "destination", "backpacking", "tourism"], vertical: "Travel" },
+  { keywords: ["music", "musician", "guitar", "singing", "producer", "beats"], vertical: "Music" },
+  { keywords: ["education", "learning", "tutorial", "study", "lecture"], vertical: "Education" },
+  { keywords: ["science", "physics", "chemistry", "biology", "space", "astronomy"], vertical: "Science" },
+  { keywords: ["comedy", "humor", "funny", "sketch", "standup"], vertical: "Humor" },
+  { keywords: ["news", "journalism", "current events", "breaking"], vertical: "News" },
+  { keywords: ["politics", "political", "government", "election"], vertical: "Politics" },
+  { keywords: ["sports", "sport", "football", "basketball", "soccer", "tennis", "athletics"], vertical: "Sport" },
+  { keywords: ["art", "drawing", "illustration", "digital art", "painting"], vertical: "Art" },
+  { keywords: ["photography", "photo", "camera", "lens"], vertical: "Photography" },
+  { keywords: ["film", "cinema", "movie", "movies", "film review"], vertical: "Movies" },
+  { keywords: ["anime", "manga", "otaku"], vertical: "Anime" },
+  { keywords: ["diy", "crafts", "handmade", "maker"], vertical: "DIY" },
+  { keywords: ["pets", "dog", "cat", "animals", "animal"], vertical: "Pets" },
+  { keywords: ["vlog", "vlogging", "daily vlog", "day in my life"], vertical: "Vlog" },
+  { keywords: ["podcast", "podcasting", "interview"], vertical: "Podcast" },
+  { keywords: ["finance", "investing", "stocks", "crypto", "money", "trading"], vertical: "Finance" },
+  { keywords: ["health", "wellness", "mental health", "nutrition", "diet"], vertical: "Health" },
+  { keywords: ["lifestyle"], vertical: "Lifestyle" },
+  { keywords: ["history", "historical", "ancient"], vertical: "History" },
+  { keywords: ["cars", "automotive", "car review", "vehicle"], vertical: "Cars" },
+  { keywords: ["asmr"], vertical: "ASMR" },
+  { keywords: ["outdoor", "hiking", "camping", "nature", "wilderness"], vertical: "Outdoor" },
+  { keywords: ["mystery", "true crime", "crime", "unsolved"], vertical: "Mystery" },
+  { keywords: ["kids", "children", "family friendly"], vertical: "Kids" },
+  { keywords: ["commentary", "opinion", "reaction", "rant"], vertical: "Commentary" },
+  { keywords: ["reviews", "review", "unboxing", "product review"], vertical: "Reviews" },
+  { keywords: ["entertainment"], vertical: "Entertainment" },
+  { keywords: ["motivation", "self improvement", "productivity", "mindset"], vertical: "Motivation" },
+  { keywords: ["fishing"], vertical: "Fishing" },
+  { keywords: ["hunting"], vertical: "Hunting" },
+  { keywords: ["yoga", "meditation"], vertical: "Yoga" },
+  { keywords: ["lego", "legos"], vertical: "Lego" },
+  { keywords: ["chess"], vertical: "Chess" },
+  { keywords: ["cycling", "bike", "biking"], vertical: "Cycling" },
+  { keywords: ["dance", "dancing", "choreography"], vertical: "Dance" },
+  { keywords: ["documentary"], vertical: "Documentary" },
+  { keywords: ["engineering", "engineer"], vertical: "Engineering" },
+  { keywords: ["construction", "building"], vertical: "Construction" },
+  { keywords: ["guitar", "guitars", "bass guitar"], vertical: "Guitars" },
+  { keywords: ["plants", "gardening", "garden"], vertical: "Plants" },
+  { keywords: ["parenting", "parent", "mom", "dad"], vertical: "Parenting" },
+  { keywords: ["cosplay"], vertical: "Cosplay" },
+  { keywords: ["astrology", "horoscope", "zodiac"], vertical: "Astrology" },
+  { keywords: ["conspiracy", "conspiracies"], vertical: "Conspiracy" },
+];
 
-Do NOT push `brandSafetyStatus` or `brandSafetyFlags` to HubSpot — these properties do not
-exist in HubSpot and are for internal platform use only.
+export function inferVerticalFromTopics(
+  topics: unknown,
+): string {
+  if (!Array.isArray(topics)) return "";
 
-### 5C. Validate enum values before push
+  const normalized = topics
+    .filter((topic): topic is string => typeof topic === "string")
+    .map((topic) => topic.toLowerCase().trim());
 
-Add a validation helper to ensure only valid HubSpot enum values are pushed. Invalid values
-would cause HubSpot to silently ignore the property:
+  if (normalized.length === 0) return "";
 
-File: `backend/packages/core/src/hubspot/index.ts`
+  for (const mapping of TOPIC_TO_VERTICAL) {
+    for (const keyword of mapping.keywords) {
+      if (normalized.some((topic) => topic === keyword || topic.includes(keyword))) {
+        return mapping.vertical;
+      }
+    }
+  }
 
-```typescript
-function cleanHubspotEnumValue(value: string | null | undefined): string {
-  return value?.trim() ?? "";
+  return "";
 }
 ```
 
-Use this in `buildHubspotContactProperties` for the enum fields. The LLM is instructed to return
-exact values, but this is a safety net.
+The array is ordered by rough frequency / likelihood. The first match wins. This is intentional:
+a creator with topics `["gaming", "tech"]` maps to Gaming, which is the more specific vertical.
 
-### 5D. Tests
+### 4B. Wire into HubSpot push
+
+File: `backend/packages/core/src/hubspot/index.ts`
+
+Import the mapping:
+```typescript
+import { inferVerticalFromTopics } from "./vertical-mapping";
+```
+
+Add to `buildHubspotContactProperties` return object:
+
+```typescript
+influencer_vertical: inferVerticalFromTopics(channel.enrichment?.topics),
+```
+
+### 4C. Tests
+
+File: `backend/packages/core/src/hubspot/vertical-mapping.test.ts` (new file)
+
+1. **Maps common topics** — `["gaming", "pc"]` → `"Gaming"`,
+   `["beauty", "skincare"]` → `"Beauty"`, `["tech", "reviews"]` → `"Tech"`
+2. **Case insensitive** — `["GAMING"]` → `"Gaming"`, `["Beauty"]` → `"Beauty"`
+3. **Partial match** — `["pc gaming"]` → `"Gaming"` (contains "gaming")
+4. **First match wins** — `["gaming", "tech"]` → `"Gaming"` (gaming rule is first)
+5. **Returns empty for no match** — `["obscure niche"]` → `""`
+6. **Returns empty for null/empty/non-array** — `null`, `[]`, `"not an array"` → `""`
+7. **Minecraft maps to Minecraft, not Gaming** — `["minecraft"]` → `"Minecraft"`
 
 File: `backend/packages/core/src/hubspot/index.test.ts`
 
-Add test cases:
+Add test case:
+- **Pushes inferred vertical from topics** — channel with `enrichment.topics: ["gaming", "fps"]`
+  → output has `influencer_vertical: "Gaming"`
+- **Empty vertical when topics don't match** — `enrichment.topics: ["something random"]`
+  → `influencer_vertical: ""`
+- **Empty vertical when no enrichment** — `enrichment: null`
+  → `influencer_vertical: ""`
 
-1. **Includes enrichment-derived HubSpot fields**
-   Input: channel with `enrichment.hubspotVertical: "Gaming"`,
-   `enrichment.hubspotInfluencerType: "Male"`, `enrichment.contentLanguage: "German"`.
-   Assert: output contains `influencer_vertical: "Gaming"`, `influencer_type: "Male"`,
-   `language: "German"`.
-
-2. **Returns empty strings when enrichment fields are null**
-   Input: channel with `enrichment.hubspotVertical: null`.
-   Assert: `influencer_vertical === ""`.
-
-3. **Does not include brand safety properties**
-   Assert: output does not have keys `brand_safety_status` or `brand_safety_flags`.
-
-### Session 5 verification
+### Session 4 verification
 
 ```bash
 pnpm --filter @scouting-platform/core typecheck
@@ -692,24 +665,22 @@ pnpm --filter @scouting-platform/core exec vitest run src/hubspot
 
 ## Post-Implementation Verification
 
-After all five sessions are complete:
+After all four sessions are complete:
 
-1. Run the full backend type check:
+1. Full backend type check:
    ```bash
    pnpm --filter @scouting-platform/core typecheck
    pnpm --filter @scouting-platform/integrations typecheck
-   pnpm --filter @scouting-platform/contracts typecheck
    pnpm --filter @scouting-platform/db typecheck
    ```
 
-2. Run all affected test suites:
+2. All affected test suites:
    ```bash
    pnpm --filter @scouting-platform/core exec vitest run src/hubspot
-   pnpm --filter @scouting-platform/integrations exec vitest run src/openai/channel-enrichment.test.ts
    pnpm --filter @scouting-platform/db exec vitest run src/migrations.test.ts
    ```
 
-3. Run the database migration:
+3. Database migration:
    ```bash
    pnpm db:migrate:test
    ```
@@ -718,22 +689,28 @@ After all five sessions are complete:
 
 ## What This Plan Does NOT Cover
 
-These are explicitly out of scope and deferred to follow-up work:
+Explicitly out of scope:
 
-- **Syncing platform dropdown values with HubSpot** — The platform's `influencerVertical`
-  dropdown (5 values) and `influencerType` dropdown (different taxonomy) are not changed.
-  The enrichment writes HubSpot-native values directly. Platform dropdowns remain for the
-  HubSpot CSV import/preparation workflow which is a separate path.
-- **HubSpot CSV import alignment** — The `hubspot-import-batches` path that generates CSVs
-  with headers like "Influencer Type" and "Influencer Vertical" uses the platform's dropdown
-  values, not the enrichment-derived values. Aligning these is a separate decision.
-- **Frontend display of new enrichment fields** — No UI changes for displaying `hubspotVertical`,
-  `contentLanguage`, or `brandSafetyStatus` in the catalog or channel detail pages.
-- **Re-enrichment of existing channels** — Existing channels with COMPLETED enrichment will
-  not have the new fields populated until they are re-enriched (manually or via staleness).
-- **Multi-vertical support** — HubSpot's `influencer_vertical` is a single-select enumeration.
-  If multi-vertical is needed, this requires a HubSpot property change first.
-- **Audience demographics push** — `ChannelInsight` audience data (countries, gender/age,
-  interests from HypeAuditor) is not pushed to HubSpot in this plan.
-- **Brand safety as a HubSpot property** — If a custom `brand_safety` property is needed in
-  HubSpot, it must be created in HubSpot first, then this plan extended.
+- **LLM enrichment changes** — No prompt, schema, or output changes to the OpenAI integration.
+  The enrichment is doing the right job as a human evaluation tool.
+- **HubSpot `influencer_type` auto-classification** — Requires visual/content analysis the LLM
+  cannot reliably do from text. Set manually during HubSpot preparation.
+- **HubSpot CSV import alignment** — The import batch path uses platform dropdown values set
+  during preparation. This is the right approach and is unchanged.
+- **Platform dropdown taxonomy sync** — The platform's `influencerVertical` (5 values) and
+  HubSpot's (70+) serve different purposes. Platform dropdowns are for the preparation workflow.
+  HubSpot properties are populated by the push. No alignment needed now.
+- **Frontend changes** — No UI changes for language or vertical display.
+- **Audience demographics push** — HypeAuditor audience data is not pushed in this plan.
+- **Campaign-aware enrichment** — A future direction where the LLM evaluates a creator
+  specifically for a campaign brief (fit score, talking points, concerns). This would live on
+  `RunResult` as a per-channel-per-campaign assessment, not on the channel enrichment.
+
+## What Should Change Next (After This Plan)
+
+The highest-value follow-on is **campaign-aware enrichment**: instead of the generic "tell me
+about this creator" enrichment, evaluate creators against a specific campaign brief. Input is
+channel context + campaign brief (client, product, audience, requirements). Output is a fit
+score and specific reasons. This is where the LLM adds genuine value beyond what deterministic
+derivation can do. It would live on `RunResult` (per-channel-per-run) rather than
+`ChannelEnrichment` (per-channel).
