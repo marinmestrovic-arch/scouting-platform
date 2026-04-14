@@ -1,6 +1,6 @@
 import type { YoutubeChannelContext } from "@scouting-platform/integrations";
 
-const MIN_LONGFORM_SECONDS = 60;
+import { isYoutubeShortVideo } from "./metrics";
 const MAX_KEYWORDS = 12;
 const MAX_TOPIC_CLUSTERS = 5;
 
@@ -294,21 +294,21 @@ export function inferTopicClusters(
 export function deriveContentMixHint(
   context: YoutubeChannelContext,
 ): ChannelClassificationDerivedSignals["contentMixHint"] {
-  const durations = context.recentVideos
-    .map((video) => video.durationSeconds)
-    .filter((duration): duration is number => typeof duration === "number" && duration >= 0);
+  const classifiedVideos = context.recentVideos
+    .map((video) => video.isShort ?? isYoutubeShortVideo(video.durationSeconds))
+    .filter((isShort): isShort is boolean => typeof isShort === "boolean");
 
-  if (durations.length === 0) {
+  if (classifiedVideos.length === 0) {
     return null;
   }
 
-  const longFormCount = durations.filter((duration) => duration >= MIN_LONGFORM_SECONDS).length;
+  const shortCount = classifiedVideos.filter((isShort) => isShort).length;
 
-  if (longFormCount === 0) {
+  if (shortCount === classifiedVideos.length) {
     return "shorts";
   }
 
-  if (longFormCount === durations.length) {
+  if (shortCount === 0) {
     return "long_form";
   }
 

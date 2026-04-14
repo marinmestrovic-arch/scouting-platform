@@ -135,4 +135,42 @@ describe("classification-signals", () => {
     expect(deriveContentMixHint(context)).toBe("long_form");
     expect(deriveUploadCadenceHint(context)).toBe("monthly");
   });
+
+  it("classifies 60-180 second uploads as shorts when the YouTube context marks them that way", () => {
+    const context = {
+      ...BASE_CONTEXT,
+      recentVideos: [
+        {
+          youtubeVideoId: "video-1",
+          title: "Short 1",
+          description: null,
+          publishedAt: "2026-04-10T12:00:00Z",
+          viewCount: 100,
+          likeCount: 10,
+          commentCount: 5,
+          durationSeconds: 75,
+          isShort: true,
+          categoryId: "24",
+          categoryName: "Entertainment",
+          tags: [],
+        },
+        {
+          youtubeVideoId: "video-2",
+          title: "Short 2",
+          description: null,
+          publishedAt: "2026-04-09T12:00:00Z",
+          viewCount: 120,
+          likeCount: 12,
+          commentCount: 6,
+          durationSeconds: 150,
+          isShort: true,
+          categoryId: "24",
+          categoryName: "Entertainment",
+          tags: [],
+        },
+      ],
+    };
+
+    expect(deriveContentMixHint(context)).toBe("shorts");
+  });
 });
