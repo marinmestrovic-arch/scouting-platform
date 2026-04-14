@@ -305,10 +305,16 @@ function parseDurationToSeconds(value: string | undefined): number | null {
     return null;
   }
 
-  const days = Number(match.groups.days ?? 0);
-  const hours = Number(match.groups.hours ?? 0);
-  const minutes = Number(match.groups.minutes ?? 0);
-  const seconds = Number(match.groups.seconds ?? 0);
+  const { days: rawDays, hours: rawHours, minutes: rawMinutes, seconds: rawSeconds } = match.groups;
+
+  if (!rawDays && !rawHours && !rawMinutes && !rawSeconds) {
+    return null;
+  }
+
+  const days = Number(rawDays ?? 0);
+  const hours = Number(rawHours ?? 0);
+  const minutes = Number(rawMinutes ?? 0);
+  const seconds = Number(rawSeconds ?? 0);
 
   if (![days, hours, minutes, seconds].every(Number.isFinite)) {
     return null;
