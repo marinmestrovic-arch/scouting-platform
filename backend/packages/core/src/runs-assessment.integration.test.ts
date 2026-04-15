@@ -306,6 +306,12 @@ integration("run assessment core integration", () => {
       true,
     );
     expect(requeuedRows.every((row) => row.assessedAt === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.model === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.fitScore === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.fitReasons === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.fitConcerns === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.recommendedAngles === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.avoidTopics === null)).toBe(true);
     expect(requeuedRows.every((row) => row.rawOpenaiPayload === null)).toBe(true);
     expect(requeuedRows.every((row) => row.rawOpenaiPayloadFetchedAt === null)).toBe(true);
 
@@ -321,5 +327,65 @@ integration("run assessment core integration", () => {
     });
 
     expect(enrichCampaignFitWithOpenAiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not expose stale fit outputs when a retriggered assessment later fails", async () => {
+    const { user, run, channelA } = await seedRunWithBrief();
+
+    await getCore().requestRunAssessment({
+      runId: run.id,
+      userId: user.id,
+      role: "user",
+    });
+
+    await getCore().executeRunChannelFitAssessment({
+      runRequestId: run.id,
+      channelId: channelA.id,
+      requestedByUserId: user.id,
+    });
+
+    const completedRow = await prisma.runChannelAssessment.findUniqueOrThrow({
+      where: {
+        runRequestId_channelId: {
+          runRequestId: run.id,
+          channelId: channelA.id,
+        },
+      },
+    });
+    expect(completedRow.fitScore).toBe(0.78);
+
+    await getCore().requestRunAssessment({
+      runId: run.id,
+      userId: user.id,
+      role: "user",
+    });
+
+    enrichCampaignFitWithOpenAiMock.mockReset();
+    enrichCampaignFitWithOpenAiMock.mockRejectedValueOnce(new Error("temporary failure"));
+
+    await expect(
+      getCore().executeRunChannelFitAssessment({
+        runRequestId: run.id,
+        channelId: channelA.id,
+        requestedByUserId: user.id,
+      }),
+    ).rejects.toThrow("temporary failure");
+
+    const failedRow = await prisma.runChannelAssessment.findUniqueOrThrow({
+      where: {
+        runRequestId_channelId: {
+          runRequestId: run.id,
+          channelId: channelA.id,
+        },
+      },
+    });
+    expect(failedRow.status).toBe(RunChannelAssessmentStatus.FAILED);
+    expect(failedRow.lastError).toContain("temporary failure");
+    expect(failedRow.model).toBeNull();
+    expect(failedRow.fitScore).toBeNull();
+    expect(failedRow.fitReasons).toBeNull();
+    expect(failedRow.fitConcerns).toBeNull();
+    expect(failedRow.recommendedAngles).toBeNull();
+    expect(failedRow.avoidTopics).toBeNull();
   });
 });
