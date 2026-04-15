@@ -255,6 +255,8 @@ export async function requestRunAssessment(input: {
             status: PrismaRunChannelAssessmentStatus.QUEUED,
             startedAt: null,
             assessedAt: null,
+            rawOpenaiPayload: Prisma.DbNull,
+            rawOpenaiPayloadFetchedAt: null,
             lastError: null,
           },
         });

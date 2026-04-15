@@ -264,7 +264,7 @@ integration("run assessment core integration", () => {
     expect(enrichCampaignFitWithOpenAiMock).toHaveBeenCalledTimes(2);
   });
 
-  it("requeues completed rows and reuses stored raw payloads on re-execution", async () => {
+  it("requeues completed rows and clears cached payloads so retriggers assess against the new brief", async () => {
     const { user, run, channelA, channelB } = await seedRunWithBrief();
 
     await getCore().requestRunAssessment({
@@ -306,7 +306,8 @@ integration("run assessment core integration", () => {
       true,
     );
     expect(requeuedRows.every((row) => row.assessedAt === null)).toBe(true);
-    expect(requeuedRows.every((row) => row.rawOpenaiPayload !== null)).toBe(true);
+    expect(requeuedRows.every((row) => row.rawOpenaiPayload === null)).toBe(true);
+    expect(requeuedRows.every((row) => row.rawOpenaiPayloadFetchedAt === null)).toBe(true);
 
     await getCore().executeRunChannelFitAssessment({
       runRequestId: run.id,
@@ -319,6 +320,6 @@ integration("run assessment core integration", () => {
       requestedByUserId: user.id,
     });
 
-    expect(enrichCampaignFitWithOpenAiMock).not.toHaveBeenCalled();
+    expect(enrichCampaignFitWithOpenAiMock).toHaveBeenCalledTimes(2);
   });
 });

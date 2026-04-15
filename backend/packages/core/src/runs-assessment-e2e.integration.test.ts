@@ -274,21 +274,49 @@ integration("run assessment end-to-end core integration", () => {
     expect(firstAssessment!.createdAt >= secondAssessment!.createdAt).toBe(true);
 
     enrichCampaignFitWithOpenAiMock.mockClear();
+    enrichCampaignFitWithOpenAiMock
+      .mockResolvedValueOnce(buildMockAssessment({ fitScore: 0.61, fitReasons: ["Updated brief fit A"] }))
+      .mockResolvedValueOnce(
+        buildMockAssessment({ fitScore: 0.44, fitReasons: ["Updated brief fit B"] }),
+      );
 
-    const retriggered = await getCore().requestRunAssessment({
+    await getCore().requestRunAssessment({
       runId: run.id,
       userId: user.id,
       role: "user",
     });
-    expect(retriggered.enqueued).toBe(2);
 
-    const requeued = await prisma.runChannelAssessment.findMany({
+    let requeued = await prisma.runChannelAssessment.findMany({
       where: {
         runRequestId: run.id,
       },
     });
     expect(requeued.every((row) => row.status === RunChannelAssessmentStatus.QUEUED)).toBe(true);
     expect(requeued.every((row) => row.assessedAt === null)).toBe(true);
+    expect(requeued.every((row) => row.rawOpenaiPayload === null)).toBe(true);
+    expect(requeued.every((row) => row.rawOpenaiPayloadFetchedAt === null)).toBe(true);
+
+    await getCore().executeRunChannelFitAssessment({
+      runRequestId: run.id,
+      channelId: channelA.id,
+      requestedByUserId: user.id,
+    });
+    await getCore().executeRunChannelFitAssessment({
+      runRequestId: run.id,
+      channelId: channelB.id,
+      requestedByUserId: user.id,
+    });
+
+    requeued = await prisma.runChannelAssessment.findMany({
+      where: {
+        runRequestId: run.id,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+    expect(requeued.map((row) => row.fitScore)).toEqual([0.61, 0.44]);
+    expect(enrichCampaignFitWithOpenAiMock).toHaveBeenCalledTimes(2);
   });
 
   it("marks the row failed and rethrows when the integration rate limits", async () => {
