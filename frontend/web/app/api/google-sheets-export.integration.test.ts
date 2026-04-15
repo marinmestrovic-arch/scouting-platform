@@ -212,8 +212,9 @@ integration("google sheets export API integration", () => {
     const run = await createPreparedRun(manager.id);
     currentSessionUser = { id: manager.id, role: "user" };
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      const decodedUrl = decodeURIComponent(url);
 
       if (url === "https://oauth2.googleapis.com/token") {
         return new Response(JSON.stringify({ access_token: "google-token" }), {
@@ -223,13 +224,27 @@ integration("google sheets export API integration", () => {
       }
 
       if (url.includes("/values/")) {
-        if (url.includes(":append")) {
+        if (init?.method === "PUT") {
+          expect(decodedUrl).toContain("'Scouting Export'!A4:AD4");
+
           return new Response(
             JSON.stringify({
               updates: {
-                updatedRange: "'Scouting Export'!A2:AD2",
+                updatedRange: "'Scouting Export'!A4:AD4",
                 updatedRows: 1,
               },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        if (decodedUrl.includes("'Scouting Export'!A3:AD")) {
+          return new Response(
+            JSON.stringify({
+              values: [["Contacting"]],
             }),
             {
               status: 200,
@@ -280,6 +295,29 @@ integration("google sheets export API integration", () => {
         );
       }
 
+      if (url.includes("/v4/spreadsheets/spreadsheet-1")) {
+        return new Response(
+          JSON.stringify({
+            sheets: [
+              {
+                properties: {
+                  sheetId: 456,
+                  title: "Scouting Export",
+                  gridProperties: {
+                    rowCount: 1000,
+                    columnCount: 30,
+                  },
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
       throw new Error(`Unexpected fetch call: ${url}`);
     });
 
@@ -307,7 +345,7 @@ integration("google sheets export API integration", () => {
       appendedRowCount: 1,
       matchedHeaderCount: 30,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("returns normalized auth and validation errors", async () => {
