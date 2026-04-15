@@ -72,7 +72,7 @@ function getServiceAccountCredentials(input?: {
     throw new GoogleSheetsError(
       "GOOGLE_SHEETS_CREDENTIALS_MISSING",
       500,
-      "Google Sheets service account credentials are not configured",
+      "Google Sheets service account credentials are not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.",
     );
   }
 

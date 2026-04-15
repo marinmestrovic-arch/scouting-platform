@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GoogleSheetsError,
@@ -22,6 +22,10 @@ function createPrivateKey(): string {
 }
 
 describe("google sheets adapter", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("extracts spreadsheet ids from either a URL or a raw id", () => {
     expect(
       extractGoogleSpreadsheetId(
@@ -51,6 +55,18 @@ describe("google sheets adapter", () => {
     expect(token).toBe("google-token");
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(String(fetchFn.mock.calls[0]?.[0] ?? "")).toBe("https://oauth2.googleapis.com/token");
+  });
+
+  it("names the required environment variables when credentials are missing", async () => {
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL", "");
+    vi.stubEnv("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", "");
+
+    await expect(getGoogleSheetsAccessToken()).rejects.toMatchObject({
+      code: "GOOGLE_SHEETS_CREDENTIALS_MISSING",
+      status: 500,
+      message:
+        "Google Sheets service account credentials are not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.",
+    } satisfies Partial<GoogleSheetsError>);
   });
 
   it("reads and trims the sheet header row", async () => {

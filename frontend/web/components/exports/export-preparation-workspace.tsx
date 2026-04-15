@@ -444,9 +444,11 @@ export function ExportPreparationWorkspace({
               <input
                 disabled={googleSheetsState === "saving"}
                 onChange={(event) => {
+                  const { value } = event.currentTarget;
+
                   setGoogleSheetsRequest((current) => ({
                     ...current,
-                    spreadsheetIdOrUrl: event.currentTarget.value,
+                    spreadsheetIdOrUrl: value,
                   }));
                   setGoogleSheetsState("idle");
                   setGoogleSheetsMessage("");
@@ -461,9 +463,11 @@ export function ExportPreparationWorkspace({
               <input
                 disabled={googleSheetsState === "saving"}
                 onChange={(event) => {
+                  const { value } = event.currentTarget;
+
                   setGoogleSheetsRequest((current) => ({
                     ...current,
-                    sheetName: event.currentTarget.value,
+                    sheetName: value,
                   }));
                   setGoogleSheetsState("idle");
                   setGoogleSheetsMessage("");
