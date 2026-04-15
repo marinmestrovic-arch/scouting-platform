@@ -7,11 +7,15 @@ import {
   type ExportRunToGoogleSheetsRequest,
 } from "@scouting-platform/contracts";
 import {
-  appendGoogleSheetsRows,
+  copyGoogleSheetRowFormat,
+  ensureGoogleSheetRowCapacity,
   extractGoogleSpreadsheetId,
+  getGoogleSheetProperties,
   getGoogleSheetsAccessToken,
   isGoogleSheetsError,
   readGoogleSheetsHeaderRow,
+  readGoogleSheetsRows,
+  writeGoogleSheetsRows,
 } from "@scouting-platform/integrations";
 
 import { getHubspotExportPreview } from "./export-previews";
@@ -51,6 +55,7 @@ const GOOGLE_SHEETS_HEADER_RESOLVERS = new Map<string, HeaderValueResolver>([
   ["YouTube Engagement Rate", (row) => row.values.youtubeEngagementRate ?? ""],
   ["YouTube Followers", (row) => row.values.youtubeFollowers ?? ""],
 ]);
+const GOOGLE_SHEETS_EXPORT_MIN_START_ROW = 3;
 
 export function normalizeGoogleSheetsHeader(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -91,6 +96,32 @@ export function alignHubspotPreviewRowsToGoogleSheetsHeader(input: {
       }),
     ),
   };
+}
+
+function isEmptyGoogleSheetsRow(row: string[], columnCount: number): boolean {
+  for (let index = 0; index < columnCount; index += 1) {
+    if ((row[index] ?? "").trim().length > 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function findFirstEmptyGoogleSheetsRow(input: {
+  rows: string[][];
+  startRowNumber: number;
+  columnCount: number;
+}): number {
+  const emptyRowIndex = input.rows.findIndex((row) =>
+    isEmptyGoogleSheetsRow(row, input.columnCount),
+  );
+
+  if (emptyRowIndex !== -1) {
+    return input.startRowNumber + emptyRowIndex;
+  }
+
+  return input.startRowNumber + input.rows.length;
 }
 
 export async function exportHubspotRunToGoogleSheets(input: {
@@ -153,17 +184,57 @@ export async function exportHubspotRunToGoogleSheets(input: {
       );
     }
 
-    const appendResult = await appendGoogleSheetsRows({
+    const existingRows = await readGoogleSheetsRows({
       spreadsheetId,
       sheetName: parsedRequest.sheetName,
       accessToken,
+      startRowNumber: GOOGLE_SHEETS_EXPORT_MIN_START_ROW,
+      columnCount: headerRow.length,
+    });
+    const firstEmptyRowNumber = findFirstEmptyGoogleSheetsRow({
+      rows: existingRows,
+      startRowNumber: GOOGLE_SHEETS_EXPORT_MIN_START_ROW,
+      columnCount: headerRow.length,
+    });
+    const sheetProperties = await getGoogleSheetProperties({
+      spreadsheetId,
+      sheetName: parsedRequest.sheetName,
+      accessToken,
+    });
+    const requiredRowCount = firstEmptyRowNumber + alignedRows.values.length - 1;
+
+    await ensureGoogleSheetRowCapacity({
+      spreadsheetId,
+      sheetId: sheetProperties.sheetId,
+      currentRowCount: sheetProperties.rowCount,
+      requiredRowCount,
+      accessToken,
+    });
+
+    if (alignedRows.values.length > 1) {
+      await copyGoogleSheetRowFormat({
+        spreadsheetId,
+        sheetId: sheetProperties.sheetId,
+        sourceRowNumber: firstEmptyRowNumber,
+        targetStartRowNumber: firstEmptyRowNumber + 1,
+        rowCount: alignedRows.values.length - 1,
+        columnCount: Math.max(headerRow.length, sheetProperties.columnCount ?? headerRow.length),
+        accessToken,
+      });
+    }
+
+    const writeResult = await writeGoogleSheetsRows({
+      spreadsheetId,
+      sheetName: parsedRequest.sheetName,
+      accessToken,
+      startRowNumber: firstEmptyRowNumber,
       rows: alignedRows.values,
     });
 
     return {
       spreadsheetId,
       sheetName: parsedRequest.sheetName,
-      appendedRowCount: appendResult.updatedRows,
+      appendedRowCount: writeResult.updatedRows,
       matchedHeaderCount: alignedRows.matchedHeaders.length,
       matchedHeaders: alignedRows.matchedHeaders,
       unmatchedHeaders: alignedRows.unmatchedHeaders,

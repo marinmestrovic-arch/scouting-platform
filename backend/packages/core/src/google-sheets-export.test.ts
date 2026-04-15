@@ -1,17 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  appendGoogleSheetsRowsMock,
+  copyGoogleSheetRowFormatMock,
+  ensureGoogleSheetRowCapacityMock,
   extractGoogleSpreadsheetIdMock,
+  getGoogleSheetPropertiesMock,
   getGoogleSheetsAccessTokenMock,
   getHubspotExportPreviewMock,
   readGoogleSheetsHeaderRowMock,
+  readGoogleSheetsRowsMock,
+  writeGoogleSheetsRowsMock,
 } = vi.hoisted(() => ({
-  appendGoogleSheetsRowsMock: vi.fn(),
+  copyGoogleSheetRowFormatMock: vi.fn(),
+  ensureGoogleSheetRowCapacityMock: vi.fn(),
   extractGoogleSpreadsheetIdMock: vi.fn(),
+  getGoogleSheetPropertiesMock: vi.fn(),
   getGoogleSheetsAccessTokenMock: vi.fn(),
   getHubspotExportPreviewMock: vi.fn(),
   readGoogleSheetsHeaderRowMock: vi.fn(),
+  readGoogleSheetsRowsMock: vi.fn(),
+  writeGoogleSheetsRowsMock: vi.fn(),
 }));
 
 vi.mock("./export-previews", () => ({
@@ -19,31 +27,47 @@ vi.mock("./export-previews", () => ({
 }));
 
 vi.mock("@scouting-platform/integrations", () => ({
-  appendGoogleSheetsRows: appendGoogleSheetsRowsMock,
+  copyGoogleSheetRowFormat: copyGoogleSheetRowFormatMock,
+  ensureGoogleSheetRowCapacity: ensureGoogleSheetRowCapacityMock,
   extractGoogleSpreadsheetId: extractGoogleSpreadsheetIdMock,
+  getGoogleSheetProperties: getGoogleSheetPropertiesMock,
   getGoogleSheetsAccessToken: getGoogleSheetsAccessTokenMock,
   isGoogleSheetsError: () => false,
   readGoogleSheetsHeaderRow: readGoogleSheetsHeaderRowMock,
+  readGoogleSheetsRows: readGoogleSheetsRowsMock,
+  writeGoogleSheetsRows: writeGoogleSheetsRowsMock,
 }));
 
 import { ServiceError } from "./errors";
 import {
   alignHubspotPreviewRowsToGoogleSheetsHeader,
   exportHubspotRunToGoogleSheets,
+  findFirstEmptyGoogleSheetsRow,
 } from "./google-sheets-export";
 
 describe("google sheets export core service", () => {
   beforeEach(() => {
-    appendGoogleSheetsRowsMock.mockReset();
+    copyGoogleSheetRowFormatMock.mockReset();
+    ensureGoogleSheetRowCapacityMock.mockReset();
     extractGoogleSpreadsheetIdMock.mockReset();
+    getGoogleSheetPropertiesMock.mockReset();
     getGoogleSheetsAccessTokenMock.mockReset();
     getHubspotExportPreviewMock.mockReset();
     readGoogleSheetsHeaderRowMock.mockReset();
+    readGoogleSheetsRowsMock.mockReset();
+    writeGoogleSheetsRowsMock.mockReset();
 
     extractGoogleSpreadsheetIdMock.mockReturnValue("spreadsheet-1");
     getGoogleSheetsAccessTokenMock.mockResolvedValue("google-token");
-    appendGoogleSheetsRowsMock.mockResolvedValue({
-      updatedRange: "'Scouting Export'!A2:D3",
+    getGoogleSheetPropertiesMock.mockResolvedValue({
+      sheetId: 12345,
+      title: "Scouting Export",
+      rowCount: 1000,
+      columnCount: 30,
+    });
+    readGoogleSheetsRowsMock.mockResolvedValue([["Contacting"]]);
+    writeGoogleSheetsRowsMock.mockResolvedValue({
+      updatedRange: "'Scouting Export'!A4:D5",
       updatedRows: 2,
     });
     getHubspotExportPreviewMock.mockResolvedValue({
@@ -156,6 +180,30 @@ describe("google sheets export core service", () => {
     ]);
   });
 
+  it("finds the first fully empty sheet row at or after the configured start row", () => {
+    expect(
+      findFirstEmptyGoogleSheetsRow({
+        startRowNumber: 3,
+        columnCount: 3,
+        rows: [
+          ["Contacting", "", ""],
+          ["", "", ""],
+          ["Existing", "", ""],
+        ],
+      }),
+    ).toBe(4);
+    expect(
+      findFirstEmptyGoogleSheetsRow({
+        startRowNumber: 3,
+        columnCount: 3,
+        rows: [
+          ["Contacting", "", ""],
+          ["Existing", "", ""],
+        ],
+      }),
+    ).toBe(5);
+  });
+
   it("exports HubSpot-prepared rows to Google Sheets using the sheet header order", async () => {
     readGoogleSheetsHeaderRowMock.mockResolvedValue([
       "Channel Name",
@@ -203,10 +251,34 @@ describe("google sheets export core service", () => {
       userId: "user-1",
       role: "user",
     });
-    expect(appendGoogleSheetsRowsMock).toHaveBeenCalledWith({
+    expect(readGoogleSheetsRowsMock).toHaveBeenCalledWith({
       spreadsheetId: "spreadsheet-1",
       sheetName: "Scouting Export",
       accessToken: "google-token",
+      startRowNumber: 3,
+      columnCount: 28,
+    });
+    expect(ensureGoogleSheetRowCapacityMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-1",
+      sheetId: 12345,
+      currentRowCount: 1000,
+      requiredRowCount: 5,
+      accessToken: "google-token",
+    });
+    expect(copyGoogleSheetRowFormatMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-1",
+      sheetId: 12345,
+      sourceRowNumber: 4,
+      targetStartRowNumber: 5,
+      rowCount: 1,
+      columnCount: 30,
+      accessToken: "google-token",
+    });
+    expect(writeGoogleSheetsRowsMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-1",
+      sheetName: "Scouting Export",
+      accessToken: "google-token",
+      startRowNumber: 4,
       rows: [
         [
           "Creator One",

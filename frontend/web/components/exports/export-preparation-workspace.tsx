@@ -328,7 +328,7 @@ export function ExportPreparationWorkspace({
 
       setGoogleSheetsState("success");
       setGoogleSheetsMessage(
-        `Appended ${result.appendedRowCount} rows to ${result.sheetName}. Matched ${result.matchedHeaderCount} columns.${unmatchedMessage}`,
+        `Imported ${result.appendedRowCount} rows into ${result.sheetName}. Matched ${result.matchedHeaderCount} columns.${unmatchedMessage}`,
       );
     } catch (error) {
       setGoogleSheetsState("error");
@@ -444,9 +444,11 @@ export function ExportPreparationWorkspace({
               <input
                 disabled={googleSheetsState === "saving"}
                 onChange={(event) => {
+                  const { value } = event.currentTarget;
+
                   setGoogleSheetsRequest((current) => ({
                     ...current,
-                    spreadsheetIdOrUrl: event.currentTarget.value,
+                    spreadsheetIdOrUrl: value,
                   }));
                   setGoogleSheetsState("idle");
                   setGoogleSheetsMessage("");
@@ -461,9 +463,11 @@ export function ExportPreparationWorkspace({
               <input
                 disabled={googleSheetsState === "saving"}
                 onChange={(event) => {
+                  const { value } = event.currentTarget;
+
                   setGoogleSheetsRequest((current) => ({
                     ...current,
-                    sheetName: event.currentTarget.value,
+                    sheetName: value,
                   }));
                   setGoogleSheetsState("idle");
                   setGoogleSheetsMessage("");
