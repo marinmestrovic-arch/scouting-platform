@@ -3,6 +3,7 @@ import { z } from "zod";
 export const JOB_NAMES = [
   "runs.discover",
   "runs.recompute",
+  "runs.assess.channel-fit",
   "channels.enrich.llm",
   "channels.enrich.hypeauditor",
   "imports.csv.process",
@@ -23,6 +24,12 @@ export const runsDiscoverPayloadSchema = z.object({
 
 export const runsRecomputePayloadSchema = z.object({
   runRequestId: uuid,
+  requestedByUserId: uuid,
+});
+
+export const runsAssessChannelFitPayloadSchema = z.object({
+  runRequestId: uuid,
+  channelId: uuid,
   requestedByUserId: uuid,
 });
 
@@ -64,6 +71,7 @@ export const maintenanceRefreshStalePayloadSchema = z.object({
 export const jobPayloadSchemas = {
   "runs.discover": runsDiscoverPayloadSchema,
   "runs.recompute": runsRecomputePayloadSchema,
+  "runs.assess.channel-fit": runsAssessChannelFitPayloadSchema,
   "channels.enrich.llm": channelsEnrichLlmPayloadSchema,
   "channels.enrich.hypeauditor": channelsEnrichHypeAuditorPayloadSchema,
   "imports.csv.process": importsCsvProcessPayloadSchema,

@@ -1,6 +1,7 @@
 export const JOB_NAMES = [
   "runs.discover",
   "runs.recompute",
+  "runs.assess.channel-fit",
   "channels.enrich.llm",
   "channels.enrich.hypeauditor",
   "imports.csv.process",

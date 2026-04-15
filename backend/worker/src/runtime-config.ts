@@ -11,6 +11,7 @@ export type WorkerRuntimeConfig = Readonly<{
   pgBossSchema: string;
   jobs: Readonly<{
     runsDiscover: WorkerJobOptions;
+    runsAssessChannelFit: WorkerJobOptions;
     channelsEnrichLlm: WorkerJobOptions;
     channelsEnrichHypeauditor: WorkerJobOptions;
     importsCsvProcess: WorkerJobOptions;
@@ -90,6 +91,11 @@ export function getWorkerRuntimeConfig(
     pgBossSchema: env.PG_BOSS_SCHEMA?.trim() || "pgboss",
     jobs: {
       runsDiscover: buildWorkerJobOptions(env, "WORKER_RUNS_DISCOVER_CONCURRENCY", 1),
+      runsAssessChannelFit: buildWorkerJobOptions(
+        env,
+        "WORKER_RUNS_ASSESS_CHANNEL_FIT_CONCURRENCY",
+        2,
+      ),
       channelsEnrichLlm: buildWorkerJobOptions(env, "WORKER_CHANNELS_ENRICH_LLM_CONCURRENCY", 2),
       channelsEnrichHypeauditor: buildWorkerJobOptions(
         env,

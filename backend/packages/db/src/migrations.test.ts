@@ -74,6 +74,10 @@ const channelContentLanguageMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260414120000_channel_content_language/migration.sql",
 );
+const runChannelAssessmentsAndBriefFieldsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260415120000_run_channel_assessments_and_brief_fields/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -270,6 +274,25 @@ describe("youtube discovery cache migration", () => {
     expect(migrationSql).toContain('CREATE INDEX "youtube_discovery_cache_expires_at_idx"');
     expect(migrationSql).toContain(
       'ADD CONSTRAINT "youtube_discovery_cache_user_id_fkey"',
+    );
+  });
+});
+
+describe("run channel assessments and brief fields migration", () => {
+  it("adds run brief columns and creates the per-run channel assessment table", () => {
+    const migrationSql = readFileSync(runChannelAssessmentsAndBriefFieldsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "run_channel_assessment_status" AS ENUM');
+    expect(migrationSql).toContain('ADD COLUMN "client_industry" TEXT');
+    expect(migrationSql).toContain('CREATE TABLE "run_channel_assessments"');
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "run_channel_assessments_run_request_id_channel_id_key"',
+    );
+    expect(migrationSql).toContain(
+      'ADD CONSTRAINT "run_channel_assessments_run_request_id_fkey"',
+    );
+    expect(migrationSql).toContain(
+      'ADD CONSTRAINT "run_channel_assessments_channel_id_fkey"',
     );
   });
 });

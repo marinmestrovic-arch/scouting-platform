@@ -54,6 +54,12 @@ When multiple sources provide a value for the same field, the resolved channel p
 - HypeAuditor requests require an approval workflow before execution
 - HubSpot pushes use resolved catalog data, not raw snapshots
 
+### Run-scoped artifacts
+
+- run-scoped artifacts like `run_channel_assessments` are non-canonical per-run snapshots
+- they never feed back into the catalog, never influence resolved channel state, and are not subject to the precedence order above
+- they exist to record a judgment made at a specific point in time for a specific campaign and may be safely discarded without catalog impact
+
 ## Consequences
 
 ### Positive

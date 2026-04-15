@@ -1,6 +1,10 @@
 import { z } from "zod";
 
+import { runChannelAssessmentItemSchema } from "./runs-assessment";
+
 const isoDatetimeSchema = z.string().datetime();
+const briefStringSchema = z.string().trim().min(1);
+const briefArraySchema = z.array(briefStringSchema);
 
 export const runRequestStatusSchema = z.enum([
   "queued",
@@ -35,6 +39,14 @@ export const runCampaignManagerSchema = z.object({
 export const runMetadataInputSchema = z.object({
   campaignId: z.uuid(),
   campaignManagerUserId: z.uuid().optional(),
+  clientIndustry: briefStringSchema.max(200).nullable().optional(),
+  campaignObjective: briefStringSchema.max(2000).nullable().optional(),
+  targetAudienceAge: briefStringSchema.max(50).nullable().optional(),
+  targetAudienceGender: briefStringSchema.max(50).nullable().optional(),
+  targetGeographies: briefArraySchema.nullable().optional(),
+  contentRestrictions: briefArraySchema.nullable().optional(),
+  budgetTier: briefStringSchema.max(50).nullable().optional(),
+  deliverables: briefArraySchema.nullable().optional(),
 });
 
 export const runMetadataResponseSchema = z.object({
@@ -58,6 +70,14 @@ export const runMetadataResponseSchema = z.object({
   hubspotInfluencerVertical: z.string().nullable().optional(),
   hubspotCountryRegion: z.string().nullable().optional(),
   hubspotLanguage: z.string().nullable().optional(),
+  clientIndustry: briefStringSchema.max(200).nullable().optional(),
+  campaignObjective: briefStringSchema.max(2000).nullable().optional(),
+  targetAudienceAge: briefStringSchema.max(50).nullable().optional(),
+  targetAudienceGender: briefStringSchema.max(50).nullable().optional(),
+  targetGeographies: briefArraySchema.nullable().optional(),
+  contentRestrictions: briefArraySchema.nullable().optional(),
+  budgetTier: briefStringSchema.max(50).nullable().optional(),
+  deliverables: briefArraySchema.nullable().optional(),
 });
 
 export const createRunRequestSchema = z.object({
@@ -71,6 +91,21 @@ export const createRunResponseSchema = z.object({
   runId: z.uuid(),
   status: runRequestStatusSchema,
 });
+
+export const updateRunBriefRequestSchema = z
+  .object({
+    clientIndustry: briefStringSchema.max(200).nullable().optional(),
+    campaignObjective: briefStringSchema.max(2000).nullable().optional(),
+    targetAudienceAge: briefStringSchema.max(50).nullable().optional(),
+    targetAudienceGender: briefStringSchema.max(50).nullable().optional(),
+    targetGeographies: briefArraySchema.max(50).nullable().optional(),
+    contentRestrictions: briefArraySchema.max(50).nullable().optional(),
+    budgetTier: briefStringSchema.max(50).nullable().optional(),
+    deliverables: briefArraySchema.max(50).nullable().optional(),
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: "At least one brief field must be provided",
+  });
 
 export const listRunsQuerySchema = z.object({
   campaignManagerUserId: z.uuid().optional(),
@@ -136,6 +171,7 @@ export const runStatusResponseSchema = z.object({
   completedAt: isoDatetimeSchema.nullable(),
   metadata: runMetadataResponseSchema,
   results: z.array(runResultItemSchema),
+  assessments: z.array(runChannelAssessmentItemSchema).optional().default([]),
 });
 
 export const campaignManagerOptionSchema = runCampaignManagerSchema;
@@ -152,6 +188,7 @@ export type RunMetadataInput = z.infer<typeof runMetadataInputSchema>;
 export type RunMetadataResponse = z.infer<typeof runMetadataResponseSchema>;
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
+export type UpdateRunBriefRequest = z.infer<typeof updateRunBriefRequestSchema>;
 export type ListRunsQuery = z.infer<typeof listRunsQuerySchema>;
 export type RecentRunItem = z.infer<typeof recentRunItemSchema>;
 export type RunFilterOptions = z.infer<typeof runFilterOptionsSchema>;

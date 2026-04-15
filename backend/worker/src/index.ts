@@ -8,6 +8,7 @@ import { registerHubspotImportBatchWorker } from "./hubspot-import-batch-worker"
 import { registerHubspotPushBatchWorker } from "./hubspot-push-batch-worker";
 import { registerImportsCsvProcessWorker } from "./imports-csv-process-worker";
 import { JOB_NAMES } from "./jobs";
+import { registerRunsAssessChannelFitWorker } from "./runs-assess-channel-fit-worker";
 import { getWorkerRuntimeConfig } from "./runtime-config";
 import { registerRunsDiscoverWorker } from "./runs-discover-worker";
 
@@ -30,6 +31,7 @@ async function registerWorkers(
   config: ReturnType<typeof getWorkerRuntimeConfig>,
 ): Promise<void> {
   await registerRunsDiscoverWorker(boss, config.jobs.runsDiscover);
+  await registerRunsAssessChannelFitWorker(boss, config.jobs.runsAssessChannelFit);
   await registerChannelsEnrichLlmWorker(boss, config.jobs.channelsEnrichLlm);
   await registerChannelsEnrichHypeAuditorWorker(
     boss,

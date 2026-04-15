@@ -12,5 +12,6 @@ export * from "./hubspot-imports";
 export * from "./hubspot-pushes";
 export * from "./jobs";
 export * from "./reference-data";
+export * from "./runs-assessment";
 export * from "./runs";
 export * from "./segments";

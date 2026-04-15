@@ -2,16 +2,19 @@ import { createHash } from "node:crypto";
 
 import {
   CredentialProvider,
+  Prisma,
   Role,
+  type RunChannelAssessment,
+  RunChannelAssessmentStatus as PrismaRunChannelAssessmentStatus,
   RunMonth as PrismaRunMonth,
   RunRequestStatus as PrismaRunRequestStatus,
   RunResultSource as PrismaRunResultSource,
   UserType,
-  type Prisma,
 } from "@prisma/client";
 import type {
   CreateRunResponse,
   ListRecentRunsResponse,
+  RunChannelAssessmentItem,
   RunFilterOptions,
   RunMetadataInput,
   RunMetadataResponse,
@@ -38,7 +41,7 @@ const campaignManagerSelect = {
   name: true,
 } as const;
 
-const runMetadataSelect = {
+export const runMetadataSelect = {
   campaignId: true,
   client: true,
   market: true,
@@ -58,6 +61,14 @@ const runMetadataSelect = {
   hubspotInfluencerVertical: true,
   hubspotCountryRegion: true,
   hubspotLanguage: true,
+  clientIndustry: true,
+  campaignObjective: true,
+  targetAudienceAge: true,
+  targetAudienceGender: true,
+  targetGeographies: true,
+  contentRestrictions: true,
+  budgetTier: true,
+  deliverables: true,
   campaignManagerUser: {
     select: campaignManagerSelect,
   },
@@ -73,6 +84,14 @@ function formatErrorMessage(error: unknown): string {
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+export function parseStringArrayOrNull(value: Prisma.JsonValue | null): string[] | null {
+  if (value === null) {
+    return null;
+  }
+
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
 }
 
 const YOUTUBE_DISCOVERY_CACHE_TTL_MINUTES = Number(
@@ -111,6 +130,21 @@ function toRunResultSource(source: PrismaRunResultSource): "catalog" | "discover
   return source === PrismaRunResultSource.DISCOVERY ? "discovery" : "catalog";
 }
 
+function toRunChannelAssessmentStatus(
+  status: PrismaRunChannelAssessmentStatus,
+): RunChannelAssessmentItem["status"] {
+  switch (status) {
+    case PrismaRunChannelAssessmentStatus.RUNNING:
+      return "running";
+    case PrismaRunChannelAssessmentStatus.COMPLETED:
+      return "completed";
+    case PrismaRunChannelAssessmentStatus.FAILED:
+      return "failed";
+    default:
+      return "queued";
+  }
+}
+
 function toRunMonth(month: PrismaRunMonth | null): RunMonth | null {
   switch (month) {
     case PrismaRunMonth.JANUARY:
@@ -142,7 +176,7 @@ function toRunMonth(month: PrismaRunMonth | null): RunMonth | null {
   }
 }
 
-function toRunMetadata(
+export function toRunMetadata(
   runRequest: Prisma.RunRequestGetPayload<{ select: typeof runMetadataSelect }>,
 ): RunMetadataResponse {
   return {
@@ -172,6 +206,35 @@ function toRunMetadata(
     hubspotInfluencerVertical: runRequest.hubspotInfluencerVertical,
     hubspotCountryRegion: runRequest.hubspotCountryRegion,
     hubspotLanguage: runRequest.hubspotLanguage,
+    clientIndustry: runRequest.clientIndustry,
+    campaignObjective: runRequest.campaignObjective,
+    targetAudienceAge: runRequest.targetAudienceAge,
+    targetAudienceGender: runRequest.targetAudienceGender,
+    targetGeographies: parseStringArrayOrNull(runRequest.targetGeographies),
+    contentRestrictions: parseStringArrayOrNull(runRequest.contentRestrictions),
+    budgetTier: runRequest.budgetTier,
+    deliverables: parseStringArrayOrNull(runRequest.deliverables),
+  };
+}
+
+export function toRunChannelAssessmentItem(row: RunChannelAssessment): RunChannelAssessmentItem {
+  return {
+    id: row.id,
+    runRequestId: row.runRequestId,
+    channelId: row.channelId,
+    status: toRunChannelAssessmentStatus(row.status),
+    model: row.model ?? null,
+    fitScore: row.fitScore ?? null,
+    fitReasons: parseStringArrayOrNull((row.fitReasons as Prisma.JsonValue | null) ?? null),
+    fitConcerns: parseStringArrayOrNull((row.fitConcerns as Prisma.JsonValue | null) ?? null),
+    recommendedAngles: parseStringArrayOrNull(
+      (row.recommendedAngles as Prisma.JsonValue | null) ?? null,
+    ),
+    avoidTopics: parseStringArrayOrNull((row.avoidTopics as Prisma.JsonValue | null) ?? null),
+    assessedAt: row.assessedAt?.toISOString() ?? null,
+    lastError: row.lastError ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -532,6 +595,35 @@ export async function createRunRequest(input: {
     target: input.target,
     status: PrismaRunRequestStatus.QUEUED,
     ...runMetadata,
+    clientIndustry: input.metadata.clientIndustry ?? null,
+    campaignObjective: input.metadata.campaignObjective ?? null,
+    targetAudienceAge: input.metadata.targetAudienceAge ?? null,
+    targetAudienceGender: input.metadata.targetAudienceGender ?? null,
+    budgetTier: input.metadata.budgetTier ?? null,
+    ...(input.metadata.targetGeographies !== undefined
+      ? {
+          targetGeographies:
+            input.metadata.targetGeographies === null
+              ? Prisma.DbNull
+              : toJsonValue(input.metadata.targetGeographies),
+        }
+      : {}),
+    ...(input.metadata.contentRestrictions !== undefined
+      ? {
+          contentRestrictions:
+            input.metadata.contentRestrictions === null
+              ? Prisma.DbNull
+              : toJsonValue(input.metadata.contentRestrictions),
+        }
+      : {}),
+    ...(input.metadata.deliverables !== undefined
+      ? {
+          deliverables:
+            input.metadata.deliverables === null
+              ? Prisma.DbNull
+              : toJsonValue(input.metadata.deliverables),
+        }
+      : {}),
   };
 
   const runRequest = await prisma.runRequest.create({
@@ -680,6 +772,11 @@ export async function getRunStatus(input: {
           },
         },
       },
+      channelAssessments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
   });
 
@@ -718,6 +815,7 @@ export async function getRunStatus(input: {
         thumbnailUrl: result.channel.thumbnailUrl,
       },
     })),
+    assessments: runRequest.channelAssessments.map(toRunChannelAssessmentItem),
   };
 }
 

@@ -106,6 +106,7 @@ function buildRunStatusPayload(
       overrides?.completedAt ??
       (status === "completed" || status === "failed" ? "2026-03-10T10:03:00.000Z" : null),
     metadata: buildRunMetadata(),
+    assessments: [],
     results: overrides?.results ?? [
       {
         id: "24a57b02-3008-4af1-9b3a-340bd0db7d1c",

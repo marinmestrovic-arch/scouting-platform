@@ -11,6 +11,7 @@ describe("getWorkerRuntimeConfig", () => {
 
     expect(config.pgBossSchema).toBe("pgboss");
     expect(config.jobs.runsDiscover.teamConcurrency).toBe(1);
+    expect(config.jobs.runsAssessChannelFit.teamConcurrency).toBe(2);
     expect(config.jobs.channelsEnrichLlm.teamConcurrency).toBe(2);
     expect(config.jobs.channelsEnrichHypeauditor.teamConcurrency).toBe(1);
   });
@@ -20,10 +21,12 @@ describe("getWorkerRuntimeConfig", () => {
       DATABASE_URL: "postgresql://scouting:scouting@localhost:5432/scouting_platform",
       APP_ENCRYPTION_KEY: "12345678901234567890123456789012",
       WORKER_RUNS_DISCOVER_CONCURRENCY: "3",
+      WORKER_RUNS_ASSESS_CHANNEL_FIT_CONCURRENCY: "5",
       WORKER_EXPORTS_CSV_GENERATE_CONCURRENCY: "2",
     });
 
     expect(config.jobs.runsDiscover.teamConcurrency).toBe(3);
+    expect(config.jobs.runsAssessChannelFit.teamConcurrency).toBe(5);
     expect(config.jobs.exportsCsvGenerate.teamConcurrency).toBe(2);
   });
 

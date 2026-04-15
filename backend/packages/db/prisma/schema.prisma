@@ -94,6 +94,15 @@ enum ChannelEnrichmentStatus {
   @@map("channel_enrichment_status")
 }
 
+enum RunChannelAssessmentStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("run_channel_assessment_status")
+}
+
 enum AdvancedReportRequestStatus {
   PENDING_APPROVAL @map("pending_approval")
   APPROVED         @map("approved")
@@ -369,6 +378,7 @@ model Channel {
   csvImportRows   CsvImportRow[]
   hubspotPushBatchRows HubspotPushBatchRow[]
   hubspotImportBatchRows HubspotImportBatchRow[]
+  channelAssessments RunChannelAssessment[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
   @@index([createdAt, id], map: "channels_created_at_id_idx")
@@ -776,6 +786,14 @@ model RunRequest {
   hubspotInfluencerVertical String?  @map("hubspot_influencer_vertical")
   hubspotCountryRegion String?       @map("hubspot_country_region")
   hubspotLanguage   String?          @map("hubspot_language")
+  clientIndustry    String?          @map("client_industry")
+  campaignObjective String?          @map("campaign_objective") @db.Text
+  targetAudienceAge String?          @map("target_audience_age")
+  targetAudienceGender String?       @map("target_audience_gender")
+  targetGeographies Json?            @map("target_geographies")
+  contentRestrictions Json?          @map("content_restrictions")
+  budgetTier        String?          @map("budget_tier")
+  deliverables      Json?            @map("deliverables")
   status            RunRequestStatus @default(QUEUED)
   lastError         String?          @map("last_error") @db.Text
   createdAt         DateTime         @default(now()) @map("created_at")
@@ -787,6 +805,7 @@ model RunRequest {
   campaignManagerUser User?          @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
   hubspotImportBatches HubspotImportBatch[]
   hubspotRowOverrides RunHubspotRowOverride[]
+  channelAssessments RunChannelAssessment[]
   results           RunResult[]
 
   @@index([requestedByUserId], map: "run_requests_requested_by_user_id_idx")
@@ -840,6 +859,34 @@ model RunResult {
   @@unique([runRequestId, channelId], map: "run_results_run_request_id_channel_id_key")
   @@index([runRequestId], map: "run_results_run_request_id_idx")
   @@map("run_results")
+}
+
+model RunChannelAssessment {
+  id                        String                     @id @default(uuid()) @db.Uuid
+  runRequestId              String                     @map("run_request_id") @db.Uuid
+  channelId                 String                     @map("channel_id") @db.Uuid
+  status                    RunChannelAssessmentStatus @default(QUEUED)
+  model                     String?
+  fitScore                  Float?                     @map("fit_score")
+  fitReasons                Json?                      @map("fit_reasons")
+  fitConcerns               Json?                      @map("fit_concerns")
+  recommendedAngles         Json?                      @map("recommended_angles")
+  avoidTopics               Json?                      @map("avoid_topics")
+  rawOpenaiPayload          Json?                      @map("raw_openai_payload")
+  rawOpenaiPayloadFetchedAt DateTime?                  @map("raw_openai_payload_fetched_at")
+  assessedAt                DateTime?                  @map("assessed_at")
+  startedAt                 DateTime?                  @map("started_at")
+  lastError                 String?                    @map("last_error") @db.Text
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  updatedAt                 DateTime                   @updatedAt @map("updated_at")
+  runRequest                RunRequest                 @relation(fields: [runRequestId], references: [id], onDelete: Cascade)
+  channel                   Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
+
+  @@unique([runRequestId, channelId], map: "run_channel_assessments_run_request_id_channel_id_key")
+  @@index([runRequestId], map: "run_channel_assessments_run_request_id_idx")
+  @@index([status], map: "run_channel_assessments_status_idx")
+  @@index([channelId], map: "run_channel_assessments_channel_id_idx")
+  @@map("run_channel_assessments")
 }
 
 model YoutubeDiscoveryCache {
