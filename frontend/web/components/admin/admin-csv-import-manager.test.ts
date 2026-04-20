@@ -21,7 +21,7 @@ function buildSummary(overrides?: Partial<CsvImportBatchSummary>): CsvImportBatc
   return {
     id: "61fb5f09-0f45-4d1d-a87f-fb595b8d1d7d",
     fileName: "contacts.csv",
-    templateVersion: "v1",
+    templateVersion: "v2",
     status: "queued",
     totalRowCount: 2,
     importedRowCount: 0,
@@ -60,6 +60,10 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         videoCount: "50",
         notes: "Imported from ops sheet",
         sourceLabel: "ops",
+        influencerType: "Male",
+        influencerVertical: "Gaming",
+        countryRegion: "Croatia",
+        language: "Croatian",
         channelId: "58f68d7a-c916-4b13-8afa-61845e490463",
         errorMessage: null,
       },
@@ -77,6 +81,10 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         videoCount: null,
         notes: null,
         sourceLabel: "ops",
+        influencerType: null,
+        influencerVertical: null,
+        countryRegion: null,
+        language: null,
         channelId: null,
         errorMessage: "contactEmail is invalid",
       },
@@ -109,7 +117,8 @@ describe("admin csv import manager view", () => {
     );
 
     expect(html).toContain("Upload CSV");
-    expect(html).toContain("youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel");
+    expect(html).toContain("youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language");
+    expect(html).toContain("must match the saved HubSpot dropdown values");
     expect(html).toContain("Maximum file size 5 MiB. Up to 10000 data rows per batch.");
     expect(html).toContain("Loading CSV import batches...");
     expect(html).toContain("Select an import batch");
@@ -149,6 +158,8 @@ describe("admin csv import manager view", () => {
     expect(html).toContain("Imported Creator");
     expect(html).toContain("Failed Creator");
     expect(html).toContain("contactEmail is invalid");
+    expect(html).toContain("Type Male");
+    expect(html).toContain("Country Croatia");
     expect(html).toContain("Page 1 of 1. Showing rows 1-2 of 2.");
     expect(html).toContain("Previous page");
     expect(html).toContain("Next page");

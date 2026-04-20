@@ -1,10 +1,14 @@
 import {
+  HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
   listDropdownValuesResponseSchema,
+  syncHubspotDropdownValuesResponseSchema,
   type DropdownValue,
   type DropdownValueFieldKey,
   type UpdateDropdownValuesRequest,
   updateDropdownValuesRequestSchema,
 } from "@scouting-platform/contracts";
+
+const HUBSPOT_SYNCED_DROPDOWN_FIELD_SET = new Set<string>(HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS);
 
 type ApiErrorBody = {
   error?: string;
@@ -72,6 +76,19 @@ export async function replaceDropdownValuesRequest(input: UpdateDropdownValuesRe
   return listDropdownValuesResponseSchema.parse(payload).items;
 }
 
+export async function syncHubspotDropdownValuesRequest(): Promise<DropdownValue[]> {
+  const response = await fetch("/api/admin/dropdown-values", {
+    method: "POST",
+  });
+  const payload = await readJsonPayload(response);
+
+  if (!response.ok) {
+    throw new DropdownValuesApiError(getApiErrorMessage(response, payload), response.status);
+  }
+
+  return syncHubspotDropdownValuesResponseSchema.parse(payload).items;
+}
+
 export function groupDropdownValuesByField(items: DropdownValue[]): Record<DropdownValueFieldKey, string[]> {
   return {
     currency: items.filter((item) => item.fieldKey === "currency").map((item) => item.value),
@@ -82,4 +99,8 @@ export function groupDropdownValuesByField(items: DropdownValue[]): Record<Dropd
     countryRegion: items.filter((item) => item.fieldKey === "countryRegion").map((item) => item.value),
     language: items.filter((item) => item.fieldKey === "language").map((item) => item.value),
   };
+}
+
+export function isHubspotSyncedDropdownField(fieldKey: DropdownValueFieldKey): boolean {
+  return HUBSPOT_SYNCED_DROPDOWN_FIELD_SET.has(fieldKey);
 }

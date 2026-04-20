@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const isoDatetimeSchema = z.string().datetime();
 
-export const CSV_IMPORT_TEMPLATE_VERSION = "v1" as const;
+export const CSV_IMPORT_TEMPLATE_VERSION = "v2" as const;
 export const CSV_IMPORT_MAX_DATA_ROWS = 10_000;
 export const CSV_IMPORT_HEADER = [
   "youtubeChannelId",
@@ -15,6 +15,10 @@ export const CSV_IMPORT_HEADER = [
   "videoCount",
   "notes",
   "sourceLabel",
+  "influencerType",
+  "influencerVertical",
+  "countryRegion",
+  "language",
 ] as const;
 
 export const CSV_IMPORT_FILE_SIZE_LIMIT_BYTES = 5 * 1024 * 1024;
@@ -97,6 +101,10 @@ export const csvImportRowSchema = z.object({
   videoCount: z.string().nullable(),
   notes: z.string().nullable(),
   sourceLabel: z.string().nullable(),
+  influencerType: z.string().nullable(),
+  influencerVertical: z.string().nullable(),
+  countryRegion: z.string().nullable(),
+  language: z.string().nullable(),
   channelId: z.uuid().nullable(),
   errorMessage: z.string().nullable(),
 });

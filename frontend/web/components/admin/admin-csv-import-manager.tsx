@@ -129,6 +129,17 @@ function formatRowMetrics(row: CsvImportBatchDetail["rows"][number]): string {
   return segments.join(" · ") || "No metrics supplied";
 }
 
+function formatRowHubspotFields(row: CsvImportBatchDetail["rows"][number]): string {
+  const segments = [
+    row.influencerType ? `Type ${row.influencerType}` : null,
+    row.influencerVertical ? `Vertical ${row.influencerVertical}` : null,
+    row.countryRegion ? `Country ${row.countryRegion}` : null,
+    row.language ? `Language ${row.language}` : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  return segments.join(" · ") || "No HubSpot dropdown values supplied";
+}
+
 function getBatchPageSummary(batch: CsvImportBatchDetail): string {
   const startRow = batch.totalRowCount === 0 ? 0 : (batch.page - 1) * batch.pageSize + 1;
   const endRow = batch.totalRowCount === 0 ? 0 : startRow + batch.rows.length - 1;
@@ -369,6 +380,7 @@ function renderDetailState(props: AdminCsvImportManagerViewProps): ReactElement 
                 <th scope="col">Channel</th>
                 <th scope="col">Contact</th>
                 <th scope="col">Metrics</th>
+                <th scope="col">HubSpot fields</th>
                 <th scope="col">Result</th>
               </tr>
             </thead>
@@ -411,6 +423,7 @@ function renderDetailState(props: AdminCsvImportManagerViewProps): ReactElement 
                     </td>
                     <td>{formatNullableCell(row.contactEmail)}</td>
                     <td>{formatRowMetrics(row)}</td>
+                    <td>{formatRowHubspotFields(row)}</td>
                     <td>{resultCopy}</td>
                   </tr>
                 );
@@ -472,6 +485,10 @@ export function AdminCsvImportManagerView(props: AdminCsvImportManagerViewProps)
               </p>
               <code>{CSV_IMPORT_HEADER_LINE}</code>
               <p>Maximum file size 5 MiB. Up to {CSV_IMPORT_MAX_DATA_ROWS} data rows per batch.</p>
+              <p>
+                `influencerType`, `influencerVertical`, `countryRegion`, and `language` must match
+                the saved HubSpot dropdown values.
+              </p>
             </div>
 
             <form className="admin-csv-imports__upload-form" onSubmit={handleUploadSubmit}>

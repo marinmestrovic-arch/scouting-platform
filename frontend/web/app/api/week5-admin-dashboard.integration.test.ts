@@ -147,7 +147,7 @@ integration("week 5 admin dashboard API integration", () => {
       data: {
         requestedByUserId: admin.id,
         fileName: "failed.csv",
-        templateVersion: "v1",
+        templateVersion: "v2",
         status: PrismaCsvImportBatchStatus.FAILED,
         totalRowCount: 6,
         importedRowCount: 4,

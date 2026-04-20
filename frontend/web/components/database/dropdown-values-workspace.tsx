@@ -5,7 +5,9 @@ import React, { useMemo, useState } from "react";
 
 import {
   groupDropdownValuesByField,
+  isHubspotSyncedDropdownField,
   replaceDropdownValuesRequest,
+  syncHubspotDropdownValuesRequest,
 } from "../../lib/dropdown-values-api";
 
 type DropdownValuesWorkspaceProps = Readonly<{
@@ -28,6 +30,7 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
   const [activeField, setActiveField] = useState<DropdownValueFieldKey | null>(null);
   const [textareaValue, setTextareaValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const grouped = useMemo(() => groupDropdownValuesByField(items), [items]);
 
   function openField(fieldKey: DropdownValueFieldKey) {
@@ -63,13 +66,41 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
     }
   }
 
+  async function handleHubspotSync() {
+    setIsSyncing(true);
+    setStatus("");
+
+    try {
+      const updatedItems = await syncHubspotDropdownValuesRequest();
+      setItems(updatedItems);
+      setActiveField(null);
+      setTextareaValue("");
+      setStatus("HubSpot dropdown values synced.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to sync HubSpot dropdown values.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
   return (
     <div className="database-records">
       <div className="database-records__header">
         <div>
           <h2>Dropdown Values</h2>
-          <p className="workspace-copy">Manage reusable HubSpot preparation dropdown properties.</p>
+          <p className="workspace-copy">
+            Currency, Deal Type, and Activation Type are managed here. Influencer Type, Influencer
+            Vertical, Country/Region, and Language are saved from a one-time HubSpot sync.
+          </p>
         </div>
+        <button
+          className="database-records__cta"
+          disabled={isSyncing}
+          onClick={() => void handleHubspotSync()}
+          type="button"
+        >
+          {isSyncing ? "Syncing..." : "Sync HubSpot dropdowns"}
+        </button>
       </div>
 
       {status ? <p role="status">{status}</p> : null}
@@ -89,13 +120,17 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
                 <td className="database-records__strong-cell">{FIELD_LABELS[fieldKey]}</td>
                 <td>{grouped[fieldKey].length}</td>
                 <td>
-                  <button
-                    className="workspace-button workspace-button--secondary workspace-button--small"
-                    onClick={() => openField(fieldKey)}
-                    type="button"
-                  >
-                    Edit values
-                  </button>
+                  {isHubspotSyncedDropdownField(fieldKey) ? (
+                    <span className="workspace-copy">Synced from HubSpot</span>
+                  ) : (
+                    <button
+                      className="workspace-button workspace-button--secondary workspace-button--small"
+                      onClick={() => openField(fieldKey)}
+                      type="button"
+                    >
+                      Edit values
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

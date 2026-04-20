@@ -58,7 +58,7 @@ function buildDashboardPayload() {
         {
           id: "33e01faf-847b-425e-a354-cb8d24708d1a",
           fileName: "contacts.csv",
-          templateVersion: "v1",
+          templateVersion: "v2",
           status: "failed",
           totalRowCount: 8,
           importedRowCount: 6,

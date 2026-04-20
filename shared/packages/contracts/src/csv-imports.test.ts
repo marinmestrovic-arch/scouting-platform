@@ -15,7 +15,7 @@ const TEST_UUID = "6fcbcf96-bca7-4bf1-b8ef-71f20f0f703b";
 
 describe("csv import contracts", () => {
   it("exports the strict-template metadata used by backend and UI", () => {
-    expect(CSV_IMPORT_TEMPLATE_VERSION).toBe("v1");
+    expect(CSV_IMPORT_TEMPLATE_VERSION).toBe("v2");
     expect(CSV_IMPORT_MAX_DATA_ROWS).toBe(10_000);
     expect(CSV_IMPORT_HEADER).toEqual([
       "youtubeChannelId",
@@ -28,6 +28,10 @@ describe("csv import contracts", () => {
       "videoCount",
       "notes",
       "sourceLabel",
+      "influencerType",
+      "influencerVertical",
+      "countryRegion",
+      "language",
     ]);
   });
 
@@ -107,7 +111,7 @@ describe("csv import contracts", () => {
     const payload = csvImportBatchSummarySchema.parse({
       id: TEST_UUID,
       fileName: "contacts.csv",
-      templateVersion: "v1",
+      templateVersion: "v2",
       status: "queued",
       totalRowCount: 2,
       importedRowCount: 0,
@@ -141,7 +145,7 @@ describe("csv import contracts", () => {
     const payload = csvImportBatchDetailSchema.parse({
       id: TEST_UUID,
       fileName: "contacts.csv",
-      templateVersion: "v1",
+      templateVersion: "v2",
       status: "completed",
       totalRowCount: 2,
       importedRowCount: 1,
@@ -173,6 +177,10 @@ describe("csv import contracts", () => {
           videoCount: "50",
           notes: "Imported from ops sheet",
           sourceLabel: "ops-list",
+          influencerType: "Male",
+          influencerVertical: "Gaming",
+          countryRegion: "Croatia",
+          language: "Croatian",
           channelId: TEST_UUID,
           errorMessage: null,
         },
@@ -187,7 +195,7 @@ describe("csv import contracts", () => {
     const payload = csvImportBatchDetailSchema.parse({
       id: TEST_UUID,
       fileName: "contacts.csv",
-      templateVersion: "v1",
+      templateVersion: "v2",
       status: "completed",
       totalRowCount: 2,
       importedRowCount: 1,
@@ -219,6 +227,10 @@ describe("csv import contracts", () => {
           videoCount: "",
           notes: "Missing required fields",
           sourceLabel: "ops-list",
+          influencerType: "Unknown Type",
+          influencerVertical: "Unknown Vertical",
+          countryRegion: "Unknown Country",
+          language: "Unknown Language",
           channelId: null,
           errorMessage:
             "youtubeChannelId is required; channelTitle is required; contactEmail is invalid; subscriberCount is invalid",

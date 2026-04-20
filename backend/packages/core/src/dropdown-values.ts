@@ -2,20 +2,25 @@ import type { DropdownValueFieldKey as PrismaDropdownValueFieldKey } from "@pris
 import type {
   DropdownValue,
   DropdownValueFieldKey,
+  HubspotSyncedDropdownFieldKey,
   ListDropdownValuesResponse,
   UpdateDropdownValuesRequest,
 } from "@scouting-platform/contracts";
-import { COUNTRY_REGION_OPTIONS, updateDropdownValuesRequestSchema } from "@scouting-platform/contracts";
+import {
+  HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
+  updateDropdownValuesRequestSchema,
+} from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
+import { fetchHubspotPropertyDefinition } from "@scouting-platform/integrations";
 
 const DEFAULT_DROPDOWN_VALUES: Record<DropdownValueFieldKey, readonly string[]> = {
   currency: ["EUR", "USD", "GBP"],
   dealType: ["Influencer", "Paid", "Affiliate"],
   activationType: ["Dedicated Video", "Integration", "Shorts", "Livestream"],
-  influencerType: ["YouTube Creator", "Streamer", "Podcaster"],
-  influencerVertical: ["Gaming", "Lifestyle", "Beauty", "Tech", "General"],
-  countryRegion: COUNTRY_REGION_OPTIONS,
-  language: ["English", "German", "French", "Spanish", "Italian", "Croatian"],
+  influencerType: [],
+  influencerVertical: [],
+  countryRegion: [],
+  language: [],
 };
 
 // Keep these as local string literals so importing the core barrel into action-browser
@@ -29,6 +34,13 @@ const PRISMA_DROPDOWN_FIELD_KEYS = {
   countryRegion: "COUNTRY_REGION",
   language: "LANGUAGE",
 } as const satisfies Record<DropdownValueFieldKey, PrismaDropdownValueFieldKey>;
+
+const HUBSPOT_PROPERTY_BY_FIELD: Record<HubspotSyncedDropdownFieldKey, string> = {
+  influencerType: "influencer_type",
+  influencerVertical: "influencer_vertical",
+  countryRegion: "country",
+  language: "language",
+};
 
 function fromPrismaFieldKey(fieldKey: PrismaDropdownValueFieldKey): DropdownValueFieldKey {
   switch (fieldKey) {
@@ -121,6 +133,14 @@ function normalizeDropdownValues(values: readonly string[]): string[] {
   );
 }
 
+function extractHubspotOptionLabels(
+  definition: Awaited<ReturnType<typeof fetchHubspotPropertyDefinition>>,
+): string[] {
+  return normalizeDropdownValues(
+    definition.options.map((option) => option.label?.trim() || option.value?.trim() || ""),
+  );
+}
+
 export async function replaceDropdownValues(input: UpdateDropdownValuesRequest & {
   actorUserId: string;
 }): Promise<ListDropdownValuesResponse> {
@@ -152,6 +172,63 @@ export async function replaceDropdownValues(input: UpdateDropdownValuesRequest &
         metadata: {
           fieldKey: payload.fieldKey,
           values,
+        },
+      },
+    });
+  });
+
+  return listDropdownValues();
+}
+
+export async function syncHubspotDropdownValues(input: {
+  actorUserId: string;
+  apiKey?: string;
+  fetchFn?: typeof fetch;
+}): Promise<ListDropdownValuesResponse> {
+  const syncedValues = Object.fromEntries(
+    await Promise.all(
+      HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map(async (fieldKey) => {
+        const definition = await fetchHubspotPropertyDefinition({
+          objectType: "contacts",
+          propertyName: HUBSPOT_PROPERTY_BY_FIELD[fieldKey],
+          apiKey: input.apiKey,
+          fetchFn: input.fetchFn,
+        });
+
+        return [fieldKey, extractHubspotOptionLabels(definition)];
+      }),
+    ),
+  ) as Record<HubspotSyncedDropdownFieldKey, string[]>;
+
+  await withDbTransaction(async (tx) => {
+    for (const fieldKey of HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS) {
+      await tx.dropdownValue.deleteMany({
+        where: {
+          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
+        },
+      });
+
+      if (syncedValues[fieldKey].length > 0) {
+        await tx.dropdownValue.createMany({
+          data: syncedValues[fieldKey].map((value) => ({
+            fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
+            value,
+          })),
+        });
+      }
+    }
+
+    await tx.auditEvent.create({
+      data: {
+        actorUserId: input.actorUserId,
+        action: "dropdown_value.synced_from_hubspot",
+        entityType: "dropdown_value_sync",
+        entityId: "hubspot",
+        metadata: {
+          syncedFields: HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map((fieldKey) => ({
+            fieldKey,
+            valueCount: syncedValues[fieldKey].length,
+          })),
         },
       },
     });

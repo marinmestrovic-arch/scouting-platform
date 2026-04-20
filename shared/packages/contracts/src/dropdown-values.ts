@@ -10,6 +10,15 @@ export const dropdownValueFieldKeySchema = z.enum([
   "language",
 ]);
 
+export const HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS = [
+  "influencerType",
+  "influencerVertical",
+  "countryRegion",
+  "language",
+] as const;
+
+export const hubspotSyncedDropdownFieldKeySchema = z.enum(HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS);
+
 export const dropdownValueSchema = z.object({
   id: z.uuid(),
   fieldKey: dropdownValueFieldKeySchema,
@@ -27,7 +36,10 @@ export const updateDropdownValuesRequestSchema = z.object({
   values: z.array(z.string().trim().min(1).max(200)).max(500),
 });
 
+export const syncHubspotDropdownValuesResponseSchema = listDropdownValuesResponseSchema;
+
 export type DropdownValueFieldKey = z.infer<typeof dropdownValueFieldKeySchema>;
+export type HubspotSyncedDropdownFieldKey = z.infer<typeof hubspotSyncedDropdownFieldKeySchema>;
 export type DropdownValue = z.infer<typeof dropdownValueSchema>;
 export type ListDropdownValuesResponse = z.infer<typeof listDropdownValuesResponseSchema>;
 export type UpdateDropdownValuesRequest = z.infer<typeof updateDropdownValuesRequestSchema>;

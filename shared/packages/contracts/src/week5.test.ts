@@ -203,7 +203,7 @@ describe("week 5 contracts", () => {
           {
             id: "4ba0de9b-52c6-4ff9-b86e-52cfc2dc71ec",
             fileName: "contacts.csv",
-            templateVersion: "v1",
+            templateVersion: "v2",
             status: "failed",
             totalRowCount: 12,
             importedRowCount: 10,

@@ -140,7 +140,7 @@ integration("week 5 admin dashboard core integration", () => {
       data: {
         requestedByUserId: input.requestedByUserId,
         fileName: input.fileName,
-        templateVersion: "v1",
+        templateVersion: "v2",
         status: input.status,
         totalRowCount: input.totalRowCount ?? 10,
         importedRowCount: input.importedRowCount ?? 0,

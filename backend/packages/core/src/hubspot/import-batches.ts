@@ -130,6 +130,10 @@ const runImportSelect = {
         select: {
           id: true,
           title: true,
+          influencerType: true,
+          influencerVertical: true,
+          countryRegion: true,
+          contentLanguage: true,
           contacts: {
             orderBy: {
               email: "asc",
@@ -537,10 +541,10 @@ async function buildImportDraft(input: {
           firstName: contact.firstName ?? "",
           lastName: contact.lastName ?? "",
           email: contact.email,
-          influencerType: run.hubspotInfluencerType ?? "YouTube Creator",
-          influencerVertical: getInfluencerVertical(channel.enrichment?.topics ?? null),
-          countryRegion: getTopAudienceCountryName(channel.insights?.audienceCountries ?? null),
-          language: run.hubspotLanguage ?? "",
+          influencerType: channel.influencerType ?? run.hubspotInfluencerType ?? "YouTube Creator",
+          influencerVertical: channel.influencerVertical ?? getInfluencerVertical(channel.enrichment?.topics ?? null),
+          countryRegion: channel.countryRegion ?? getTopAudienceCountryName(channel.insights?.audienceCountries ?? null),
+          language: channel.contentLanguage ?? run.hubspotLanguage ?? "",
         },
         rowOverride: rowOverrides.get(rowKey) ?? null,
       });

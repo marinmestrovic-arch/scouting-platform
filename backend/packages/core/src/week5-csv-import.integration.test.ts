@@ -26,6 +26,7 @@ integration("week 5 csv import core integration", () => {
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        dropdown_values,
         csv_import_rows,
         channel_metrics,
         channel_contacts,
@@ -96,22 +97,35 @@ integration("week 5 csv import core integration", () => {
 
   function makeCsv(rows: string[]): string {
     return [
-      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
+      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
       ...rows,
     ].join("\n");
+  }
+
+  async function seedSyncedDropdownValues(): Promise<void> {
+    await prisma.dropdownValue.createMany({
+      data: [
+        { fieldKey: "INFLUENCER_TYPE", value: "Male" },
+        { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
+        { fieldKey: "COUNTRY_REGION", value: "Croatia" },
+        { fieldKey: "LANGUAGE", value: "Croatian" },
+        { fieldKey: "LANGUAGE", value: "German" },
+      ],
+    });
   }
 
   it("creates a queued batch, stores row-level validation errors, and exposes list/detail responses", async () => {
     const imports = await loadImports();
     const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
 
     const batch = await imports.createCsvImportBatch({
       requestedByUserId: admin.id,
       fileName: "contacts.csv",
       fileSize: 512,
       csvText: makeCsv([
-        "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops",
-        "UC-CSV-2,Creator Two,not-an-email,,,2000,30000,60,,ops",
+        "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
+        "UC-CSV-2,Creator Two,not-an-email,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
       ]),
     });
 
@@ -154,14 +168,15 @@ integration("week 5 csv import core integration", () => {
   it("completes immediately and does not enqueue when all rows are invalid", async () => {
     const imports = await loadImports();
     const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
 
     const batch = await imports.createCsvImportBatch({
       requestedByUserId: admin.id,
       fileName: "invalid.csv",
       fileSize: 256,
       csvText: makeCsv([
-        "UC-CSV-1,,creator@example.com,,,1000,20000,50,,ops",
-        ",Creator Two,creator-two@example.com,,,2000,30000,60,,ops",
+        "UC-CSV-1,,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
+        ",Creator Two,creator-two@example.com,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
       ]),
     });
 
@@ -188,15 +203,16 @@ integration("week 5 csv import core integration", () => {
   it("imports pending rows, dedupes contacts, preserves existing metric values on blank cells, and is retry-safe", async () => {
     const imports = await loadImports();
     const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
 
     const batch = await imports.createCsvImportBatch({
       requestedByUserId: admin.id,
       fileName: "dedupe.csv",
       fileSize: 1024,
       csvText: makeCsv([
-        "UC-CSV-1,Creator One,FIRST@example.com,,,100,1000,10,first row,ops",
-        "UC-CSV-1,Creator One,first@example.com,,,,2000,,duplicate email,ops",
-        "UC-CSV-1,Creator One,second@example.com,,,,,11,second email,ops",
+        "UC-CSV-1,Creator One,FIRST@example.com,,,100,1000,10,first row,ops,Male,Gaming,Croatia,Croatian",
+        "UC-CSV-1,Creator One,first@example.com,,,,2000,,duplicate email,ops,,,,",
+        "UC-CSV-1,Creator One,second@example.com,,,,,11,second email,ops,,,,German",
       ]),
     });
 
@@ -221,6 +237,10 @@ integration("week 5 csv import core integration", () => {
 
     const channels = await prisma.channel.findMany();
     expect(channels).toHaveLength(1);
+    expect(channels[0]?.influencerType).toBe("Male");
+    expect(channels[0]?.influencerVertical).toBe("Gaming");
+    expect(channels[0]?.countryRegion).toBe("Croatia");
+    expect(channels[0]?.contentLanguage).toBe("German");
 
     const contacts = await prisma.channelContact.findMany({
       orderBy: {
@@ -264,6 +284,7 @@ integration("week 5 csv import core integration", () => {
 
   it("persists lastError and a failed audit when enqueueing the batch fails", async () => {
     const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
 
     vi.resetModules();
     vi.doMock("./imports/queue", () => ({
@@ -279,7 +300,7 @@ integration("week 5 csv import core integration", () => {
       fileName: "queue-failure.csv",
       fileSize: 512,
       csvText: makeCsv([
-        "UC-CSV-9,Creator Nine,creator-nine@example.com,,,100,1000,10,,ops",
+        "UC-CSV-9,Creator Nine,creator-nine@example.com,,,100,1000,10,,ops,Male,Gaming,Croatia,Croatian",
       ]),
     });
 
@@ -300,5 +321,49 @@ integration("week 5 csv import core integration", () => {
       WHERE name = 'imports.csv.process'
     `;
     expect(jobs[0]?.count).toBe(0);
+  });
+
+  it("fails with a clear configuration error when HubSpot-synced dropdown values are missing", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+
+    await expect(
+      imports.createCsvImportBatch({
+        requestedByUserId: admin.id,
+        fileName: "missing-dropdowns.csv",
+        fileSize: 256,
+        csvText: makeCsv([
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
+        ]),
+      }),
+    ).rejects.toMatchObject({
+      message: "HubSpot dropdown values are not configured. Sync dropdown values from HubSpot before importing CSV.",
+    });
+  });
+
+  it("fails rows that use values outside the saved HubSpot dropdown options", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "invalid-dropdowns.csv",
+      fileSize: 256,
+      csvText: makeCsv([
+        "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Unknown,Gaming,Croatia,Croatian",
+      ]),
+    });
+
+    expect(batch.status).toBe("completed");
+    expect(batch.failedRowCount).toBe(1);
+
+    const detail = await imports.getCsvImportBatchById({
+      importBatchId: batch.id,
+      page: 1,
+      pageSize: 100,
+    });
+
+    expect(detail.rows[0]?.errorMessage).toContain("influencerType must use a saved HubSpot dropdown value");
   });
 });

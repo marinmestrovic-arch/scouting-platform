@@ -75,6 +75,10 @@ const runPreviewSelect = {
           handle: true,
           youtubeChannelId: true,
           youtubeUrl: true,
+          influencerType: true,
+          influencerVertical: true,
+          countryRegion: true,
+          contentLanguage: true,
           contacts: {
             orderBy: {
               email: "asc",
@@ -309,10 +313,10 @@ function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
           firstName: contact.firstName ?? "",
           lastName: contact.lastName ?? "",
           email: contact.email,
-          influencerType: run.hubspotInfluencerType ?? "YouTube Creator",
-          influencerVertical: getTopTopic(channel.enrichment?.topics ?? null),
-          countryRegion: getTopCountry(channel.insights?.audienceCountries ?? null),
-          language: run.hubspotLanguage ?? "",
+          influencerType: channel.influencerType ?? run.hubspotInfluencerType ?? "YouTube Creator",
+          influencerVertical: channel.influencerVertical ?? getTopTopic(channel.enrichment?.topics ?? null),
+          countryRegion: channel.countryRegion ?? getTopCountry(channel.insights?.audienceCountries ?? null),
+          language: channel.contentLanguage ?? run.hubspotLanguage ?? "",
           youtubeHandle: channel.handle ?? "",
           youtubeUrl: channel.youtubeUrl ?? `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
           youtubeAverageViews: toText(channel.metrics?.youtubeAverageViews),
@@ -449,8 +453,8 @@ export async function getCsvExportPreview(input: {
         youtubeAverageViews: toText(channel.metrics?.youtubeAverageViews),
         youtubeEngagementRate: toText(channel.metrics?.youtubeEngagementRate),
         youtubeFollowers: toText(channel.metrics?.youtubeFollowers),
-        influencerVertical: getTopTopic(channel.enrichment?.topics ?? null),
-        countryRegion: getTopCountry(channel.insights?.audienceCountries ?? null),
+        influencerVertical: channel.influencerVertical ?? getTopTopic(channel.enrichment?.topics ?? null),
+        countryRegion: channel.countryRegion ?? getTopCountry(channel.insights?.audienceCountries ?? null),
       },
     });
   }
