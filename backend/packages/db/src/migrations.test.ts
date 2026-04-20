@@ -78,6 +78,10 @@ const runChannelAssessmentsAndBriefFieldsMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260415120000_run_channel_assessments_and_brief_fields/migration.sql",
 );
+const csvImportHubspotDropdownFieldsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260420120000_csv_import_hubspot_dropdown_fields/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -294,6 +298,22 @@ describe("run channel assessments and brief fields migration", () => {
     expect(migrationSql).toContain(
       'ADD CONSTRAINT "run_channel_assessments_channel_id_fkey"',
     );
+  });
+});
+
+describe("csv import hubspot dropdown fields migration", () => {
+  it("adds stored hubspot-aligned fields to channels and csv import rows", () => {
+    const migrationSql = readFileSync(csvImportHubspotDropdownFieldsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('ALTER TABLE "channels"');
+    expect(migrationSql).toContain('"influencer_type" TEXT');
+    expect(migrationSql).toContain('"influencer_vertical" TEXT');
+    expect(migrationSql).toContain('"country_region" TEXT');
+    expect(migrationSql).toContain('ALTER TABLE "csv_import_rows"');
+    expect(migrationSql).toContain('"influencer_type" TEXT');
+    expect(migrationSql).toContain('"influencer_vertical" TEXT');
+    expect(migrationSql).toContain('"country_region" TEXT');
+    expect(migrationSql).toContain('"language" TEXT');
   });
 });
 

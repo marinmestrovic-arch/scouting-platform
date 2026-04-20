@@ -363,6 +363,9 @@ model Channel {
   youtubeUrl      String?                 @map("youtube_url")
   description     String?                 @db.Text
   thumbnailUrl    String?                 @map("thumbnail_url")
+  influencerType  String?                 @map("influencer_type")
+  influencerVertical String?              @map("influencer_vertical")
+  countryRegion   String?                 @map("country_region")
   contentLanguage String?                 @map("content_language")
   createdAt       DateTime                @default(now()) @map("created_at")
   updatedAt       DateTime                @updatedAt @map("updated_at")
@@ -629,6 +632,10 @@ model CsvImportRow {
   videoCount       String?          @map("video_count")
   notes            String?          @db.Text
   sourceLabel      String?          @map("source_label")
+  influencerType   String?          @map("influencer_type")
+  influencerVertical String?        @map("influencer_vertical")
+  countryRegion    String?          @map("country_region")
+  language         String?
   channelId        String?          @map("channel_id") @db.Uuid
   errorMessage     String?          @map("error_message") @db.Text
   createdAt        DateTime         @default(now()) @map("created_at")

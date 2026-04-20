@@ -37,6 +37,7 @@ integration("week 5 csv import API integration", () => {
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        dropdown_values,
         csv_import_rows,
         channel_metrics,
         channel_contacts,
@@ -100,17 +101,29 @@ integration("week 5 csv import API integration", () => {
     return formData;
   }
 
+  async function seedSyncedDropdownValues(): Promise<void> {
+    await prisma.dropdownValue.createMany({
+      data: [
+        { fieldKey: "INFLUENCER_TYPE", value: "Male" },
+        { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
+        { fieldKey: "COUNTRY_REGION", value: "Croatia" },
+        { fieldKey: "LANGUAGE", value: "Croatian" },
+      ],
+    });
+  }
+
   it("creates a batch via POST and returns list/detail responses for admins", async () => {
     const admin = await createUser("admin@example.com");
     currentSessionUser = { id: admin.id, role: "admin" };
+    await seedSyncedDropdownValues();
 
     const uploadResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
         body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops",
-          "UC-CSV-2,Creator Two,invalid-email,,,2000,30000,60,,ops",
+          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
+          "UC-CSV-2,Creator Two,invalid-email,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
         ].join("\n"))),
       }),
     );
@@ -140,14 +153,15 @@ integration("week 5 csv import API integration", () => {
   it("returns failed rows in batch detail without collapsing to a 500", async () => {
     const admin = await createUser("admin@example.com");
     currentSessionUser = { id: admin.id, role: "admin" };
+    await seedSyncedDropdownValues();
 
     const uploadResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
         body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops",
-          "UC-CSV-2,,invalid-email,,,20x,30000,60,,ops",
+          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
+          "UC-CSV-2,,invalid-email,,,20x,30000,60,,ops,Unknown,Gaming,Croatia,Croatian",
         ].join("\n"))),
       }),
     );
@@ -167,9 +181,11 @@ integration("week 5 csv import API integration", () => {
     expect(detailPayload.rows[1]?.channelTitle).toBe("");
     expect(detailPayload.rows[1]?.contactEmail).toBe("invalid-email");
     expect(detailPayload.rows[1]?.subscriberCount).toBe("20x");
+    expect(detailPayload.rows[1]?.influencerType).toBe("Unknown");
     expect(detailPayload.rows[1]?.errorMessage).toContain("channelTitle is required");
     expect(detailPayload.rows[1]?.errorMessage).toContain("contactEmail is invalid");
     expect(detailPayload.rows[1]?.errorMessage).toContain("subscriberCount is invalid");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("influencerType must use a saved HubSpot dropdown value");
   });
 
   it("enforces admin-only access on csv import routes", async () => {
@@ -279,5 +295,25 @@ integration("week 5 csv import API integration", () => {
 
     const batchCount = await prisma.csvImportBatch.count();
     expect(batchCount).toBe(0);
+  });
+
+  it("returns 400 when HubSpot-synced dropdown values have not been configured yet", async () => {
+    const admin = await createUser("admin@example.com");
+    currentSessionUser = { id: admin.id, role: "admin" };
+
+    const response = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(makeCsvFile([
+          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
+          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
+        ].join("\n"))),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "HubSpot dropdown values are not configured. Sync dropdown values from HubSpot before importing CSV.",
+    });
   });
 });

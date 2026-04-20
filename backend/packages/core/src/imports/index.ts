@@ -8,6 +8,7 @@ import {
   CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
   CSV_IMPORT_MAX_DATA_ROWS,
   CSV_IMPORT_TEMPLATE_VERSION,
+  HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
   type CsvImportBatchDetail,
   type CsvImportBatchStatus,
   type CsvImportBatchSummary,
@@ -18,6 +19,7 @@ import { prisma, withDbTransaction } from "@scouting-platform/db";
 import { parse } from "csv-parse/sync";
 
 import { ServiceError } from "../errors";
+import { listDropdownOptions } from "../dropdown-values";
 import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
 
@@ -59,6 +61,10 @@ const csvImportRowSelect = {
   videoCount: true,
   notes: true,
   sourceLabel: true,
+  influencerType: true,
+  influencerVertical: true,
+  countryRegion: true,
+  language: true,
   channelId: true,
   errorMessage: true,
 } as const;
@@ -88,6 +94,10 @@ type ParsedCsvImportRow = {
   videoCount: string | null;
   notes: string | null;
   sourceLabel: string | null;
+  influencerType: string | null;
+  influencerVertical: string | null;
+  countryRegion: string | null;
+  language: string | null;
   errorMessage: string | null;
 };
 
@@ -143,6 +153,10 @@ function toCsvImportRow(row: CsvImportBatchDetailRecord["rows"][number]): CsvImp
     videoCount: row.videoCount,
     notes: row.notes,
     sourceLabel: row.sourceLabel,
+    influencerType: row.influencerType,
+    influencerVertical: row.influencerVertical,
+    countryRegion: row.countryRegion,
+    language: row.language,
     channelId: row.channelId,
     errorMessage: row.errorMessage,
   };
@@ -275,7 +289,28 @@ function isValidSourceLabel(value: string): boolean {
   return value.length <= 200;
 }
 
-function toParsedCsvImportRow(rowNumber: number, rawRow: string[]): ParsedCsvImportRow {
+function validateConfiguredDropdownField(
+  label: string,
+  value: string | null,
+  options: readonly string[],
+  errors: string[],
+): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (!options.includes(value)) {
+    errors.push(`${label} must use a saved HubSpot dropdown value`);
+  }
+
+  return value;
+}
+
+function toParsedCsvImportRow(
+  rowNumber: number,
+  rawRow: string[],
+  hubspotDropdownOptions: Record<(typeof HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS)[number], string[]>,
+): ParsedCsvImportRow {
   const errors: string[] = [];
   const youtubeChannelId = validateRequiredField(
     "youtubeChannelId",
@@ -337,6 +372,30 @@ function toParsedCsvImportRow(rowNumber: number, rawRow: string[]): ParsedCsvImp
     isValidSourceLabel,
     errors,
   );
+  const influencerType = validateConfiguredDropdownField(
+    "influencerType",
+    toNullableTrimmed(rawRow[10]),
+    hubspotDropdownOptions.influencerType,
+    errors,
+  );
+  const influencerVertical = validateConfiguredDropdownField(
+    "influencerVertical",
+    toNullableTrimmed(rawRow[11]),
+    hubspotDropdownOptions.influencerVertical,
+    errors,
+  );
+  const countryRegion = validateConfiguredDropdownField(
+    "countryRegion",
+    toNullableTrimmed(rawRow[12]),
+    hubspotDropdownOptions.countryRegion,
+    errors,
+  );
+  const language = validateConfiguredDropdownField(
+    "language",
+    toNullableTrimmed(rawRow[13]),
+    hubspotDropdownOptions.language,
+    errors,
+  );
 
   return {
     rowNumber,
@@ -351,11 +410,33 @@ function toParsedCsvImportRow(rowNumber: number, rawRow: string[]): ParsedCsvImp
     videoCount,
     notes,
     sourceLabel,
+    influencerType,
+    influencerVertical,
+    countryRegion,
+    language,
     errorMessage: errors.length > 0 ? errors.join("; ") : null,
   };
 }
 
-function buildParsedRows(csvText: string): ParsedCsvImportRow[] {
+function assertHubspotDropdownConfiguration(
+  dropdownOptions: Record<(typeof HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS)[number], string[]>,
+): void {
+  const missingFields = HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.filter(
+    (fieldKey) => dropdownOptions[fieldKey].length === 0,
+  );
+
+  if (missingFields.length === 0) {
+    return;
+  }
+
+  throw new ServiceError(
+    "CSV_IMPORT_HUBSPOT_DROPDOWNS_MISSING",
+    400,
+    "HubSpot dropdown values are not configured. Sync dropdown values from HubSpot before importing CSV.",
+  );
+}
+
+async function buildParsedRows(csvText: string): Promise<ParsedCsvImportRow[]> {
   const records = parseCsvRows(csvText);
   const [headerRow, ...dataRows] = records;
   assertHeader(headerRow);
@@ -372,7 +453,16 @@ function buildParsedRows(csvText: string): ParsedCsvImportRow[] {
     );
   }
 
-  return dataRows.map((row, index) => toParsedCsvImportRow(index + 2, row));
+  const dropdownOptions = await listDropdownOptions();
+  const hubspotDropdownOptions = {
+    influencerType: dropdownOptions.influencerType,
+    influencerVertical: dropdownOptions.influencerVertical,
+    countryRegion: dropdownOptions.countryRegion,
+    language: dropdownOptions.language,
+  };
+  assertHubspotDropdownConfiguration(hubspotDropdownOptions);
+
+  return dataRows.map((row, index) => toParsedCsvImportRow(index + 2, row, hubspotDropdownOptions));
 }
 
 async function getCsvImportBatchSummaryById(importBatchId: string): Promise<CsvImportBatchSummary> {
@@ -546,7 +636,7 @@ export async function createCsvImportBatch(input: {
     );
   }
 
-  const parsedRows = buildParsedRows(input.csvText);
+  const parsedRows = await buildParsedRows(input.csvText);
   let importBatchId = "";
   const pendingRowCount = parsedRows.filter(
     (row) => row.status === PrismaCsvImportRowStatus.PENDING,
@@ -590,6 +680,10 @@ export async function createCsvImportBatch(input: {
         videoCount: row.videoCount,
         notes: row.notes,
         sourceLabel: row.sourceLabel,
+        influencerType: row.influencerType,
+        influencerVertical: row.influencerVertical,
+        countryRegion: row.countryRegion,
+        language: row.language,
         errorMessage: row.errorMessage,
         createdAt,
         updatedAt: createdAt,
@@ -725,6 +819,10 @@ async function applyPendingRow(input: {
         subscriberCount: true,
         viewCount: true,
         videoCount: true,
+        influencerType: true,
+        influencerVertical: true,
+        countryRegion: true,
+        language: true,
       },
     });
 
@@ -746,9 +844,25 @@ async function applyPendingRow(input: {
         data: {
           youtubeChannelId: row.youtubeChannelId,
           title: row.channelTitle,
+          ...(row.influencerType ? { influencerType: row.influencerType } : {}),
+          ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
+          ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
+          ...(row.language ? { contentLanguage: row.language } : {}),
         },
         select: {
           id: true,
+        },
+      });
+    } else if (row.influencerType || row.influencerVertical || row.countryRegion || row.language) {
+      await tx.channel.update({
+        where: {
+          id: channel.id,
+        },
+        data: {
+          ...(row.influencerType ? { influencerType: row.influencerType } : {}),
+          ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
+          ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
+          ...(row.language ? { contentLanguage: row.language } : {}),
         },
       });
     }

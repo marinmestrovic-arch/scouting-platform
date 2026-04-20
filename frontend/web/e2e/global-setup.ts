@@ -185,6 +185,22 @@ export default async function globalSetup(): Promise<void> {
         requestedByUserId: manager.id,
       },
     });
+    await tx.dropdownValue.deleteMany({
+      where: {
+        fieldKey: {
+          in: ["INFLUENCER_TYPE", "INFLUENCER_VERTICAL", "COUNTRY_REGION", "LANGUAGE"],
+        },
+      },
+    });
+    await tx.dropdownValue.createMany({
+      data: [
+        { fieldKey: "INFLUENCER_TYPE", value: "Male" },
+        { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
+        { fieldKey: "COUNTRY_REGION", value: "Croatia" },
+        { fieldKey: "LANGUAGE", value: "Croatian" },
+      ],
+      skipDuplicates: true,
+    });
 
     const client = await tx.client.upsert({
       where: {
@@ -380,7 +396,7 @@ export default async function globalSetup(): Promise<void> {
       data: {
         requestedByUserId: admin.id,
         fileName: E2E_SEEDED_CSV_IMPORT_FILE_NAME,
-        templateVersion: "v1",
+        templateVersion: "v2",
         status: "COMPLETED",
         totalRowCount: 2,
         importedRowCount: 1,

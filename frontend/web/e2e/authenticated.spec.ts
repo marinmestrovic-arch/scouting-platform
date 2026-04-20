@@ -89,8 +89,8 @@ test.describe("authenticated launch-readiness flows", () => {
   test("admin can upload a CSV import batch and review visible row failures", async ({ page }) => {
     const seedData = readSeedData();
     const csvFile = [
-      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel",
-      "UCweek8e2ecsvvalid0000001,Week 8 Valid CSV Channel,valid@example.com,Valid,Row,1000,2000,30,Good row,Playwright",
+      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
+      "UCweek8e2ecsvvalid0000001,Week 8 Valid CSV Channel,valid@example.com,Valid,Row,1000,2000,30,Good row,Playwright,Male,Gaming,Croatia,Croatian",
     ].join("\n");
 
     await login(page, seedData.admin);

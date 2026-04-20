@@ -175,6 +175,9 @@ const channelListSelect = {
   handle: true,
   youtubeUrl: true,
   thumbnailUrl: true,
+  influencerType: true,
+  influencerVertical: true,
+  countryRegion: true,
   updatedAt: true,
   metrics: {
     select: {
@@ -220,6 +223,9 @@ const channelDetailSelect = {
   youtubeUrl: true,
   description: true,
   thumbnailUrl: true,
+  influencerType: true,
+  influencerVertical: true,
+  countryRegion: true,
   createdAt: true,
   updatedAt: true,
   metrics: {
@@ -521,6 +527,9 @@ function toChannelSummary(channel: {
   handle: string | null;
   youtubeUrl: string | null;
   thumbnailUrl: string | null;
+  influencerType: string | null;
+  influencerVertical: string | null;
+  countryRegion: string | null;
   updatedAt: Date;
   metrics: {
     youtubeAverageViews: bigint | null;
@@ -559,10 +568,10 @@ function toChannelSummary(channel: {
     youtubeUrl: channel.youtubeUrl,
     socialMediaLink: channel.youtubeUrl,
     platforms: ["YouTube"],
-    countryRegion: primaryCountry,
+    countryRegion: channel.countryRegion ?? primaryCountry,
     email: channel.contacts[0]?.email ?? null,
-    influencerVertical: topics[0] ?? null,
-    influencerType: "YouTube Creator",
+    influencerVertical: channel.influencerVertical ?? topics[0] ?? null,
+    influencerType: channel.influencerType ?? "YouTube Creator",
     youtubeAverageViews: toNullableBigIntString(channel.metrics?.youtubeAverageViews),
     youtubeEngagementRate: channel.metrics?.youtubeEngagementRate ?? null,
     youtubeFollowers: toNullableBigIntString(channel.metrics?.youtubeFollowers),
@@ -580,6 +589,9 @@ function toChannelDetail(channel: {
   youtubeUrl: string | null;
   thumbnailUrl: string | null;
   description: string | null;
+  influencerType: string | null;
+  influencerVertical: string | null;
+  countryRegion: string | null;
   createdAt: Date;
   updatedAt: Date;
   metrics: {
