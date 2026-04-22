@@ -198,6 +198,7 @@ describe("run detail shell", () => {
     expect(html).toContain("Scouting job completed");
     expect(html).toContain("The worker finished and locked this snapshot so it stays reproducible during review.");
     expect(html).toContain("Open any catalog detail to review");
+    expect(html).toContain("run-detail__status--completed");
     expect(html).toContain("Snapshot results");
     expect(html).toContain("Updated");
     expect(html).toContain("Run Result Channel");
