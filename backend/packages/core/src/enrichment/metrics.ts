@@ -3,13 +3,22 @@ import type { YoutubeChannelContext } from "@scouting-platform/integrations";
 const CHANNEL_URL_PREFIX = "https://www.youtube.com/channel/";
 const HANDLE_URL_PREFIX = "https://www.youtube.com/";
 const YOUTUBE_SHORTS_MAX_DURATION_SECONDS = 180;
+const CREATOR_LIST_MONTHS_BACK = 6;
+const CREATOR_LIST_MAX_VIDEOS_PER_BUCKET = 15;
+const CREATOR_LIST_MIN_LONG_FORM_SECONDS = 180;
+const CREATOR_LIST_SHORTS_MAX_SECONDS = 60;
 
 export type DerivedYoutubeMetrics = {
   normalizedHandle: string | null;
   canonicalUrl: string;
-  averageViews: number | null;
   engagementRate: number | null;
   context: YoutubeChannelContext;
+};
+
+export type CreatorListYoutubeMetrics = {
+  medianVideoViews: number | null;
+  medianShortsViews: number | null;
+  medianVideoEngagementRate: number | null;
 };
 
 function dedupeWarnings(warnings: readonly string[]): string[] {
@@ -49,6 +58,50 @@ function normalizeNullableTrimmed(value: string | null | undefined): string | nu
   return trimmed ? trimmed : null;
 }
 
+function computeMedian(values: readonly number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const middleIndex = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 !== 0) {
+    return sorted[middleIndex] ?? null;
+  }
+
+  const left = sorted[middleIndex - 1];
+  const right = sorted[middleIndex];
+
+  if (left === undefined || right === undefined) {
+    return null;
+  }
+
+  return Math.round((left + right) / 2);
+}
+
+function computePrecisionMedian(values: readonly number[], precision: number): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const middleIndex = Math.floor(sorted.length / 2);
+  const scale = 10 ** precision;
+  const median =
+    sorted.length % 2 !== 0
+      ? (sorted[middleIndex] ?? null)
+      : sorted[middleIndex - 1] !== undefined && sorted[middleIndex] !== undefined
+        ? (sorted[middleIndex - 1]! + sorted[middleIndex]!) / 2
+        : null;
+
+  if (median === null) {
+    return null;
+  }
+
+  return Math.round(median * scale) / scale;
+}
+
 export function normalizeYoutubeHandle(value: string | null): string | null {
   const trimmed = value?.trim();
 
@@ -78,20 +131,6 @@ export function buildCanonicalYoutubeUrl(
   }
 
   return `${CHANNEL_URL_PREFIX}${youtubeChannelId}`;
-}
-
-export function computeYoutubeAverageViews(context: YoutubeChannelContext): number | null {
-  if (
-    context.viewCount === null ||
-    context.videoCount === null ||
-    !Number.isFinite(context.viewCount) ||
-    !Number.isFinite(context.videoCount) ||
-    context.videoCount <= 0
-  ) {
-    return null;
-  }
-
-  return Math.round(context.viewCount / context.videoCount);
 }
 
 export function isYoutubeShortVideo(durationSeconds: number | null | undefined): boolean | null {
@@ -127,6 +166,69 @@ export function normalizeYoutubeContext(context: YoutubeChannelContext): Youtube
     diagnostics: {
       warnings: dedupeWarnings(context.diagnostics?.warnings ?? []),
     },
+  };
+}
+
+export function deriveCreatorListYoutubeMetrics(
+  context: YoutubeChannelContext,
+  options: {
+    now?: Date;
+  } = {},
+): CreatorListYoutubeMetrics {
+  const normalizedContext = normalizeYoutubeContext(context);
+  const videoViewCounts: number[] = [];
+  const shortsViewCounts: number[] = [];
+  const videoEngagementRates: number[] = [];
+  const cutoff = new Date(options.now ?? new Date());
+  cutoff.setMonth(cutoff.getMonth() - CREATOR_LIST_MONTHS_BACK);
+
+  for (const video of normalizedContext.recentVideos) {
+    const viewCount =
+      typeof video.viewCount === "number" && video.viewCount > 0 ? video.viewCount : null;
+    const durationSeconds = normalizeNullableDurationSeconds(video.durationSeconds);
+    const publishedAt = video.publishedAt ? new Date(video.publishedAt) : null;
+
+    if (
+      viewCount === null ||
+      durationSeconds === null ||
+      !publishedAt ||
+      Number.isNaN(publishedAt.getTime()) ||
+      publishedAt < cutoff
+    ) {
+      continue;
+    }
+
+    if (durationSeconds > CREATOR_LIST_MIN_LONG_FORM_SECONDS) {
+      if (videoViewCounts.length < CREATOR_LIST_MAX_VIDEOS_PER_BUCKET) {
+        videoViewCounts.push(viewCount);
+
+        videoEngagementRates.push(
+          ((video.likeCount ?? 0) + (video.commentCount ?? 0)) / viewCount,
+        );
+      }
+
+      continue;
+    }
+
+    if (
+      durationSeconds <= CREATOR_LIST_SHORTS_MAX_SECONDS &&
+      shortsViewCounts.length < CREATOR_LIST_MAX_VIDEOS_PER_BUCKET
+    ) {
+      shortsViewCounts.push(viewCount);
+    }
+
+    if (
+      videoViewCounts.length >= CREATOR_LIST_MAX_VIDEOS_PER_BUCKET &&
+      shortsViewCounts.length >= CREATOR_LIST_MAX_VIDEOS_PER_BUCKET
+    ) {
+      break;
+    }
+  }
+
+  return {
+    medianVideoViews: computeMedian(videoViewCounts),
+    medianShortsViews: computeMedian(shortsViewCounts),
+    medianVideoEngagementRate: computePrecisionMedian(videoEngagementRates, 4),
   };
 }
 
@@ -166,7 +268,6 @@ export function deriveYoutubeMetrics(context: YoutubeChannelContext): DerivedYou
   return {
     normalizedHandle,
     canonicalUrl: buildCanonicalYoutubeUrl(context.youtubeChannelId, normalizedHandle),
-    averageViews: computeYoutubeAverageViews(normalizedContext),
     engagementRate,
     context: {
       ...normalizedContext,

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HubspotError } from "./contacts";
-import { fetchHubspotPropertyDefinition } from "./properties";
+import { fetchHubspotAccountDetails, fetchHubspotPropertyDefinition } from "./properties";
 
 describe("fetchHubspotPropertyDefinition", () => {
   afterEach(() => {
@@ -77,6 +77,57 @@ describe("fetchHubspotPropertyDefinition", () => {
       fetchHubspotPropertyDefinition({
         objectType: "contacts",
         propertyName: "language",
+        apiKey: "hubspot-key",
+        fetchFn,
+      }),
+    ).rejects.toMatchObject({
+      code: "HUBSPOT_INVALID_RESPONSE",
+      status: 502,
+    } satisfies Partial<HubspotError>);
+  });
+});
+
+describe("fetchHubspotAccountDetails", () => {
+  afterEach(() => {
+    delete process.env.HUBSPOT_API_KEY;
+  });
+
+  it("returns portal active currencies", async () => {
+    const fetchFn = vi.fn(async (input: string | URL | Request) => {
+      void input;
+
+      return new Response(
+        JSON.stringify({
+          companyCurrency: "EUR",
+          additionalCurrencies: ["USD"],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    });
+
+    const result = await fetchHubspotAccountDetails({
+      apiKey: "hubspot-key",
+      fetchFn,
+    });
+
+    expect(result.companyCurrency).toBe("EUR");
+    expect(result.additionalCurrencies).toEqual(["USD"]);
+    expect(String(fetchFn.mock.calls[0]?.[0])).toContain("/account-info/v3/details");
+  });
+
+  it("rejects invalid account detail payloads", async () => {
+    const fetchFn = vi.fn(async () =>
+      new Response(JSON.stringify({ additionalCurrencies: [123] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      fetchHubspotAccountDetails({
         apiKey: "hubspot-key",
         fetchFn,
       }),

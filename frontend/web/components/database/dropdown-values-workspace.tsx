@@ -89,8 +89,8 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
         <div>
           <h2>Dropdown Values</h2>
           <p className="workspace-copy">
-            Currency, Deal Type, and Activation Type are managed here. Influencer Type, Influencer
-            Vertical, Country/Region, and Language are saved from a one-time HubSpot sync.
+            Sync HubSpot dropdowns to refresh Currency, Deal Type, Activation Type, Influencer Type,
+            Influencer Vertical, Country/Region, and Language from HubSpot.
           </p>
         </div>
         <button

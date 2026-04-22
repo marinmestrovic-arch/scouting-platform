@@ -11,6 +11,9 @@ export const dropdownValueFieldKeySchema = z.enum([
 ]);
 
 export const HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS = [
+  "currency",
+  "dealType",
+  "activationType",
   "influencerType",
   "influencerVertical",
   "countryRegion",

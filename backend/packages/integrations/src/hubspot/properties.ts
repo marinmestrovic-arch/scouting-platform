@@ -17,9 +17,22 @@ const hubspotPropertyDefinitionSchema = z.object({
   options: z.array(hubspotPropertyOptionSchema).default([]),
 });
 
+const hubspotAccountDetailsSchema = z.object({
+  companyCurrency: z.string().trim().min(1).nullable().optional(),
+  additionalCurrencies: z.array(z.string().trim().min(1)).nullable().optional().transform(
+    (value) => value ?? [],
+  ),
+});
+
 const fetchHubspotPropertyDefinitionInputSchema = z.object({
   objectType: z.string().trim().min(1),
   propertyName: z.string().trim().min(1),
+  apiKey: z.string().trim().min(1).optional(),
+  baseUrl: z.string().trim().url().default("https://api.hubapi.com"),
+  fetchFn: z.custom<typeof fetch>().optional(),
+});
+
+const fetchHubspotAccountDetailsInputSchema = z.object({
   apiKey: z.string().trim().min(1).optional(),
   baseUrl: z.string().trim().url().default("https://api.hubapi.com"),
   fetchFn: z.custom<typeof fetch>().optional(),
@@ -30,7 +43,9 @@ type FetchLike = typeof fetch;
 export type FetchHubspotPropertyDefinitionInput = z.input<
   typeof fetchHubspotPropertyDefinitionInputSchema
 >;
+export type FetchHubspotAccountDetailsInput = z.input<typeof fetchHubspotAccountDetailsInputSchema>;
 export type HubspotPropertyDefinition = z.infer<typeof hubspotPropertyDefinitionSchema>;
+export type HubspotAccountDetails = z.infer<typeof hubspotAccountDetailsSchema>;
 
 function getApiKey(override?: string): string {
   const apiKey = override?.trim() || process.env.HUBSPOT_API_KEY?.trim();
@@ -113,6 +128,40 @@ export async function fetchHubspotPropertyDefinition(
       "HUBSPOT_INVALID_RESPONSE",
       502,
       "HubSpot returned an invalid property definition response",
+    );
+  }
+
+  return parsed.data;
+}
+
+export async function fetchHubspotAccountDetails(
+  rawInput: FetchHubspotAccountDetailsInput = {},
+): Promise<HubspotAccountDetails> {
+  const input = fetchHubspotAccountDetailsInputSchema.parse(rawInput);
+  const apiKey = getApiKey(input.apiKey);
+  const fetchFn = getFetch(input.fetchFn);
+  const url = new URL("/account-info/v3/details", input.baseUrl);
+
+  const response = await fetchFn(url, {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw toProviderError(response);
+  }
+
+  const payload = await parseJsonResponse(response);
+  const parsed = hubspotAccountDetailsSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new HubspotError(
+      "HUBSPOT_INVALID_RESPONSE",
+      502,
+      "HubSpot returned an invalid account details response",
     );
   }
 

@@ -25,6 +25,7 @@ export const HUBSPOT_ROW_OVERRIDE_FIELD_KEYS = [
   "firstName",
   "lastName",
   "email",
+  "phoneNumber",
   ...HUBSPOT_DEFAULT_FIELD_KEYS,
 ] as const;
 
@@ -57,6 +58,7 @@ export type HubspotPreparationRun = {
     firstName: string | null;
     lastName: string | null;
     email: string | null;
+    phoneNumber: string | null;
     currency: string | null;
     dealType: string | null;
     activationType: string | null;
@@ -147,7 +149,7 @@ export function resolveHubspotRowValues(input: {
     values[field] = input.fallbackValues[field] ?? "";
   }
 
-  for (const field of ["firstName", "lastName", "email"] as const) {
+  for (const field of ["firstName", "lastName", "email", "phoneNumber"] as const) {
     const overrideValue = override?.[field];
     if (typeof overrideValue === "string" && overrideValue.trim()) {
       values[field] = overrideValue;
@@ -202,6 +204,7 @@ export async function getRunForHubspotPreparation(
           firstName: true,
           lastName: true,
           email: true,
+          phoneNumber: true,
           currency: true,
           dealType: true,
           activationType: true,
@@ -267,6 +270,7 @@ export async function updateHubspotPreparation(input: RunAccessInput & {
             firstName: true,
             lastName: true,
             email: true,
+            phoneNumber: true,
             currency: true,
             dealType: true,
             activationType: true,
@@ -326,6 +330,7 @@ export async function updateHubspotPreparation(input: RunAccessInput & {
         firstName: patchValues.firstName?.trim() ?? current?.firstName ?? null,
         lastName: patchValues.lastName?.trim() ?? current?.lastName ?? null,
         email: patchValues.email?.trim() ?? current?.email ?? null,
+        phoneNumber: patchValues.phoneNumber?.trim() ?? current?.phoneNumber ?? null,
         currency: patchValues.currency?.trim() ?? current?.currency ?? null,
         dealType: patchValues.dealType?.trim() ?? current?.dealType ?? null,
         activationType: patchValues.activationType?.trim() ?? current?.activationType ?? null,

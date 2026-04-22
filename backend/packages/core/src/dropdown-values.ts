@@ -11,12 +11,15 @@ import {
   updateDropdownValuesRequestSchema,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
-import { fetchHubspotPropertyDefinition } from "@scouting-platform/integrations";
+import {
+  fetchHubspotAccountDetails,
+  fetchHubspotPropertyDefinition,
+} from "@scouting-platform/integrations";
 
 const DEFAULT_DROPDOWN_VALUES: Record<DropdownValueFieldKey, readonly string[]> = {
-  currency: ["EUR", "USD", "GBP"],
-  dealType: ["Influencer", "Paid", "Affiliate"],
-  activationType: ["Dedicated Video", "Integration", "Shorts", "Livestream"],
+  currency: [],
+  dealType: [],
+  activationType: [],
   influencerType: [],
   influencerVertical: [],
   countryRegion: [],
@@ -35,12 +38,45 @@ const PRISMA_DROPDOWN_FIELD_KEYS = {
   language: "LANGUAGE",
 } as const satisfies Record<DropdownValueFieldKey, PrismaDropdownValueFieldKey>;
 
-const HUBSPOT_PROPERTY_BY_FIELD: Record<HubspotSyncedDropdownFieldKey, string> = {
-  influencerType: "influencer_type",
-  influencerVertical: "influencer_vertical",
-  countryRegion: "country",
-  language: "language",
-};
+const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
+  currency: {
+    kind: "accountCurrencies",
+  },
+  dealType: {
+    kind: "property",
+    objectType: "deals",
+    propertyName: "dealtype",
+  },
+  activationType: {
+    kind: "property",
+    objectType: "2-200856187",
+    propertyName: "activation_type",
+  },
+  influencerType: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "influencer_type",
+  },
+  influencerVertical: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "influencer_vertical",
+  },
+  countryRegion: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "country",
+  },
+  language: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "language",
+  },
+} as const satisfies Record<
+  HubspotSyncedDropdownFieldKey,
+  | { kind: "accountCurrencies" }
+  | { kind: "property"; objectType: string; propertyName: string }
+>;
 
 function fromPrismaFieldKey(fieldKey: PrismaDropdownValueFieldKey): DropdownValueFieldKey {
   switch (fieldKey) {
@@ -84,14 +120,20 @@ export async function ensureDropdownValueDefaults(): Promise<void> {
     return;
   }
 
+  const defaultRows = (Object.entries(DEFAULT_DROPDOWN_VALUES) as Array<[DropdownValueFieldKey, readonly string[]]>)
+    .flatMap(([fieldKey, values]) =>
+      values.map((value) => ({
+        fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
+        value,
+      })),
+    );
+
+  if (defaultRows.length === 0) {
+    return;
+  }
+
   await prisma.dropdownValue.createMany({
-    data: (Object.entries(DEFAULT_DROPDOWN_VALUES) as Array<[DropdownValueFieldKey, readonly string[]]>)
-      .flatMap(([fieldKey, values]) =>
-        values.map((value) => ({
-          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
-          value,
-        })),
-      ),
+    data: defaultRows,
     skipDuplicates: true,
   });
 }
@@ -141,6 +183,35 @@ function extractHubspotOptionLabels(
   );
 }
 
+async function fetchHubspotDropdownValues(input: {
+  fieldKey: HubspotSyncedDropdownFieldKey;
+  apiKey?: string;
+  fetchFn?: typeof fetch;
+}): Promise<string[]> {
+  const source = HUBSPOT_DROPDOWN_SOURCE_BY_FIELD[input.fieldKey];
+
+  if (source.kind === "accountCurrencies") {
+    const details = await fetchHubspotAccountDetails({
+      ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+      ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+    });
+
+    return normalizeDropdownValues([
+      details.companyCurrency ?? "",
+      ...details.additionalCurrencies,
+    ]);
+  }
+
+  const definition = await fetchHubspotPropertyDefinition({
+    objectType: source.objectType,
+    propertyName: source.propertyName,
+    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+    ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+  });
+
+  return extractHubspotOptionLabels(definition);
+}
+
 export async function replaceDropdownValues(input: UpdateDropdownValuesRequest & {
   actorUserId: string;
 }): Promise<ListDropdownValuesResponse> {
@@ -188,14 +259,13 @@ export async function syncHubspotDropdownValues(input: {
   const syncedValues = Object.fromEntries(
     await Promise.all(
       HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map(async (fieldKey) => {
-        const definition = await fetchHubspotPropertyDefinition({
-          objectType: "contacts",
-          propertyName: HUBSPOT_PROPERTY_BY_FIELD[fieldKey],
-          apiKey: input.apiKey,
-          fetchFn: input.fetchFn,
+        const values = await fetchHubspotDropdownValues({
+          fieldKey,
+          ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+          ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
         });
 
-        return [fieldKey, extractHubspotOptionLabels(definition)];
+        return [fieldKey, values];
       }),
     ),
   ) as Record<HubspotSyncedDropdownFieldKey, string[]>;

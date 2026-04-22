@@ -16,6 +16,7 @@ export type WorkerRuntimeConfig = Readonly<{
     channelsEnrichHypeauditor: WorkerJobOptions;
     importsCsvProcess: WorkerJobOptions;
     exportsCsvGenerate: WorkerJobOptions;
+    hubspotPreviewEnrich: WorkerJobOptions;
     hubspotImportBatch: WorkerJobOptions;
     hubspotPushBatch: WorkerJobOptions;
   }>;
@@ -106,6 +107,11 @@ export function getWorkerRuntimeConfig(
       exportsCsvGenerate: buildWorkerJobOptions(
         env,
         "WORKER_EXPORTS_CSV_GENERATE_CONCURRENCY",
+        1,
+      ),
+      hubspotPreviewEnrich: buildWorkerJobOptions(
+        env,
+        "WORKER_HUBSPOT_PREVIEW_ENRICH_CONCURRENCY",
         1,
       ),
       hubspotImportBatch: buildWorkerJobOptions(

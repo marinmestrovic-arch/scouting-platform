@@ -211,6 +211,12 @@ export const youtubeChannelContextSchema = z.object({
 
 export type YoutubeChannelContext = z.infer<typeof youtubeChannelContextSchema>;
 
+export type YoutubeChannelPageEmailSignal = {
+  fetchedUrl: string | null;
+  emails: string[];
+  snippet: string | null;
+};
+
 type YoutubeChannelContextDraft = {
   youtubeChannelId: string;
   title: string;
@@ -657,4 +663,125 @@ export async function fetchYoutubeChannelContext(
   };
 
   return youtubeChannelContextSchema.parse(context);
+}
+
+function normalizeExtractedEmailCandidate(value: string): string {
+  return value
+    .replace(/^mailto:/iu, "")
+    .replace(/^[<("'`[]+/u, "")
+    .replace(/[>"')\],;:!?]+$/u, "")
+    .trim()
+    .toLowerCase();
+}
+
+function extractExplicitEmailsFromHtml(value: string): string[] {
+  const decoded = value
+    .replace(/&commat;|&#64;|&#x40;/giu, "@")
+    .replace(/&period;|&#46;|&#x2e;/giu, ".");
+  const deobfuscated = decoded
+    .replace(/\s*\[\s*at\s*\]\s*/giu, "@")
+    .replace(/\s*\(\s*at\s*\)\s*/giu, "@")
+    .replace(/\s+\bat\b\s+/giu, "@")
+    .replace(/\s*\[\s*dot\s*\]\s*/giu, ".")
+    .replace(/\s*\(\s*dot\s*\)\s*/giu, ".")
+    .replace(/\s+\bdot\b\s+/giu, ".");
+  const results: string[] = [];
+  const seen = new Set<string>();
+  const pattern =
+    /(?:mailto:)?([A-Z0-9.!#$%&'*+=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,63})/giu;
+
+  for (const text of [decoded, deobfuscated]) {
+    for (const match of text.matchAll(pattern)) {
+      const email = normalizeExtractedEmailCandidate(match[1] ?? match[0] ?? "");
+
+      if (!email || seen.has(email)) {
+        continue;
+      }
+
+      seen.add(email);
+      results.push(email);
+    }
+  }
+
+  return results;
+}
+
+function toPlainTextSnippet(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/giu, " ")
+    .replace(/<style[\s\S]*?<\/style>/giu, " ")
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/&nbsp;|&#160;/giu, " ")
+    .replace(/&amp;/giu, "&")
+    .replace(/&quot;|&#34;/giu, `"`)
+    .replace(/&#39;|&apos;/giu, "'")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function buildEmailEvidenceSnippet(html: string, email: string): string | null {
+  const plainText = toPlainTextSnippet(html);
+  const emailIndex = plainText.toLowerCase().indexOf(email.toLowerCase());
+
+  if (emailIndex === -1) {
+    return plainText.slice(0, 360).trim() || null;
+  }
+
+  const start = Math.max(0, emailIndex - 180);
+  const end = Math.min(plainText.length, emailIndex + email.length + 180);
+
+  return plainText.slice(start, end).trim() || null;
+}
+
+function buildYoutubePageCandidateUrls(canonicalUrl: string): string[] {
+  try {
+    const parsedUrl = new URL(canonicalUrl);
+    const normalizedBase = `${parsedUrl.origin}${parsedUrl.pathname.replace(/\/+$/u, "")}`;
+    const withoutAbout = normalizedBase.replace(/\/about$/iu, "");
+
+    return Array.from(new Set([`${withoutAbout}/about`, withoutAbout]));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchYoutubeChannelPageEmailSignal(input: {
+  canonicalUrl: string;
+  fetchImpl?: typeof fetch;
+}): Promise<YoutubeChannelPageEmailSignal> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+
+  for (const url of buildYoutubePageCandidateUrls(input.canonicalUrl)) {
+    const response = await fetchImpl(url, {
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "user-agent":
+          "Mozilla/5.0 (compatible; ScoutingPlatformBot/1.0; +https://scouting-platform.local)",
+      },
+      redirect: "follow",
+    });
+
+    if (!response.ok) {
+      continue;
+    }
+
+    const html = (await response.text()).slice(0, 250_000);
+    const emails = extractExplicitEmailsFromHtml(html);
+
+    if (emails.length === 0) {
+      continue;
+    }
+
+    return {
+      fetchedUrl: response.url || url,
+      emails,
+      snippet: buildEmailEvidenceSnippet(html, emails[0] ?? ""),
+    };
+  }
+
+  return {
+    fetchedUrl: null,
+    emails: [],
+    snippet: null,
+  };
 }
