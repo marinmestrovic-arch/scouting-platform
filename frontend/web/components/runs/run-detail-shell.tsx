@@ -6,6 +6,10 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchRunStatus } from "../../lib/runs-api";
+import { EmptyState } from "../ui/EmptyState";
+import { ErrorState } from "../ui/ErrorState";
+import { StatusPill } from "../ui/StatusPill";
+import { StatusTimeline } from "../ui/StatusTimeline";
 import {
   RUN_STATUS_POLL_INTERVAL_MS,
   formatRunResultCount as formatRunResultCountValue,
@@ -145,6 +149,42 @@ function getRunQueryLabel(query: string): string {
   return isCatalogScoutingQuery(query) ? "Criteria" : "Query";
 }
 
+function getRunTimelineSteps(status: RunStatusResponse["status"]) {
+  if (status === "queued") {
+    return [
+      { key: "queued", label: "Queued", state: "active" as const },
+      { key: "running", label: "Running", state: "todo" as const },
+      { key: "completed", label: "Completed", state: "todo" as const },
+      { key: "failed", label: "Failed", state: "todo" as const },
+    ];
+  }
+
+  if (status === "running") {
+    return [
+      { key: "queued", label: "Queued", state: "done" as const },
+      { key: "running", label: "Running", state: "active" as const },
+      { key: "completed", label: "Completed", state: "todo" as const },
+      { key: "failed", label: "Failed", state: "todo" as const },
+    ];
+  }
+
+  if (status === "completed") {
+    return [
+      { key: "queued", label: "Queued", state: "done" as const },
+      { key: "running", label: "Running", state: "done" as const },
+      { key: "completed", label: "Completed", state: "done" as const },
+      { key: "failed", label: "Failed", state: "todo" as const },
+    ];
+  }
+
+  return [
+    { key: "queued", label: "Queued", state: "done" as const },
+    { key: "running", label: "Running", state: "done" as const },
+    { key: "completed", label: "Completed", state: "todo" as const },
+    { key: "failed", label: "Failed", state: "active" as const },
+  ];
+}
+
 function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
   const jobFeedback = getRunJobFeedback({
     status: run.status,
@@ -162,11 +202,10 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
             {getRunQueryLabel(run.query)}: {run.query}
           </p>
           <div className="run-detail__status-row">
-            <span className={`run-detail__status run-detail__status--${run.status}`}>
-              {formatRunStatusLabel(run.status)}
-            </span>
+            <StatusPill status={run.status} />
             <p className="run-detail__status-copy">{getRunProgressMessage(run)}</p>
           </div>
+          <StatusTimeline steps={getRunTimelineSteps(run.status)} />
         </div>
 
         <dl className="run-detail__meta-grid">
@@ -267,24 +306,16 @@ export function RunDetailShellView({ runId, requestState, onRetry }: RunDetailSh
 
   if (requestState.status === "error") {
     return (
-      <section className="run-detail__feedback run-detail__feedback--error" role="alert">
-        <div>
-          <h2>Run status unavailable</h2>
-          <p>{requestState.error}</p>
-        </div>
-        <button className="run-detail__button" onClick={onRetry} type="button">
-          Retry
-        </button>
-      </section>
+      <ErrorState description={requestState.error} onRetry={onRetry} title="Run status unavailable" />
     );
   }
 
   if (requestState.status === "notFound") {
     return (
-      <section className="run-detail__feedback run-detail__feedback--empty" role="status">
-        <h2>Run not found</h2>
-        <p>The requested run does not exist or is no longer visible to this account.</p>
-      </section>
+      <EmptyState
+        description="The requested run does not exist or is no longer visible to this account."
+        title="Run not found"
+      />
     );
   }
 

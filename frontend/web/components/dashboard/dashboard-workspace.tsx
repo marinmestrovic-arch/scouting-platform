@@ -2,6 +2,7 @@
 
 import type { ListRecentRunsResponse, ListRunsQuery } from "@scouting-platform/contracts";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { useDocumentVisibility } from "../../lib/document-visibility";
@@ -14,12 +15,16 @@ import {
 } from "../../lib/run-metadata";
 import { fetchRecentRuns } from "../../lib/runs-api";
 import {
-  formatRunStatusLabel,
   formatRunTimestamp,
   RUN_STATUS_POLL_INTERVAL_MS,
   shouldPollRunStatus,
 } from "../runs/run-presentation";
+import { PageHeader } from "../layout/PageHeader";
+import { DataTable } from "../ui/DataTable";
+import { EmptyState } from "../ui/EmptyState";
+import { ErrorState } from "../ui/ErrorState";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
+import { StatusPill } from "../ui/StatusPill";
 
 type DashboardRunsRequestState =
   | { status: "loading"; data: null; error: null }
@@ -44,6 +49,11 @@ const INITIAL_FILTERS_STATE: DashboardFiltersState = {
   market: "",
 };
 
+const DASHBOARD_DESCRIPTION =
+  "Review recent scouting runs, track coverage against each run target, and hand each run off to Database, CSV export, or Google Sheets from one compact table.";
+
+type DashboardStatusFilter = "all" | "running" | "completed" | "failed";
+
 function getDashboardRunsErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -59,6 +69,29 @@ function buildRunFilters(filters: DashboardFiltersState): Partial<ListRunsQuery>
     market: filters.market || undefined,
     limit: 50,
   };
+}
+
+function parseStatusFilter(value: string | null): DashboardStatusFilter {
+  if (value === "running" || value === "completed" || value === "failed") {
+    return value;
+  }
+
+  return "all";
+}
+
+function matchesStatusFilter(
+  run: ListRecentRunsResponse["items"][number],
+  statusFilter: DashboardStatusFilter,
+): boolean {
+  if (statusFilter === "all") {
+    return true;
+  }
+
+  if (statusFilter === "running") {
+    return run.status === "queued" || run.status === "running";
+  }
+
+  return run.status === statusFilter;
 }
 
 function renderCoverageCell(resultCount: number, target: number | null) {
@@ -87,6 +120,9 @@ export function DashboardWorkspace({
   initialData?: ListRecentRunsResponse | undefined;
   initialFilters?: DashboardFiltersState;
 }>) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [requestState, setRequestState] = useState<DashboardRunsRequestState>(
     initialData
       ? {
@@ -98,7 +134,9 @@ export function DashboardWorkspace({
   );
   const [filters, setFilters] = useState<DashboardFiltersState>(initialFilters);
   const [reloadToken, setReloadToken] = useState(0);
+  const [query, setQuery] = useState("");
   const isDocumentVisible = useDocumentVisibility();
+  const statusFilter = parseStatusFilter(searchParams.get("status"));
 
   useEffect(() => {
     let didCancel = false;
@@ -195,9 +233,75 @@ export function DashboardWorkspace({
     ],
     [filterOptions],
   );
+  const visibleRuns =
+    requestState.status === "ready"
+      ? requestState.data.items.filter((run) => {
+          const normalizedQuery = query.trim().toLowerCase();
+          const matchesQuery =
+            normalizedQuery.length === 0 ||
+            run.name.toLowerCase().includes(normalizedQuery) ||
+            run.metadata.campaignName?.toLowerCase().includes(normalizedQuery) === true;
+
+          return matchesQuery && matchesStatusFilter(run, statusFilter);
+        })
+      : [];
+  const isPolling = visibleRuns.some((run) => shouldPollRunStatus(run.status));
+  const hasAnyFiltersApplied =
+    query.trim().length > 0 ||
+    statusFilter !== "all" ||
+    filters.campaignManagerUserId.length > 0 ||
+    filters.client.length > 0 ||
+    filters.market.length > 0;
+
+  function handleStatusFilterChange(nextStatus: DashboardStatusFilter) {
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+
+    if (nextStatus === "all") {
+      nextSearchParams.delete("status");
+    } else {
+      nextSearchParams.set("status", nextStatus);
+    }
+
+    const nextHref = nextSearchParams.toString();
+    router.replace(nextHref.length > 0 ? `${pathname}?${nextHref}` : pathname, { scroll: false });
+  }
+
+  function clearQuickFilters() {
+    setQuery("");
+    handleStatusFilterChange("all");
+  }
+
+  function clearAllFilters() {
+    setFilters(INITIAL_FILTERS_STATE);
+    clearQuickFilters();
+  }
 
   return (
-    <div className="dashboard-workspace">
+    <>
+      <PageHeader
+        actions={
+          <>
+            <button
+              className="workspace-button workspace-button--secondary workspace-button--small"
+              onClick={() => {
+                setReloadToken((current) => current + 1);
+              }}
+              type="button"
+            >
+              Refresh
+            </button>
+            <Link className="workspace-button workspace-button--small" href="/new-scouting">
+              New run
+            </Link>
+          </>
+        }
+        crumbs={[{ label: "Dashboard" }]}
+        description={DASHBOARD_DESCRIPTION}
+        live={isPolling}
+        title="Dashboard"
+      />
+      <div className="page-container page-section__body">
+        <div className="dashboard-workspace">
       <section className="dashboard-workspace__table-panel">
         <div className="dashboard-workspace__filters">
           <label className="new-scouting__field">
@@ -254,15 +358,57 @@ export function DashboardWorkspace({
             />
           </label>
         </div>
-        <div className="dashboard-workspace__actions">
+        <div className="dashboard-workspace__row-actions">
+          <label className="new-scouting__field" style={{ flex: "1 1 16rem", minWidth: "min(100%, 16rem)" }}>
+            <span>Search runs</span>
+            <input
+              onChange={(event) => {
+                setQuery(event.currentTarget.value);
+              }}
+              placeholder="Search campaign or list"
+              type="search"
+              value={query}
+            />
+          </label>
           <button
-            className="workspace-button workspace-button--secondary workspace-button--small"
+            aria-pressed={statusFilter === "all"}
+            className="status-pill-button"
             onClick={() => {
-              setReloadToken((current) => current + 1);
+              handleStatusFilterChange("all");
             }}
             type="button"
           >
-            Refresh
+            <span className="status-pill status-pill--neutral">All</span>
+          </button>
+          <button
+            aria-pressed={statusFilter === "running"}
+            className="status-pill-button"
+            onClick={() => {
+              handleStatusFilterChange("running");
+            }}
+            type="button"
+          >
+            <StatusPill status="running" />
+          </button>
+          <button
+            aria-pressed={statusFilter === "completed"}
+            className="status-pill-button"
+            onClick={() => {
+              handleStatusFilterChange("completed");
+            }}
+            type="button"
+          >
+            <StatusPill status="completed" />
+          </button>
+          <button
+            aria-pressed={statusFilter === "failed"}
+            className="status-pill-button"
+            onClick={() => {
+              handleStatusFilterChange("failed");
+            }}
+            type="button"
+          >
+            <StatusPill status="failed" />
           </button>
         </div>
 
@@ -273,30 +419,28 @@ export function DashboardWorkspace({
         ) : null}
 
         {requestState.status === "error" ? (
-          <div className="dashboard-workspace__feedback dashboard-workspace__feedback--error" role="alert">
-            <p>{requestState.error}</p>
-          </div>
+          <ErrorState description={requestState.error} onRetry={() => setReloadToken((current) => current + 1)} title="Couldn't load dashboard" />
         ) : null}
 
         {requestState.status === "ready" ? (
           requestState.data.items.length > 0 ? (
-            <div className="dashboard-workspace__table-shell">
-              <table className="dashboard-workspace__table">
+            visibleRuns.length > 0 ? (
+            <DataTable caption="Recent scouting runs" density="regular">
                 <thead>
                   <tr>
-                    <th>Client</th>
-                    <th>Market</th>
-                    <th>Campaign Manager</th>
-                    <th>Brief Link</th>
-                    <th>Influencer List</th>
-                    <th>Coverage</th>
-                    <th>Status</th>
-                    <th>Started</th>
-                    <th>Actions</th>
+                    <th scope="col" style={{ minWidth: "9rem" }}>Client</th>
+                    <th scope="col" style={{ minWidth: "8rem" }}>Market</th>
+                    <th scope="col" style={{ minWidth: "10rem" }}>Campaign Manager</th>
+                    <th scope="col" style={{ minWidth: "8rem" }}>Brief Link</th>
+                    <th scope="col" style={{ minWidth: "12rem" }}>Influencer List</th>
+                    <th scope="col" style={{ minWidth: "12rem" }}>Coverage</th>
+                    <th scope="col" style={{ minWidth: "8rem" }}>Status</th>
+                    <th scope="col" style={{ minWidth: "9rem" }}>Started</th>
+                    <th scope="col" style={{ minWidth: "11rem" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {requestState.data.items.map((run) => {
+                  {visibleRuns.map((run) => {
                     return (
                       <tr key={run.id}>
                         <td>{formatNullableMetadataValue(run.metadata.client)}</td>
@@ -323,11 +467,9 @@ export function DashboardWorkspace({
                         </td>
                         <td>{renderCoverageCell(run.resultCount, run.target)}</td>
                         <td>
-                          <span className={`dashboard-workspace__status dashboard-workspace__status--${run.status}`}>
-                            {formatRunStatusLabel(run.status)}
-                          </span>
+                          <StatusPill status={run.status} />
                         </td>
-                        <td>{formatRunTimestamp(run.createdAt)}</td>
+                        <td>{formatRunTimestamp(run.startedAt)}</td>
                         <td>
                           <div className="dashboard-workspace__row-actions">
                             <Link
@@ -350,16 +492,45 @@ export function DashboardWorkspace({
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+            </DataTable>
           ) : (
-            <div className="dashboard-workspace__empty-state">
-              <h3>No scouting runs yet</h3>
-              <p>Create the first run from New scouting to populate the dashboard.</p>
+            <div className="data-table__scroll">
+              <EmptyState
+                action={
+                  <button className="workspace-button workspace-button--secondary" onClick={clearQuickFilters} type="button">
+                    Clear
+                  </button>
+                }
+                description="Clear filters to see all runs."
+                title="No runs match"
+              />
             </div>
+          )
+          ) : hasAnyFiltersApplied ? (
+            <EmptyState
+              action={
+                <button className="workspace-button workspace-button--secondary" onClick={clearAllFilters} type="button">
+                  Clear filters
+                </button>
+              }
+              description="Adjust or clear filters to see matching runs."
+              title="No runs match"
+            />
+          ) : (
+            <EmptyState
+              action={
+                <Link className="workspace-button" href="/new-scouting">
+                  New run
+                </Link>
+              }
+              description="Create the first run from New scouting to populate the dashboard."
+              title="No scouting runs yet"
+            />
           )
         ) : null}
       </section>
-    </div>
+        </div>
+      </div>
+    </>
   );
 }

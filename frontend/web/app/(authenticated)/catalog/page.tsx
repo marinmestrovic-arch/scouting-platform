@@ -2,7 +2,7 @@ import React, { Suspense } from "react";
 import { getSession } from "../../../lib/cached-auth";
 import { getCachedChannels, getCachedUserSegments } from "../../../lib/cached-data";
 import { DatabaseWorkspace } from "../../../components/database/database-workspace";
-import { PageSection } from "../../../components/layout/page-section";
+import { PageHeader } from "../../../components/layout/PageHeader";
 import { SkeletonFilterBar, SkeletonPageBody, SkeletonTable } from "../../../components/ui/skeleton";
 import { parseCatalogFiltersFromSearchParams } from "../../../lib/catalog-filters";
 
@@ -71,15 +71,53 @@ function CatalogFallback() {
   );
 }
 
-export default function CatalogPage({ searchParams }: CatalogPageProps) {
+export default async function CatalogPage({ searchParams }: CatalogPageProps) {
+  const resolvedSearchParams = toUrlSearchParams((await searchParams) ?? {});
+  const view = resolvedSearchParams.get("view") === "cards" ? "cards" : "table";
+  const tableParams = new URLSearchParams(resolvedSearchParams.toString());
+  const cardsParams = new URLSearchParams(resolvedSearchParams.toString());
+
+  tableParams.delete("view");
+  cardsParams.set("view", "cards");
+
+  const tableHref = tableParams.toString() ? `/catalog?${tableParams.toString()}` : "/catalog";
+  const cardsHref = cardsParams.toString() ? `/catalog?${cardsParams.toString()}` : "/catalog";
+
   return (
-    <PageSection
-      title="Catalog"
-      description="Browse the canonical creator catalog with full-width filters, enrichment actions, and export shortcuts."
-    >
-      <Suspense fallback={<CatalogFallback />}>
-        <CatalogData searchParams={searchParams} />
-      </Suspense>
-    </PageSection>
+    <section className="page-section">
+      <PageHeader
+        actions={
+          <div aria-label="Catalog view" className="page-header__view-toggle" role="tablist">
+            <a
+              aria-selected={view === "table"}
+              className={view === "table" ? "workspace-button" : "workspace-button workspace-button--secondary"}
+              href={tableHref}
+              role="tab"
+            >
+              Table
+            </a>
+            <a
+              aria-selected={view === "cards"}
+              className={view === "cards" ? "workspace-button" : "workspace-button workspace-button--secondary"}
+              href={cardsHref}
+              role="tab"
+            >
+              Cards
+            </a>
+          </div>
+        }
+        crumbs={[
+          { label: "Database", href: "/database" },
+          { label: "Catalog" },
+        ]}
+        description="Browse the canonical creator catalog with a sticky filter rail, reusable segments, and table or card browsing modes."
+        title="Catalog"
+      />
+      <div className="page-container page-section__body">
+        <Suspense fallback={<CatalogFallback />}>
+          <CatalogData searchParams={searchParams} />
+        </Suspense>
+      </div>
+    </section>
   );
 }

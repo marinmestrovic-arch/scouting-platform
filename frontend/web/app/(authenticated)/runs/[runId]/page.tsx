@@ -3,7 +3,7 @@ import React, { Suspense } from "react";
 import { getRunStatus } from "@scouting-platform/core";
 
 import { getSession } from "../../../../lib/cached-auth";
-import { PageSection } from "../../../../components/layout/page-section";
+import { PageHeader } from "../../../../components/layout/PageHeader";
 import { RunDetailShell } from "../../../../components/runs/run-detail-shell";
 import { Skeleton, SkeletonPageBody, SkeletonTable, SkeletonText } from "../../../../components/ui/skeleton";
 import { getRoleFromSession } from "../../../../lib/access-control";
@@ -53,13 +53,20 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
   const { runId } = await params;
 
   return (
-    <PageSection
-      title="Run Detail"
-      description="Track scouting status, inspect stored snapshot results, and surface queue failures without leaving the runs surface."
-    >
-      <Suspense fallback={<RunDetailFallback />}>
-        <RunDetailData runId={runId} />
-      </Suspense>
-    </PageSection>
+    <section className="page-section">
+      <PageHeader
+        crumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Run detail" },
+        ]}
+        description="Track scouting status, inspect stored snapshot results, and surface queue failures without leaving the runs surface."
+        title="Run Detail"
+      />
+      <div className="page-container page-section__body">
+        <Suspense fallback={<RunDetailFallback />}>
+          <RunDetailData runId={runId} />
+        </Suspense>
+      </div>
+    </section>
   );
 }
