@@ -1,5 +1,6 @@
 import {
   HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
+  PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS,
   listDropdownValuesResponseSchema,
   syncHubspotDropdownValuesResponseSchema,
   type DropdownValue,
@@ -9,6 +10,7 @@ import {
 } from "@scouting-platform/contracts";
 
 const HUBSPOT_SYNCED_DROPDOWN_FIELD_SET = new Set<string>(HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS);
+const PLATFORM_MANAGED_DROPDOWN_FIELD_SET = new Set<string>(PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS);
 
 type ApiErrorBody = {
   error?: string;
@@ -103,4 +105,8 @@ export function groupDropdownValuesByField(items: DropdownValue[]): Record<Dropd
 
 export function isHubspotSyncedDropdownField(fieldKey: DropdownValueFieldKey): boolean {
   return HUBSPOT_SYNCED_DROPDOWN_FIELD_SET.has(fieldKey);
+}
+
+export function isPlatformManagedDropdownField(fieldKey: DropdownValueFieldKey): boolean {
+  return PLATFORM_MANAGED_DROPDOWN_FIELD_SET.has(fieldKey);
 }
