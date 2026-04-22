@@ -96,6 +96,11 @@ const structuredProfileSchema = z.object({
 const strictOutputSchema = legacyOutputSchema.extend({
   structuredProfile: structuredProfileSchema,
 });
+const fallbackSummary = "Creator profile generated from the available YouTube channel context.";
+const fallbackBrandFitNotes =
+  "No clear brand-fit constraints were identified from the available context.";
+const fallbackBrandSafetyRationale =
+  "Insufficient evidence for specific brand-safety concerns in the provided context.";
 
 const inputSchema = z.object({
   channel: z.object({
@@ -306,6 +311,290 @@ function toRawPayload(response: OpenAiCompletionResponse): Record<string, unknow
   return JSON.parse(JSON.stringify(response)) as Record<string, unknown>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function toBoundedString(value: unknown, maxLength: number): string | null {
+  const trimmed = toTrimmedString(value);
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.slice(0, maxLength);
+}
+
+function toStringList(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+  minLength = 1,
+): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of values) {
+    const trimmed = toBoundedString(item, maxLength);
+
+    if (!trimmed || trimmed.length < minLength) {
+      continue;
+    }
+
+    const key = trimmed.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    normalized.push(trimmed);
+    seen.add(key);
+
+    if (normalized.length >= maxItems) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeTaxonomyValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isAllowedValue<T extends string>(value: string, allowedValues: readonly T[]): value is T {
+  return (allowedValues as readonly string[]).includes(value);
+}
+
+function normalizeEnumValue<T extends string>(
+  value: unknown,
+  allowedValues: readonly T[],
+  aliases: Record<string, T>,
+  fallback: T,
+): T {
+  const trimmed = toTrimmedString(value);
+
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const normalized = normalizeTaxonomyValue(trimmed);
+  const aliased = aliases[normalized] ?? normalized;
+
+  return isAllowedValue(aliased, allowedValues) ? aliased : fallback;
+}
+
+function normalizeEnumList<T extends string>(
+  value: unknown,
+  allowedValues: readonly T[],
+  aliases: Record<string, T>,
+  maxItems: number,
+): T[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const normalized: T[] = [];
+  const seen = new Set<T>();
+
+  for (const item of values) {
+    const trimmed = toTrimmedString(item);
+
+    if (!trimmed) {
+      continue;
+    }
+
+    const normalizedValue = normalizeTaxonomyValue(trimmed);
+    const aliased = aliases[normalizedValue] ?? normalizedValue;
+
+    if (!isAllowedValue(aliased, allowedValues) || seen.has(aliased)) {
+      continue;
+    }
+
+    normalized.push(aliased);
+    seen.add(aliased);
+
+    if (normalized.length >= maxItems) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeConfidence(value: unknown): number {
+  const numericValue =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
+
+  if (!Number.isFinite(numericValue)) {
+    return 0.5;
+  }
+
+  return Math.min(1, Math.max(0, numericValue));
+}
+
+function normalizeLooseStructuredProfile(value: unknown): OpenAiStructuredProfile | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const primaryNiche = normalizeEnumValue(
+    value.primaryNiche,
+    structuredProfilePrimaryNicheValues,
+    {
+      autos: "automotive",
+      cars: "automotive",
+      commentary: "commentary_reaction",
+      comedy: "entertainment",
+      diy: "home_living",
+      educational: "education",
+      health_fitness: "fitness",
+      howto: "education",
+      howto_style: "education",
+      reactions: "commentary_reaction",
+      science_technology: "tech",
+      technology: "tech",
+      tutorial: "education",
+      tutorials: "education",
+      vlog: "lifestyle",
+      vlogs: "lifestyle",
+    },
+    "other",
+  );
+  const secondaryNiches = normalizeEnumList(
+    value.secondaryNiches,
+    structuredProfilePrimaryNicheValues,
+    {
+      autos: "automotive",
+      cars: "automotive",
+      commentary: "commentary_reaction",
+      comedy: "entertainment",
+      diy: "home_living",
+      educational: "education",
+      health_fitness: "fitness",
+      howto: "education",
+      howto_style: "education",
+      reactions: "commentary_reaction",
+      science_technology: "tech",
+      technology: "tech",
+      tutorial: "education",
+      tutorials: "education",
+      vlog: "lifestyle",
+      vlogs: "lifestyle",
+    },
+    3,
+  ).filter((niche) => niche !== primaryNiche);
+  const contentFormats = normalizeEnumList(
+    value.contentFormats,
+    structuredProfileContentFormatValues,
+    {
+      clip: "clips",
+      live: "live_stream",
+      livestream: "live_stream",
+      longform: "long_form",
+      long_form_video: "long_form",
+      short: "shorts",
+      short_form: "shorts",
+      shortform: "shorts",
+    },
+    3,
+  );
+  const brandFitTags = normalizeEnumList(
+    value.brandFitTags,
+    structuredProfileBrandFitTagValues,
+    {
+      apparel: "fashion_apparel",
+      beauty: "beauty_skincare",
+      education: "education_productivity",
+      family: "family_parenting",
+      fashion: "fashion_apparel",
+      finance: "finance_fintech",
+      food: "food_drink",
+      gaming: "gaming_hardware",
+      home: "home_living",
+      parenting: "family_parenting",
+      productivity: "education_productivity",
+      tech: "consumer_tech",
+      technology: "consumer_tech",
+      travel: "travel_hospitality",
+    },
+    8,
+  );
+  const brandSafety = isRecord(value.brandSafety) ? value.brandSafety : {};
+  const language = toBoundedString(value.language, 32);
+
+  return {
+    primaryNiche,
+    secondaryNiches,
+    contentFormats: contentFormats.length > 0 ? contentFormats : ["mixed"],
+    brandFitTags,
+    language: language && language.length >= 2 ? language : null,
+    geoHints: toStringList(value.geoHints, 3, 64, 2),
+    sponsorSignals: toStringList(value.sponsorSignals, 5, 120),
+    brandSafety: {
+      status: normalizeEnumValue(
+        brandSafety.status,
+        structuredProfileBrandSafetyStatusValues,
+        {},
+        "unknown",
+      ),
+      flags: normalizeEnumList(
+        brandSafety.flags,
+        structuredProfileBrandSafetyFlagValues,
+        {},
+        5,
+      ),
+      rationale:
+        toBoundedString(brandSafety.rationale, 280) ?? fallbackBrandSafetyRationale,
+    },
+  };
+}
+
+function normalizeLooseOpenAiChannelEnrichmentProfile(
+  parsedContent: unknown,
+): OpenAiChannelEnrichment {
+  const content = isRecord(parsedContent) ? parsedContent : {};
+  const topics = toStringList(content.topics, 20, 80);
+
+  return {
+    summary: toTrimmedString(content.summary) ?? fallbackSummary,
+    topics: topics.length > 0 ? topics : ["other"],
+    brandFitNotes: toTrimmedString(content.brandFitNotes) ?? fallbackBrandFitNotes,
+    confidence: normalizeConfidence(content.confidence),
+    structuredProfile: normalizeLooseStructuredProfile(content.structuredProfile),
+  };
+}
+
+function parseJsonContent(content: string): unknown {
+  const unfencedContent = content
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/u, "")
+    .trim();
+
+  try {
+    return JSON.parse(unfencedContent);
+  } catch {
+    const objectMatch = unfencedContent.match(/\{[\s\S]*\}/u);
+
+    if (objectMatch) {
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch {
+        // Fall through to the safe default profile below.
+      }
+    }
+
+    return {};
+  }
+}
+
 function normalizeOpenAiChannelEnrichmentProfile(
   parsedContent: unknown,
   allowLegacy: boolean,
@@ -322,9 +611,13 @@ function normalizeOpenAiChannelEnrichmentProfile(
     if (legacyProfile.success) {
       return {
         ...legacyProfile.data,
-        structuredProfile: null,
+        structuredProfile: isRecord(parsedContent)
+          ? normalizeLooseStructuredProfile(parsedContent.structuredProfile)
+          : null,
       };
     }
+
+    return normalizeLooseOpenAiChannelEnrichmentProfile(parsedContent);
   }
 
   throw new OpenAiChannelEnrichmentError(
@@ -350,17 +643,7 @@ function extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(
     );
   }
 
-  let parsedContent: unknown;
-
-  try {
-    parsedContent = JSON.parse(content);
-  } catch {
-    throw new OpenAiChannelEnrichmentError(
-      "OPENAI_INVALID_RESPONSE",
-      502,
-      "OpenAI returned invalid enrichment JSON",
-    );
-  }
+  const parsedContent = parseJsonContent(content);
 
   return normalizeOpenAiChannelEnrichmentProfile(parsedContent, allowLegacy);
 }
@@ -442,7 +725,7 @@ export async function enrichChannelWithOpenAi(
   }
 
   return {
-    profile: extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(response, false),
+    profile: extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(response, true),
     rawPayload: toRawPayload(response),
   };
 }

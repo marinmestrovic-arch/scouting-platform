@@ -1,4 +1,5 @@
 import type {
+  ExportPreviewColumn,
   ExportPreviewRow,
   ExportRunToGoogleSheetsResponse,
 } from "@scouting-platform/contracts";
@@ -17,7 +18,6 @@ import {
   readGoogleSheetsRows,
   writeGoogleSheetsRows,
 } from "@scouting-platform/integrations";
-
 import { getHubspotExportPreview } from "./export-previews";
 import { ServiceError } from "./errors";
 
@@ -32,7 +32,7 @@ const GOOGLE_SHEETS_HEADER_RESOLVERS = new Map<string, HeaderValueResolver>([
   ["Deal owner", (row) => row.values.dealOwner ?? ""],
   ["Status", () => ""],
   ["Email", (row) => row.values.email ?? ""],
-  ["Phone Number", () => ""],
+  ["Phone Number", (row) => row.values.phoneNumber ?? ""],
   ["Currency", (row) => row.values.currency ?? ""],
   ["Deal Type", (row) => row.values.dealType ?? ""],
   ["Contact Type", (row) => row.values.contactType ?? ""],
@@ -40,6 +40,7 @@ const GOOGLE_SHEETS_HEADER_RESOLVERS = new Map<string, HeaderValueResolver>([
   ["Year", (row) => row.values.year ?? ""],
   ["Client name", (row) => row.values.clientName ?? ""],
   ["Deal name", (row) => row.values.dealName ?? ""],
+  ["Activation Name", (row) => row.values.activationName ?? row.values.dealName ?? ""],
   ["Pipeline", (row) => row.values.pipeline ?? ""],
   ["Deal stage", (row) => row.values.dealStage ?? ""],
   ["First Name", (row) => row.values.firstName ?? ""],
@@ -50,12 +51,27 @@ const GOOGLE_SHEETS_HEADER_RESOLVERS = new Map<string, HeaderValueResolver>([
   ["Language", (row) => row.values.language ?? ""],
   ["YouTube Handle", (row) => row.values.youtubeHandle ?? ""],
   ["YouTube URL", (row) => row.values.youtubeUrl ?? ""],
-  ["YouTube Video Median Views", () => ""],
-  ["YouTube Shorts Median Views", () => ""],
+  ["YouTube Video Median Views", (row) => row.values.youtubeVideoMedianViews ?? ""],
+  ["YouTube Shorts Median Views", (row) => row.values.youtubeShortsMedianViews ?? ""],
   ["YouTube Engagement Rate", (row) => row.values.youtubeEngagementRate ?? ""],
   ["YouTube Followers", (row) => row.values.youtubeFollowers ?? ""],
 ]);
 const GOOGLE_SHEETS_EXPORT_MIN_START_ROW = 3;
+const NORMALIZED_GOOGLE_SHEETS_HEADER_RESOLVERS = new Map<string, HeaderValueResolver>(
+  [...GOOGLE_SHEETS_HEADER_RESOLVERS.entries()].map(([header, resolver]) => [
+    normalizeGoogleSheetsHeader(header),
+    resolver,
+  ]),
+);
+
+type PreviewRowLookup = {
+  byDealNameAndEmail: Map<string, ExportPreviewRow | null>;
+  byEmailAndChannelNameAndCampaign: Map<string, ExportPreviewRow | null>;
+  byEmailAndYoutubeUrlAndCampaign: Map<string, ExportPreviewRow | null>;
+  byChannelNameAndCampaign: Map<string, ExportPreviewRow | null>;
+  byYoutubeHandleAndCampaign: Map<string, ExportPreviewRow | null>;
+  byYoutubeUrlAndCampaign: Map<string, ExportPreviewRow | null>;
+};
 
 export function normalizeGoogleSheetsHeader(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -69,17 +85,11 @@ export function alignHubspotPreviewRowsToGoogleSheetsHeader(input: {
   unmatchedHeaders: string[];
   values: string[][];
 } {
-  const resolverByHeader = new Map<string, HeaderValueResolver>();
-
-  for (const [header, resolver] of GOOGLE_SHEETS_HEADER_RESOLVERS.entries()) {
-    resolverByHeader.set(normalizeGoogleSheetsHeader(header), resolver);
-  }
-
   const matchedHeaders: string[] = [];
   const unmatchedHeaders: string[] = [];
 
   for (const header of input.headerRow) {
-    if (resolverByHeader.has(normalizeGoogleSheetsHeader(header))) {
+    if (NORMALIZED_GOOGLE_SHEETS_HEADER_RESOLVERS.has(normalizeGoogleSheetsHeader(header))) {
       matchedHeaders.push(header);
     } else {
       unmatchedHeaders.push(header);
@@ -91,7 +101,9 @@ export function alignHubspotPreviewRowsToGoogleSheetsHeader(input: {
     unmatchedHeaders,
     values: input.rows.map((row) =>
       input.headerRow.map((header) => {
-        const resolver = resolverByHeader.get(normalizeGoogleSheetsHeader(header));
+        const resolver = NORMALIZED_GOOGLE_SHEETS_HEADER_RESOLVERS.get(
+          normalizeGoogleSheetsHeader(header),
+        );
         return resolver ? resolver(row) : "";
       }),
     ),
@@ -124,13 +136,237 @@ export function findFirstEmptyGoogleSheetsRow(input: {
   return input.startRowNumber + input.rows.length;
 }
 
-export async function exportHubspotRunToGoogleSheets(input: {
-  runId: string;
-  userId: string;
-  role: "admin" | "user";
-  request: ExportRunToGoogleSheetsRequest;
-}): Promise<ExportRunToGoogleSheetsResponse> {
-  const parsedRequest = exportRunToGoogleSheetsRequestSchema.parse(input.request);
+function normalizeLookupToken(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function buildPreviewLookupKey(values: Array<string | null | undefined>): string | null {
+  const normalizedValues = values.map((value) => normalizeLookupToken(value));
+
+  return normalizedValues.every((value) => value.length > 0)
+    ? normalizedValues.join("::")
+    : null;
+}
+
+function addPreviewLookupEntry(
+  map: Map<string, ExportPreviewRow | null>,
+  key: string | null,
+  row: ExportPreviewRow,
+): void {
+  if (!key) {
+    return;
+  }
+
+  if (!map.has(key)) {
+    map.set(key, row);
+    return;
+  }
+
+  const existing = map.get(key);
+
+  if (existing && existing.rowKey !== row.rowKey) {
+    map.set(key, null);
+  }
+}
+
+function buildPreviewRowLookup(rows: ExportPreviewRow[]): PreviewRowLookup {
+  const lookup: PreviewRowLookup = {
+    byDealNameAndEmail: new Map(),
+    byEmailAndChannelNameAndCampaign: new Map(),
+    byEmailAndYoutubeUrlAndCampaign: new Map(),
+    byChannelNameAndCampaign: new Map(),
+    byYoutubeHandleAndCampaign: new Map(),
+    byYoutubeUrlAndCampaign: new Map(),
+  };
+
+  for (const row of rows) {
+    addPreviewLookupEntry(
+      lookup.byEmailAndYoutubeUrlAndCampaign,
+      buildPreviewLookupKey([row.values.email, row.values.youtubeUrl, row.values.campaignName]),
+      row,
+    );
+    addPreviewLookupEntry(
+      lookup.byEmailAndChannelNameAndCampaign,
+      buildPreviewLookupKey([row.values.email, row.channelTitle, row.values.campaignName]),
+      row,
+    );
+    addPreviewLookupEntry(
+      lookup.byDealNameAndEmail,
+      buildPreviewLookupKey([row.values.dealName, row.values.email]),
+      row,
+    );
+    addPreviewLookupEntry(
+      lookup.byYoutubeUrlAndCampaign,
+      buildPreviewLookupKey([row.values.youtubeUrl, row.values.campaignName]),
+      row,
+    );
+    addPreviewLookupEntry(
+      lookup.byYoutubeHandleAndCampaign,
+      buildPreviewLookupKey([row.values.youtubeHandle, row.values.campaignName]),
+      row,
+    );
+    addPreviewLookupEntry(
+      lookup.byChannelNameAndCampaign,
+      buildPreviewLookupKey([row.channelTitle, row.values.campaignName]),
+      row,
+    );
+  }
+
+  return lookup;
+}
+
+function getSheetHeaderIndexMap(headerRow: string[]): Map<string, number> {
+  const indexByHeader = new Map<string, number>();
+
+  headerRow.forEach((header, index) => {
+    indexByHeader.set(normalizeGoogleSheetsHeader(header), index);
+  });
+
+  return indexByHeader;
+}
+
+function getGoogleSheetsRowValue(
+  row: string[],
+  indexByHeader: Map<string, number>,
+  headerNames: string[],
+): string {
+  for (const headerName of headerNames) {
+    const index = indexByHeader.get(normalizeGoogleSheetsHeader(headerName));
+
+    if (index !== undefined) {
+      const value = (row[index] ?? "").trim();
+
+      if (value.length > 0) {
+        return value;
+      }
+    }
+  }
+
+  return "";
+}
+
+function findMatchingHubspotPreviewRow(input: {
+  row: string[];
+  indexByHeader: Map<string, number>;
+  lookup: PreviewRowLookup;
+}): ExportPreviewRow | null {
+  const email = getGoogleSheetsRowValue(input.row, input.indexByHeader, ["Email"]);
+  const youtubeUrl = getGoogleSheetsRowValue(input.row, input.indexByHeader, [
+    "YouTube URL",
+    "Channel URL",
+  ]);
+  const youtubeHandle = getGoogleSheetsRowValue(input.row, input.indexByHeader, ["YouTube Handle"]);
+  const channelName = getGoogleSheetsRowValue(input.row, input.indexByHeader, ["Channel Name"]);
+  const campaignName = getGoogleSheetsRowValue(input.row, input.indexByHeader, ["Campaign Name"]);
+  const dealName = getGoogleSheetsRowValue(input.row, input.indexByHeader, ["Deal name"]);
+
+  const keys = [
+    input.lookup.byEmailAndYoutubeUrlAndCampaign.get(
+      buildPreviewLookupKey([email, youtubeUrl, campaignName]) ?? "",
+    ),
+    input.lookup.byEmailAndChannelNameAndCampaign.get(
+      buildPreviewLookupKey([email, channelName, campaignName]) ?? "",
+    ),
+    input.lookup.byDealNameAndEmail.get(buildPreviewLookupKey([dealName, email]) ?? ""),
+    input.lookup.byYoutubeUrlAndCampaign.get(
+      buildPreviewLookupKey([youtubeUrl, campaignName]) ?? "",
+    ),
+    input.lookup.byYoutubeHandleAndCampaign.get(
+      buildPreviewLookupKey([youtubeHandle, campaignName]) ?? "",
+    ),
+    input.lookup.byChannelNameAndCampaign.get(
+      buildPreviewLookupKey([channelName, campaignName]) ?? "",
+    ),
+  ];
+
+  for (const candidate of keys) {
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+export function enrichGoogleSheetsCreatorListRows(input: {
+  headerRow: string[];
+  rows: string[][];
+  previewColumns: ExportPreviewColumn[];
+  previewRows: ExportPreviewRow[];
+}): {
+  matchedRowCount: number;
+  updatedRowCount: number;
+  updatedFieldCount: number;
+  rows: string[][];
+} {
+  const indexByHeader = getSheetHeaderIndexMap(input.headerRow);
+  const lookup = buildPreviewRowLookup(input.previewRows);
+  const enrichableColumns = input.previewColumns
+    .map((column) => ({
+      key: column.key,
+      index: indexByHeader.get(normalizeGoogleSheetsHeader(column.label)),
+    }))
+    .filter((column): column is { key: string; index: number } => column.index !== undefined);
+  let matchedRowCount = 0;
+  let updatedRowCount = 0;
+  let updatedFieldCount = 0;
+
+  const rows = input.rows.map((row) => {
+    if (isEmptyGoogleSheetsRow(row, input.headerRow.length)) {
+      return row;
+    }
+
+    const previewRow = findMatchingHubspotPreviewRow({
+      row,
+      indexByHeader,
+      lookup,
+    });
+
+    if (!previewRow) {
+      return row;
+    }
+
+    matchedRowCount += 1;
+
+    const nextRow = [...row];
+    let rowUpdatedFieldCount = 0;
+
+    enrichableColumns.forEach((column) => {
+      if ((nextRow[column.index] ?? "").trim().length > 0) {
+        return;
+      }
+
+      const nextValue = (previewRow.values[column.key] ?? "").trim();
+
+      if (!nextValue) {
+        return;
+      }
+
+      nextRow[column.index] = nextValue;
+      rowUpdatedFieldCount += 1;
+    });
+
+    if (rowUpdatedFieldCount > 0) {
+      updatedRowCount += 1;
+      updatedFieldCount += rowUpdatedFieldCount;
+    }
+
+    return nextRow;
+  });
+
+  return {
+    matchedRowCount,
+    updatedRowCount,
+    updatedFieldCount,
+    rows,
+  };
+}
+
+function parseGoogleSheetsExportRequest(request: ExportRunToGoogleSheetsRequest): {
+  parsedRequest: ExportRunToGoogleSheetsRequest;
+  spreadsheetId: string;
+} {
+  const parsedRequest = exportRunToGoogleSheetsRequestSchema.parse(request);
   const spreadsheetId = extractGoogleSpreadsheetId(parsedRequest.spreadsheetIdOrUrl);
 
   if (!spreadsheetId) {
@@ -140,6 +376,20 @@ export async function exportHubspotRunToGoogleSheets(input: {
       "Enter a valid Google Sheets URL or spreadsheet id",
     );
   }
+
+  return {
+    parsedRequest,
+    spreadsheetId,
+  };
+}
+
+export async function exportHubspotRunToGoogleSheets(input: {
+  runId: string;
+  userId: string;
+  role: "admin" | "user";
+  request: ExportRunToGoogleSheetsRequest;
+}): Promise<ExportRunToGoogleSheetsResponse> {
+  const { parsedRequest, spreadsheetId } = parseGoogleSheetsExportRequest(input.request);
 
   const preview = await getHubspotExportPreview({
     runId: input.runId,

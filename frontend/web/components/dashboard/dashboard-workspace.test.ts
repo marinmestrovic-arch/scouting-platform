@@ -106,13 +106,13 @@ describe("dashboard workspace", () => {
       ]);
   });
 
-  it("renders Week 7 dashboard filters, metadata columns, and run actions", () => {
+  it("renders dashboard filters, metadata columns, and run actions without brief links", () => {
     const html = renderToStaticMarkup(createElement(DashboardWorkspace));
 
     expect(html).toContain("Campaign Manager");
     expect(html).toContain("Client");
     expect(html).toContain("Market");
-    expect(html).toContain("Brief Link");
+    expect(html).not.toContain("Brief Link");
     expect(html).toContain("Influencer List");
     expect(html).toContain("Coverage");
     expect(html).toContain("Status");
@@ -123,7 +123,7 @@ describe("dashboard workspace", () => {
     expect(html).toContain(">Sony<");
     expect(html).toContain(">DACH<");
     expect(html).toContain(">Manager<");
-    expect(html).toContain('href="https://example.com/brief"');
+    expect(html).not.toContain('href="https://example.com/brief"');
     expect(html).toContain("60% coverage · 12/20");
     expect(html).toContain(">Completed<");
     expect(html).toContain(">2026-03-15 12:00 UTC<");

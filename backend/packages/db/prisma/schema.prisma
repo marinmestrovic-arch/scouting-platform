@@ -189,6 +189,15 @@ enum HubspotImportBatchRowStatus {
   @@map("hubspot_import_batch_row_status")
 }
 
+enum HubspotPreviewEnrichmentJobStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("hubspot_preview_enrichment_job_status")
+}
+
 enum CsvExportScopeType {
   SELECTED @map("selected")
   FILTERED @map("filtered")
@@ -224,6 +233,7 @@ model User {
   requestedCsvExportBatches     CsvExportBatch[]        @relation("CsvExportRequestedBy")
   requestedHubspotPushBatches   HubspotPushBatch[]      @relation("HubspotPushRequestedBy")
   requestedHubspotImportBatches HubspotImportBatch[]    @relation("HubspotImportRequestedBy")
+  requestedHubspotPreviewEnrichmentJobs HubspotPreviewEnrichmentJob[] @relation("HubspotPreviewEnrichmentRequestedBy")
   createdCampaigns              Campaign[]              @relation("CampaignCreatedBy")
   youtubeDiscoveryCache         YoutubeDiscoveryCache[]
 
@@ -414,7 +424,6 @@ model ChannelMetric {
   subscriberCount  BigInt?        @map("subscriber_count")
   viewCount        BigInt?        @map("view_count")
   videoCount       BigInt?        @map("video_count")
-  youtubeAverageViews BigInt?     @map("youtube_average_views")
   youtubeEngagementRate Float?    @map("youtube_engagement_rate")
   youtubeFollowers  BigInt?       @map("youtube_followers")
   csvImportBatchId String?        @map("csv_import_batch_id") @db.Uuid
@@ -768,6 +777,32 @@ model HubspotImportBatchRow {
   @@map("hubspot_import_batch_rows")
 }
 
+model HubspotPreviewEnrichmentJob {
+  id                    String                            @id @default(uuid()) @db.Uuid
+  runRequestId          String                            @map("run_request_id") @db.Uuid
+  requestedByUserId     String                            @map("requested_by_user_id") @db.Uuid
+  status                HubspotPreviewEnrichmentJobStatus @default(QUEUED)
+  progressPercentage    Int                               @default(0) @map("progress_percentage")
+  progressMessage       String?                           @map("progress_message") @db.Text
+  processedChannelCount Int                               @default(0) @map("processed_channel_count")
+  updatedRowCount       Int                               @default(0) @map("updated_row_count")
+  updatedFieldCount     Int                               @default(0) @map("updated_field_count")
+  failedChannelCount    Int                               @default(0) @map("failed_channel_count")
+  startedAt             DateTime?                         @map("started_at")
+  completedAt           DateTime?                         @map("completed_at")
+  lastError             String?                           @map("last_error") @db.Text
+  createdAt             DateTime                          @default(now()) @map("created_at")
+  updatedAt             DateTime                          @updatedAt @map("updated_at")
+  requestedByUser       User                              @relation("HubspotPreviewEnrichmentRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  runRequest            RunRequest                        @relation(fields: [runRequestId], references: [id], onDelete: Cascade)
+
+  @@index([runRequestId], map: "hubspot_preview_enrichment_jobs_run_request_id_idx")
+  @@index([requestedByUserId], map: "hubspot_preview_enrichment_jobs_requested_by_user_id_idx")
+  @@index([status, createdAt], map: "hubspot_preview_enrichment_jobs_status_created_at_idx")
+  @@index([createdAt], map: "hubspot_preview_enrichment_jobs_created_at_idx")
+  @@map("hubspot_preview_enrichment_jobs")
+}
+
 model RunRequest {
   id                String           @id @default(uuid()) @db.Uuid
   requestedByUserId String           @map("requested_by_user_id") @db.Uuid
@@ -811,6 +846,7 @@ model RunRequest {
   campaign          Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   campaignManagerUser User?          @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
   hubspotImportBatches HubspotImportBatch[]
+  hubspotPreviewEnrichmentJobs HubspotPreviewEnrichmentJob[]
   hubspotRowOverrides RunHubspotRowOverride[]
   channelAssessments RunChannelAssessment[]
   results           RunResult[]
@@ -836,6 +872,7 @@ model RunHubspotRowOverride {
   firstName         String?    @map("first_name")
   lastName          String?    @map("last_name")
   email             String?
+  phoneNumber       String?    @map("phone_number")
   currency          String?
   dealType          String?    @map("deal_type")
   activationType    String?    @map("activation_type")

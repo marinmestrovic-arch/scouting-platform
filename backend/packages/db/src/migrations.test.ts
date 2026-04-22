@@ -82,6 +82,14 @@ const csvImportHubspotDropdownFieldsMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260420120000_csv_import_hubspot_dropdown_fields/migration.sql",
 );
+const hubspotPreviewEnrichmentJobsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260421120000_hubspot_preview_enrichment_jobs/migration.sql",
+);
+const removeYoutubeAverageViewsMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260421143000_remove_youtube_average_views/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -210,7 +218,6 @@ describe("week 7 workspace metadata and hubspot import migration", () => {
     expect(migrationSql).toContain('"first_name" TEXT');
     expect(migrationSql).toContain('"last_name" TEXT');
     expect(migrationSql).toContain('ALTER TABLE "channel_metrics"');
-    expect(migrationSql).toContain('"youtube_average_views" BIGINT');
     expect(migrationSql).toContain('"youtube_engagement_rate" DOUBLE PRECISION');
     expect(migrationSql).toContain('"youtube_followers" BIGINT');
     expect(migrationSql).toContain('CREATE TABLE "hubspot_import_batches"');
@@ -370,5 +377,27 @@ describe("week 8 launch readiness indexes migration", () => {
     );
     expect(migrationSql).toContain('CREATE INDEX "run_requests_client_created_at_idx"');
     expect(migrationSql).toContain('CREATE INDEX "run_requests_market_created_at_idx"');
+  });
+});
+
+describe("hubspot preview enrichment jobs migration", () => {
+  it("adds durable Creator List enrichment jobs and phone row overrides", () => {
+    const migrationSql = readFileSync(hubspotPreviewEnrichmentJobsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "hubspot_preview_enrichment_job_status" AS ENUM');
+    expect(migrationSql).toContain('ALTER TABLE "run_hubspot_row_overrides"');
+    expect(migrationSql).toContain('"phone_number" TEXT');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_preview_enrichment_jobs"');
+    expect(migrationSql).toContain(
+      'CREATE INDEX "hubspot_preview_enrichment_jobs_status_created_at_idx"',
+    );
+  });
+});
+
+describe("remove youtube average views migration", () => {
+  it("drops the deprecated channel metrics average views column", () => {
+    const migrationSql = readFileSync(removeYoutubeAverageViewsMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('DROP COLUMN IF EXISTS "youtube_average_views"');
   });
 });

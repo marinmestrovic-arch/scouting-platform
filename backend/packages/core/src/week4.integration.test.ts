@@ -412,7 +412,6 @@ integration("week 4 core integration", () => {
         channelId: channel.id,
       },
     });
-    expect(metrics.youtubeAverageViews).toBe(517n);
     expect(metrics.youtubeFollowers).toBe(1200n);
     expect(metrics.youtubeEngagementRate).toBeCloseTo(15, 5);
 
@@ -540,7 +539,6 @@ integration("week 4 core integration", () => {
         channelId: channel.id,
       },
     });
-    expect(metrics.youtubeAverageViews).toBe(517n);
     expect(metrics.youtubeFollowers).toBe(1200n);
     expect(metrics.youtubeEngagementRate).toBeNull();
 

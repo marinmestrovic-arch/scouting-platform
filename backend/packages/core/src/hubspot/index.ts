@@ -90,7 +90,6 @@ const channelPushSelect = {
       subscriberCount: true,
       viewCount: true,
       videoCount: true,
-      youtubeAverageViews: true,
       youtubeEngagementRate: true,
       youtubeFollowers: true,
     },
@@ -284,7 +283,6 @@ export function buildHubspotContactProperties(channel: PushChannelRecord): Recor
       channel.metrics?.youtubeFollowers?.toString()
       ?? subscriberCount?.toString()
       ?? "",
-    youtube_video_average_views: channel.metrics?.youtubeAverageViews?.toString() ?? "",
     youtube_engagement_rate: channel.metrics?.youtubeEngagementRate?.toString() ?? "",
     influencer_size: computeInfluencerSizeTier(subscriberCount),
     language: channel.contentLanguage ?? "",

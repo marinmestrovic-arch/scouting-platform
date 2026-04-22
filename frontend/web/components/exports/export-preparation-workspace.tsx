@@ -13,7 +13,10 @@ import type {
 } from "@scouting-platform/contracts";
 import React, { useMemo, useState } from "react";
 
-import { updateHubspotExportPreview } from "../../lib/export-previews-api";
+import {
+  enrichHubspotExportPreview,
+  updateHubspotExportPreview,
+} from "../../lib/export-previews-api";
 import { exportRunToGoogleSheets } from "../../lib/google-sheets-export-api";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
@@ -33,6 +36,13 @@ type HubspotDrafts = {
   touchedDefaults: Set<keyof HubspotPrepUpdateDefaults>;
   rowValues: Record<string, Record<string, string>>;
   touchedRowFields: Record<string, Set<HubspotPrepClearField["field"]>>;
+};
+
+type CreatorListEnrichmentProgressState = {
+  open: boolean;
+  percentage: number;
+  message: string;
+  status: "idle" | "saving" | "success" | "error";
 };
 
 function escapeCsvCell(value: string): string {
@@ -90,6 +100,25 @@ function createEmptyGoogleSheetsRequest(): ExportRunToGoogleSheetsRequest {
     spreadsheetIdOrUrl: "",
     sheetName: "",
   };
+}
+
+function createEmptyCreatorListEnrichmentProgressState(): CreatorListEnrichmentProgressState {
+  return {
+    open: false,
+    percentage: 0,
+    message: "",
+    status: "idle",
+  };
+}
+
+function getCreatorListEnrichmentBlockingMessage(input: {
+  hasPendingChanges: boolean;
+}): string | null {
+  if (input.hasPendingChanges) {
+    return "Save HubSpot preparation before starting Creator List enrichment.";
+  }
+
+  return null;
 }
 
 function getCurrentRowValue(drafts: HubspotDrafts, rowKey: string, field: string): string {
@@ -179,6 +208,14 @@ export function ExportPreparationWorkspace({
     "idle" | "saving" | "success" | "error"
   >("idle");
   const [googleSheetsMessage, setGoogleSheetsMessage] = useState("");
+  const [creatorListEnrichmentState, setCreatorListEnrichmentState] = useState<
+    "idle" | "saving" | "success" | "error"
+  >("idle");
+  const [creatorListEnrichmentMessage, setCreatorListEnrichmentMessage] = useState("");
+  const [creatorListEnrichmentProgress, setCreatorListEnrichmentProgress] =
+    useState<CreatorListEnrichmentProgressState>(
+      createEmptyCreatorListEnrichmentProgressState(),
+    );
   const fileName = useMemo(() => {
     const suffix = mode === "hubspot" ? "hubspot-prep" : "csv-export";
     return `${currentPreview.run.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${suffix}.csv`;
@@ -192,8 +229,13 @@ export function ExportPreparationWorkspace({
     googleSheetsRequest.spreadsheetIdOrUrl.trim().length > 0 &&
     googleSheetsRequest.sheetName.trim().length > 0 &&
     googleSheetsState !== "saving" &&
+    creatorListEnrichmentState !== "saving" &&
     requestState !== "saving" &&
     !hasPendingChanges;
+  const canEnrichCreatorList =
+    googleSheetsState !== "saving" &&
+    creatorListEnrichmentState !== "saving" &&
+    requestState !== "saving";
 
   function updateDefault(field: keyof HubspotPrepUpdateDefaults, value: string) {
     setDrafts((current) => ({
@@ -338,6 +380,82 @@ export function ExportPreparationWorkspace({
     }
   }
 
+  async function handleCreatorListEnrichment() {
+    if (!isHubspotPreview(currentPreview)) {
+      return;
+    }
+
+    const blockingMessage = getCreatorListEnrichmentBlockingMessage({
+      hasPendingChanges,
+    });
+
+    if (blockingMessage) {
+      setCreatorListEnrichmentState("error");
+      setCreatorListEnrichmentMessage(blockingMessage);
+      setCreatorListEnrichmentProgress({
+        open: true,
+        percentage: 0,
+        message: blockingMessage,
+        status: "error",
+      });
+      return;
+    }
+
+    setCreatorListEnrichmentState("saving");
+    setCreatorListEnrichmentMessage("Enriching Creator List rows in the workspace...");
+    setCreatorListEnrichmentProgress({
+      open: true,
+      percentage: 2,
+      message: "Starting Creator List enrichment...",
+      status: "saving",
+    });
+
+    try {
+      const result = await enrichHubspotExportPreview(currentPreview.run.id, {
+        onProgress(progress) {
+          setCreatorListEnrichmentProgress({
+            open: true,
+            percentage: progress.percentage,
+            message: progress.message,
+            status: "saving",
+          });
+        },
+      });
+
+      const successMessage =
+        result.updatedFieldCount > 0
+          ? `Enriched ${result.updatedRowCount} row${result.updatedRowCount === 1 ? "" : "s"} in the workspace. Filled ${result.updatedFieldCount} field${result.updatedFieldCount === 1 ? "" : "s"} across ${result.processedChannelCount} refreshed channel${result.processedChannelCount === 1 ? "" : "s"}${result.failedChannelCount > 0 ? `. ${result.failedChannelCount} channel${result.failedChannelCount === 1 ? "" : "s"} could not be refreshed.` : "."}`
+          : result.failedChannelCount > 0
+            ? `Creator List enrichment finished, but ${result.failedChannelCount} channel${result.failedChannelCount === 1 ? "" : "s"} could not be refreshed and no additional fields were filled.`
+            : "Creator List enrichment finished. No additional fields were filled.";
+
+      setCurrentPreview(result.preview);
+      setDrafts(createEmptyDrafts());
+      setCreatorListEnrichmentState("success");
+      setCreatorListEnrichmentMessage(successMessage);
+      setCreatorListEnrichmentProgress({
+        open: true,
+        percentage: 100,
+        message: successMessage,
+        status: "success",
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unable to enrich this creator list in the workspace.";
+
+      setCreatorListEnrichmentState("error");
+      setCreatorListEnrichmentMessage(errorMessage);
+      setCreatorListEnrichmentProgress((current) => ({
+        open: true,
+        percentage: current.percentage,
+        message: errorMessage,
+        status: "error",
+      }));
+    }
+  }
+
   return (
     <div className="export-prep">
       {isHubspotPreview(currentPreview) ? (
@@ -442,7 +560,9 @@ export function ExportPreparationWorkspace({
             <label className="new-scouting__field export-prep__default-field">
               <span>Spreadsheet URL or ID</span>
               <input
-                disabled={googleSheetsState === "saving"}
+                disabled={
+                  googleSheetsState === "saving" || creatorListEnrichmentState === "saving"
+                }
                 onChange={(event) => {
                   const { value } = event.currentTarget;
 
@@ -461,7 +581,9 @@ export function ExportPreparationWorkspace({
             <label className="new-scouting__field export-prep__default-field">
               <span>Sheet name</span>
               <input
-                disabled={googleSheetsState === "saving"}
+                disabled={
+                  googleSheetsState === "saving" || creatorListEnrichmentState === "saving"
+                }
                 onChange={(event) => {
                   const { value } = event.currentTarget;
 
@@ -491,10 +613,36 @@ export function ExportPreparationWorkspace({
         </section>
       ) : null}
 
+      {creatorListEnrichmentMessage ? (
+        <p
+          className={`new-scouting__status new-scouting__status--${
+            creatorListEnrichmentState === "success" ? "idle" : creatorListEnrichmentState
+          }`}
+          role={creatorListEnrichmentState === "error" ? "alert" : "status"}
+        >
+          {creatorListEnrichmentMessage}
+        </p>
+      ) : null}
+
       <div className="export-prep__actions">
-        <button className="workspace-button workspace-button--secondary" onClick={() => downloadCsv(fileName, buildCsv(currentPreview.columns, currentPreview.rows))} type="button">
-          Download {mode === "hubspot" ? "HubSpot" : "CSV"} file
-        </button>
+        {mode === "csv" ? (
+          <button
+            className="workspace-button workspace-button--secondary"
+            onClick={() => downloadCsv(fileName, buildCsv(currentPreview.columns, currentPreview.rows))}
+            type="button"
+          >
+            Download CSV file
+          </button>
+        ) : (
+          <button
+            className="workspace-button workspace-button--secondary"
+            disabled={!canEnrichCreatorList}
+            onClick={() => void handleCreatorListEnrichment()}
+            type="button"
+          >
+            {creatorListEnrichmentState === "saving" ? "Enriching..." : "Enrich Creator List"}
+          </button>
+        )}
         {isHubspotPreview(currentPreview) ? (
           <button
             className="database-records__cta"
@@ -584,6 +732,78 @@ export function ExportPreparationWorkspace({
           </tbody>
         </table>
       </div>
+
+      {creatorListEnrichmentProgress.open ? (
+        <div
+          className="database-admin__modal-backdrop"
+          onClick={() => {
+            if (creatorListEnrichmentProgress.status === "saving") {
+              return;
+            }
+
+            setCreatorListEnrichmentProgress(createEmptyCreatorListEnrichmentProgressState());
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="creator-list-enrichment-progress-title"
+            aria-modal="true"
+            className="database-admin__modal export-prep__progress-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="database-admin__modal-header">
+              <div>
+                <h3 id="creator-list-enrichment-progress-title">Creator List Enrichment</h3>
+                <p className="workspace-copy">
+                  Keep this window open while the workspace enrichment runs.
+                </p>
+              </div>
+              <button
+                className="database-admin__modal-close"
+                disabled={creatorListEnrichmentProgress.status === "saving"}
+                onClick={() =>
+                  setCreatorListEnrichmentProgress(
+                    createEmptyCreatorListEnrichmentProgressState(),
+                  )
+                }
+                type="button"
+              >
+                {creatorListEnrichmentProgress.status === "saving" ? "Running..." : "Close"}
+              </button>
+            </div>
+
+            <div className="export-prep__progress-meta" aria-live="polite">
+              <span className="export-prep__progress-percent">
+                {Math.min(100, Math.max(0, creatorListEnrichmentProgress.percentage))}%
+              </span>
+              <p className="export-prep__progress-message">
+                {creatorListEnrichmentProgress.message}
+              </p>
+            </div>
+
+            <div
+              aria-hidden="true"
+              className="export-prep__progress-track"
+            >
+              <span
+                className="export-prep__progress-fill"
+                style={{
+                  width: `${Math.min(100, Math.max(0, creatorListEnrichmentProgress.percentage))}%`,
+                }}
+              />
+            </div>
+
+            <p className="export-prep__progress-copy">
+              {creatorListEnrichmentProgress.status === "saving"
+                ? "Enrichment is running."
+                : creatorListEnrichmentProgress.status === "error"
+                  ? "Enrichment stopped before completion."
+                  : "Enrichment finished."}
+            </p>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -46,6 +46,7 @@ export const hubspotPrepRowOverrideValuesSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   email: z.string().optional(),
+  phoneNumber: z.string().optional(),
   currency: z.string().optional(),
   dealType: z.string().optional(),
   activationType: z.string().optional(),
@@ -61,6 +62,7 @@ export const hubspotPrepClearFieldSchema = z.object({
     "firstName",
     "lastName",
     "email",
+    "phoneNumber",
     "currency",
     "dealType",
     "activationType",
@@ -106,6 +108,61 @@ export const csvExportPreviewSchema = z.object({
   rows: z.array(exportPreviewRowSchema),
 });
 
+export const hubspotPreviewEnrichmentResponseSchema = z.object({
+  preview: hubspotExportPreviewSchema,
+  processedChannelCount: z.number().int().nonnegative(),
+  updatedRowCount: z.number().int().nonnegative(),
+  updatedFieldCount: z.number().int().nonnegative(),
+  failedChannelCount: z.number().int().nonnegative(),
+});
+
+export const hubspotPreviewEnrichmentJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+]);
+
+export const hubspotPreviewEnrichmentJobSummarySchema = z.object({
+  id: z.uuid(),
+  runId: z.uuid(),
+  status: hubspotPreviewEnrichmentJobStatusSchema,
+  progressPercentage: z.number().int().min(0).max(100),
+  progressMessage: z.string().nullable(),
+  processedChannelCount: z.number().int().nonnegative(),
+  updatedRowCount: z.number().int().nonnegative(),
+  updatedFieldCount: z.number().int().nonnegative(),
+  failedChannelCount: z.number().int().nonnegative(),
+  lastError: z.string().nullable(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+export const createHubspotPreviewEnrichmentResponseSchema = z.object({
+  job: hubspotPreviewEnrichmentJobSummarySchema,
+});
+
+export const getHubspotPreviewEnrichmentStatusResponseSchema = z.object({
+  job: hubspotPreviewEnrichmentJobSummarySchema,
+});
+
+export const hubspotPreviewEnrichmentProgressEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("progress"),
+    percentage: z.number().min(0).max(100),
+    message: z.string().trim().min(1),
+  }),
+  z.object({
+    type: z.literal("complete"),
+    result: hubspotPreviewEnrichmentResponseSchema,
+  }),
+  z.object({
+    type: z.literal("error"),
+    message: z.string().trim().min(1),
+  }),
+]);
+
 export type ExportPreviewColumn = z.infer<typeof exportPreviewColumnSchema>;
 export type ExportPreviewValidationIssue = z.infer<typeof exportPreviewValidationIssueSchema>;
 export type ExportPreviewRow = z.infer<typeof exportPreviewRowSchema>;
@@ -117,3 +174,21 @@ export type HubspotPrepBulkRowOverride = z.infer<typeof hubspotPrepBulkRowOverri
 export type HubspotPrepUpdateRequest = z.infer<typeof hubspotPrepUpdateRequestSchema>;
 export type HubspotExportPreview = z.infer<typeof hubspotExportPreviewSchema>;
 export type CsvExportPreview = z.infer<typeof csvExportPreviewSchema>;
+export type HubspotPreviewEnrichmentResponse = z.infer<
+  typeof hubspotPreviewEnrichmentResponseSchema
+>;
+export type HubspotPreviewEnrichmentJobStatus = z.infer<
+  typeof hubspotPreviewEnrichmentJobStatusSchema
+>;
+export type HubspotPreviewEnrichmentJobSummary = z.infer<
+  typeof hubspotPreviewEnrichmentJobSummarySchema
+>;
+export type CreateHubspotPreviewEnrichmentResponse = z.infer<
+  typeof createHubspotPreviewEnrichmentResponseSchema
+>;
+export type GetHubspotPreviewEnrichmentStatusResponse = z.infer<
+  typeof getHubspotPreviewEnrichmentStatusResponseSchema
+>;
+export type HubspotPreviewEnrichmentProgressEvent = z.infer<
+  typeof hubspotPreviewEnrichmentProgressEventSchema
+>;
