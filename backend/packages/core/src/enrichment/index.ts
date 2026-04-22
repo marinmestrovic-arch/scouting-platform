@@ -23,7 +23,12 @@ import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
 import { enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
-import { deriveYoutubeMetrics, isYoutubeShortVideo, normalizeYoutubeContext } from "./metrics";
+import {
+  deriveCreatorListYoutubeMetrics,
+  deriveYoutubeMetrics,
+  isYoutubeShortVideo,
+  normalizeYoutubeContext,
+} from "./metrics";
 import { isYoutubeContextFresh, resolveChannelEnrichmentStatus } from "./status";
 
 type ChannelYoutubeContextCacheRow = {
@@ -564,6 +569,7 @@ export async function executeChannelLlmEnrichment(input: {
     }
 
     youtubeMetrics ??= deriveYoutubeMetrics(youtubeContext);
+    const creatorListYoutubeMetrics = deriveCreatorListYoutubeMetrics(youtubeMetrics.context);
 
     await prisma.$transaction(async (tx) => {
       await tx.channelYoutubeContext.update({
@@ -600,6 +606,8 @@ export async function executeChannelLlmEnrichment(input: {
           videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
           youtubeEngagementRate: youtubeMetrics.engagementRate,
           youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
+          youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
+          youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
         },
         update: {
           subscriberCount: toNullableBigInt(youtubeMetrics.context.subscriberCount),
@@ -607,6 +615,8 @@ export async function executeChannelLlmEnrichment(input: {
           videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
           youtubeEngagementRate: youtubeMetrics.engagementRate,
           youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
+          youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
+          youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
         },
       });
 

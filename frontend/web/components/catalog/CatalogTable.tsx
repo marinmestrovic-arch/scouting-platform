@@ -95,6 +95,8 @@ const CatalogTableRow = memo(function CatalogTableRow({
       <td>{channel.influencerVertical ?? "—"}</td>
       <td>{channel.influencerType ?? "—"}</td>
       <td>{formatChannelEngagementRate(channel.youtubeEngagementRate ?? null)}</td>
+      <td>{formatChannelMetric(channel.youtubeVideoMedianViews ?? null)}</td>
+      <td>{formatChannelMetric(channel.youtubeShortsMedianViews ?? null)}</td>
       <td>{formatChannelMetric(channel.youtubeFollowers ?? null)}</td>
     </tr>
   );
@@ -130,6 +132,12 @@ function CatalogCard({
           </Link>
         </h3>
         <p className="catalog-card__handle">{getChannelHandle(channel)}</p>
+        <p className="catalog-card__metric">
+          Video median: {formatChannelMetric(channel.youtubeVideoMedianViews ?? null)}
+        </p>
+        <p className="catalog-card__metric">
+          Shorts median: {formatChannelMetric(channel.youtubeShortsMedianViews ?? null)}
+        </p>
         <p className="catalog-card__metric">
           Followers: {formatChannelMetric(channel.youtubeFollowers ?? null)}
         </p>
@@ -326,6 +334,8 @@ export function CatalogTable({
               <th scope="col">Influencer Vertical</th>
               <th scope="col">Influencer Type</th>
               <th scope="col">YouTube Engagement Rate</th>
+              <th scope="col">YouTube Video Median Views</th>
+              <th scope="col">YouTube Shorts Median Views</th>
               <th scope="col">YouTube Followers</th>
             </tr>
           </thead>

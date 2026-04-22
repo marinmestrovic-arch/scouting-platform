@@ -63,8 +63,9 @@ function buildDetail(overrides?: Partial<CsvExportBatchDetail>): CsvExportBatchD
       type: "filtered",
       filters: {
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: ["pending_approval"],
+        countryRegion: ["Croatia"],
+        influencerVertical: ["Gaming"],
+        youtubeVideoMedianViewsMin: 100000,
       },
     },
     ...overrides,
@@ -129,11 +130,17 @@ describe("csv export batch result shell", () => {
     expect(html).toContain("Batch summary");
     expect(html).toContain("Filtered scope snapshot");
     expect(html).toContain("Search: space");
+    expect(html).toContain("Country/Region");
+    expect(html).toContain("Croatia");
+    expect(html).toContain("Influencer Vertical");
+    expect(html).toContain("Gaming");
+    expect(html).toContain("Video Median Views");
+    expect(html).toContain("&gt;= 100,000");
     expect(html).toContain("schema v1");
     expect(html).toContain("Last refresh failed: Temporary refresh error");
     expect(html).toContain('href="/exports"');
     expect(html).toContain(
-      'href="/catalog?page=1&amp;query=space&amp;enrichmentStatus=completed&amp;advancedReportStatus=pending_approval"',
+      'href="/catalog?page=1&amp;query=space&amp;countryRegion=Croatia&amp;influencerVertical=Gaming&amp;youtubeVideoMedianViewsMin=100000"',
     );
     expect(html).toContain(
       'href="/api/csv-export-batches/99d39ccb-3cf5-4f09-a647-a0e1387d31cb/download"',

@@ -71,6 +71,39 @@ describe("week 1 and week 2 contracts", () => {
     expect(payload.advancedReportStatus).toEqual(["pending_approval", "stale"]);
   });
 
+  it("accepts creator profile filters and numeric YouTube metric ranges", () => {
+    const payload = listChannelsQuerySchema.parse({
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      influencerType: ["Creator"],
+      youtubeVideoMedianViewsMin: "100000",
+      youtubeVideoMedianViewsMax: "200000",
+      youtubeShortsMedianViewsMin: "50000",
+      youtubeShortsMedianViewsMax: "150000",
+      youtubeFollowersMin: "10000",
+      youtubeFollowersMax: "500000",
+    });
+
+    expect(payload.countryRegion).toEqual(["Croatia", "Germany"]);
+    expect(payload.influencerVertical).toEqual(["Gaming"]);
+    expect(payload.influencerType).toEqual(["Creator"]);
+    expect(payload.youtubeVideoMedianViewsMin).toBe(100000);
+    expect(payload.youtubeVideoMedianViewsMax).toBe(200000);
+    expect(payload.youtubeShortsMedianViewsMin).toBe(50000);
+    expect(payload.youtubeShortsMedianViewsMax).toBe(150000);
+    expect(payload.youtubeFollowersMin).toBe(10000);
+    expect(payload.youtubeFollowersMax).toBe(500000);
+  });
+
+  it("rejects inverted YouTube metric ranges", () => {
+    const parsed = listChannelsQuerySchema.safeParse({
+      youtubeVideoMedianViewsMin: "200000",
+      youtubeVideoMedianViewsMax: "100000",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects invalid channel filter statuses", () => {
     const parsed = listChannelsQuerySchema.safeParse({
       enrichmentStatus: ["not-a-status"],

@@ -319,6 +319,95 @@ integration("week 2 core integration", () => {
     expect(byYoutubeId.items.map((item) => item.youtubeChannelId)).toEqual(["UC_SPACE_ALPHA"]);
   });
 
+  it("filters channel list by creator profile and YouTube metric ranges", async () => {
+    const matchedChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_CREATOR_MATCH",
+        title: "Creator Match",
+        handle: "@creator-match",
+        countryRegion: "Croatia",
+        influencerVertical: "Gaming",
+        influencerType: "Creator",
+      },
+    });
+    const lowMetricChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_LOW_METRICS",
+        title: "Low Metrics",
+        handle: "low-metrics",
+        countryRegion: "Croatia",
+        influencerVertical: "Gaming",
+        influencerType: "Creator",
+      },
+    });
+    const wrongVerticalChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_WRONG_VERTICAL",
+        title: "Wrong Vertical",
+        handle: "@wrong-vertical",
+        countryRegion: "Germany",
+        influencerVertical: "Beauty",
+        influencerType: "Creator",
+      },
+    });
+
+    await prisma.channelMetric.createMany({
+      data: [
+        {
+          channelId: matchedChannel.id,
+          youtubeFollowers: 500000n,
+          youtubeVideoMedianViews: 220000n,
+          youtubeShortsMedianViews: 180000n,
+        },
+        {
+          channelId: lowMetricChannel.id,
+          youtubeFollowers: 300000n,
+          youtubeVideoMedianViews: 120000n,
+          youtubeShortsMedianViews: 90000n,
+        },
+        {
+          channelId: wrongVerticalChannel.id,
+          youtubeFollowers: 700000n,
+          youtubeVideoMedianViews: 230000n,
+          youtubeShortsMedianViews: 190000n,
+        },
+      ],
+    });
+
+    const filtered = await core.listChannels({
+      page: 1,
+      pageSize: 20,
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      influencerType: ["Creator"],
+      youtubeVideoMedianViewsMin: 200000,
+      youtubeVideoMedianViewsMax: 250000,
+      youtubeShortsMedianViewsMin: 100000,
+      youtubeShortsMedianViewsMax: 200000,
+      youtubeFollowersMin: 400000,
+      youtubeFollowersMax: 600000,
+    });
+
+    expect(filtered.items.map((item) => item.youtubeChannelId)).toEqual(["UC_CREATOR_MATCH"]);
+    expect(filtered.items[0]).toMatchObject({
+      socialMediaLink: "https://www.youtube.com/@creator-match",
+      youtubeFollowers: "500000",
+      youtubeVideoMedianViews: "220000",
+      youtubeShortsMedianViews: "180000",
+    });
+
+    const matchedDetail = await core.getChannelById(matchedChannel.id);
+    expect(matchedDetail).toMatchObject({
+      youtubeVideoMedianViews: "220000",
+      youtubeShortsMedianViews: "180000",
+    });
+
+    const channelUrlFallbackDetail = await core.getChannelById(lowMetricChannel.id);
+    expect(channelUrlFallbackDetail?.socialMediaLink).toBe(
+      "https://www.youtube.com/channel/UC_LOW_METRICS",
+    );
+  });
+
   it("filters channel list by resolved enrichment status including stale", async () => {
     const requester = await prisma.user.create({
       data: {

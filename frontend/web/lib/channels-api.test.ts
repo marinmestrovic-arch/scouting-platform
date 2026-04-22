@@ -185,6 +185,39 @@ describe("channels api helpers", () => {
     );
   });
 
+  it("serializes creator profile filters and YouTube metric ranges", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+
+    await fetchChannels({
+      page: 1,
+      pageSize: 20,
+      query: "space",
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      influencerType: ["Creator"],
+      youtubeVideoMedianViewsMin: 100000,
+      youtubeVideoMedianViewsMax: 200000,
+      youtubeShortsMedianViewsMin: 50000,
+      youtubeShortsMedianViewsMax: 150000,
+      youtubeFollowersMin: 10000,
+      youtubeFollowersMax: 500000,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/channels?page=1&pageSize=20&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&influencerType=Creator&youtubeVideoMedianViewsMin=100000&youtubeVideoMedianViewsMax=200000&youtubeShortsMedianViewsMin=50000&youtubeShortsMedianViewsMax=150000&youtubeFollowersMin=10000&youtubeFollowersMax=500000",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
   it("passes an abort signal through to fetch", async () => {
     const abortController = new AbortController();
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

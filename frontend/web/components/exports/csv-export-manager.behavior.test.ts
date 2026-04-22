@@ -106,6 +106,24 @@ function createSearchParams(
   return searchParams;
 }
 
+function buildFilters(
+  overrides?: Partial<CsvExportManagerViewProps["filters"]>,
+): CsvExportManagerViewProps["filters"] {
+  return {
+    query: "",
+    countryRegion: [],
+    influencerVertical: [],
+    influencerType: [],
+    youtubeVideoMedianViewsMin: "",
+    youtubeVideoMedianViewsMax: "",
+    youtubeShortsMedianViewsMin: "",
+    youtubeShortsMedianViewsMax: "",
+    youtubeFollowersMin: "",
+    youtubeFollowersMax: "",
+    ...overrides,
+  };
+}
+
 function createShellState(options?: {
   filters?: CsvExportManagerViewProps["filters"];
   historyState?: CsvExportManagerViewProps["historyState"];
@@ -116,11 +134,7 @@ function createShellState(options?: {
   return {
     filters:
       options?.filters ??
-      {
-        query: "",
-        enrichmentStatus: [],
-        advancedReportStatus: [],
-      },
+      buildFilters(),
     historyState:
       options?.historyState ??
       {
@@ -161,7 +175,7 @@ function renderShell(options?: Parameters<typeof createShellState>[0] & { runEff
     options?.searchParams ??
       createSearchParams({
         query: "space",
-        enrichmentStatus: ["completed"],
+        countryRegion: ["Croatia"],
       }),
   );
   useStateMock
@@ -221,11 +235,7 @@ describe("csv export manager behavior", () => {
   it("requires at least one filter before creating a filtered export", async () => {
     const { element, setters } = renderShell({
       runEffects: false,
-      filters: {
-        query: "",
-        enrichmentStatus: [],
-        advancedReportStatus: [],
-      },
+      filters: buildFilters(),
     });
 
     await element.props.onCreateFilteredExport();
@@ -245,11 +255,11 @@ describe("csv export manager behavior", () => {
     createCsvExportBatchMock.mockResolvedValueOnce(createdBatch);
     const { element, setters } = renderShell({
       runEffects: false,
-      filters: {
+      filters: buildFilters({
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: ["pending_approval"],
-      },
+        countryRegion: ["Croatia"],
+        influencerVertical: ["Gaming"],
+      }),
       historyState: {
         status: "ready",
         items: [buildSummary()],
@@ -263,8 +273,8 @@ describe("csv export manager behavior", () => {
       type: "filtered",
       filters: {
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: ["pending_approval"],
+        countryRegion: ["Croatia"],
+        influencerVertical: ["Gaming"],
       },
     });
     expect(setters.setCreateState).toHaveBeenNthCalledWith(1, {
@@ -372,11 +382,10 @@ describe("csv export manager behavior", () => {
   it("updates the export URL when filters change and resets filter state", () => {
     const { element, setters } = renderShell({
       runEffects: false,
-      filters: {
+      filters: buildFilters({
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: [],
-      },
+        countryRegion: ["Croatia"],
+      }),
     });
 
     element.props.onQueryChange("mars");
@@ -384,15 +393,18 @@ describe("csv export manager behavior", () => {
 
     expect(setters.setFilters).toHaveBeenNthCalledWith(1, {
       query: "mars",
-      enrichmentStatus: ["completed"],
-      advancedReportStatus: [],
+      countryRegion: ["Croatia"],
+      influencerVertical: [],
+      influencerType: [],
+      youtubeVideoMedianViewsMin: "",
+      youtubeVideoMedianViewsMax: "",
+      youtubeShortsMedianViewsMin: "",
+      youtubeShortsMedianViewsMax: "",
+      youtubeFollowersMin: "",
+      youtubeFollowersMax: "",
     });
-    expect(replaceMock).toHaveBeenNthCalledWith(1, "/exports?query=mars&enrichmentStatus=completed");
-    expect(setters.setFilters).toHaveBeenNthCalledWith(2, {
-      query: "",
-      enrichmentStatus: [],
-      advancedReportStatus: [],
-    });
+    expect(replaceMock).toHaveBeenNthCalledWith(1, "/exports?query=mars&countryRegion=Croatia");
+    expect(setters.setFilters).toHaveBeenNthCalledWith(2, buildFilters());
     expect(replaceMock).toHaveBeenNthCalledWith(2, "/exports");
   });
 
@@ -402,11 +414,9 @@ describe("csv export manager behavior", () => {
     );
     const { element, setters } = renderShell({
       runEffects: false,
-      filters: {
+      filters: buildFilters({
         query: "space",
-        enrichmentStatus: [],
-        advancedReportStatus: [],
-      },
+      }),
     });
 
     await element.props.onCreateFilteredExport();

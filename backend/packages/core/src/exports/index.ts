@@ -161,8 +161,19 @@ function uniquePreservingOrder<T extends string>(values: readonly T[]): T[] {
   return unique;
 }
 
+function normalizeTextArray(values: readonly string[] | undefined): string[] | undefined {
+  const normalized = uniquePreservingOrder(
+    (values ?? []).map((value) => value.trim()).filter((value) => value.length > 0),
+  );
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function normalizeFilters(filters: CatalogChannelFilters): CatalogChannelFilters {
   const query = filters.query?.trim();
+  const countryRegion = normalizeTextArray(filters.countryRegion);
+  const influencerVertical = normalizeTextArray(filters.influencerVertical);
+  const influencerType = normalizeTextArray(filters.influencerType);
   const enrichmentStatus = filters.enrichmentStatus
     ? uniquePreservingOrder(filters.enrichmentStatus)
     : undefined;
@@ -172,6 +183,27 @@ function normalizeFilters(filters: CatalogChannelFilters): CatalogChannelFilters
 
   return {
     ...(query ? { query } : {}),
+    ...(countryRegion ? { countryRegion } : {}),
+    ...(influencerVertical ? { influencerVertical } : {}),
+    ...(influencerType ? { influencerType } : {}),
+    ...(filters.youtubeVideoMedianViewsMin !== undefined
+      ? { youtubeVideoMedianViewsMin: filters.youtubeVideoMedianViewsMin }
+      : {}),
+    ...(filters.youtubeVideoMedianViewsMax !== undefined
+      ? { youtubeVideoMedianViewsMax: filters.youtubeVideoMedianViewsMax }
+      : {}),
+    ...(filters.youtubeShortsMedianViewsMin !== undefined
+      ? { youtubeShortsMedianViewsMin: filters.youtubeShortsMedianViewsMin }
+      : {}),
+    ...(filters.youtubeShortsMedianViewsMax !== undefined
+      ? { youtubeShortsMedianViewsMax: filters.youtubeShortsMedianViewsMax }
+      : {}),
+    ...(filters.youtubeFollowersMin !== undefined
+      ? { youtubeFollowersMin: filters.youtubeFollowersMin }
+      : {}),
+    ...(filters.youtubeFollowersMax !== undefined
+      ? { youtubeFollowersMax: filters.youtubeFollowersMax }
+      : {}),
     ...(enrichmentStatus && enrichmentStatus.length > 0 ? { enrichmentStatus } : {}),
     ...(advancedReportStatus && advancedReportStatus.length > 0
       ? { advancedReportStatus }
@@ -462,6 +494,33 @@ async function buildCsvExport(scope: CsvExportBatchScope): Promise<{
         page,
         pageSize: CSV_EXPORT_CHANNEL_PAGE_SIZE,
         ...(scope.filters.query ? { query: scope.filters.query } : {}),
+        ...(scope.filters.countryRegion?.length
+          ? { countryRegion: scope.filters.countryRegion }
+          : {}),
+        ...(scope.filters.influencerVertical?.length
+          ? { influencerVertical: scope.filters.influencerVertical }
+          : {}),
+        ...(scope.filters.influencerType?.length
+          ? { influencerType: scope.filters.influencerType }
+          : {}),
+        ...(scope.filters.youtubeVideoMedianViewsMin !== undefined
+          ? { youtubeVideoMedianViewsMin: scope.filters.youtubeVideoMedianViewsMin }
+          : {}),
+        ...(scope.filters.youtubeVideoMedianViewsMax !== undefined
+          ? { youtubeVideoMedianViewsMax: scope.filters.youtubeVideoMedianViewsMax }
+          : {}),
+        ...(scope.filters.youtubeShortsMedianViewsMin !== undefined
+          ? { youtubeShortsMedianViewsMin: scope.filters.youtubeShortsMedianViewsMin }
+          : {}),
+        ...(scope.filters.youtubeShortsMedianViewsMax !== undefined
+          ? { youtubeShortsMedianViewsMax: scope.filters.youtubeShortsMedianViewsMax }
+          : {}),
+        ...(scope.filters.youtubeFollowersMin !== undefined
+          ? { youtubeFollowersMin: scope.filters.youtubeFollowersMin }
+          : {}),
+        ...(scope.filters.youtubeFollowersMax !== undefined
+          ? { youtubeFollowersMax: scope.filters.youtubeFollowersMax }
+          : {}),
         ...(scope.filters.enrichmentStatus?.length
           ? { enrichmentStatus: scope.filters.enrichmentStatus }
           : {}),

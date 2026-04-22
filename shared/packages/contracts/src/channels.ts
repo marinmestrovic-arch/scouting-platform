@@ -113,10 +113,62 @@ export const channelEnrichmentSummarySchema = z.object({
   lastError: z.string().nullable(),
 });
 
+const catalogMultiValueFilterSchema = z
+  .array(z.string().trim().min(1).max(200))
+  .min(1)
+  .max(100)
+  .optional();
+
+const catalogMetricRangeValueSchema = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+);
+
+type CatalogRangePayload = Partial<Record<
+  | "youtubeVideoMedianViewsMin"
+  | "youtubeVideoMedianViewsMax"
+  | "youtubeShortsMedianViewsMin"
+  | "youtubeShortsMedianViewsMax"
+  | "youtubeFollowersMin"
+  | "youtubeFollowersMax",
+  number | undefined
+>>;
+
+function validateCatalogRange(
+  payload: CatalogRangePayload,
+  context: z.RefinementCtx,
+  minKey: keyof CatalogRangePayload,
+  maxKey: keyof CatalogRangePayload,
+): void {
+  const min = payload[minKey];
+  const max = payload[maxKey];
+
+  if (min !== undefined && max !== undefined && min > max) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${String(minKey)} cannot be greater than ${String(maxKey)}`,
+      path: [minKey],
+    });
+  }
+}
+
 export const catalogChannelFiltersSchema = z.object({
   query: z.string().trim().max(200).optional(),
+  countryRegion: catalogMultiValueFilterSchema,
+  influencerVertical: catalogMultiValueFilterSchema,
+  influencerType: catalogMultiValueFilterSchema,
+  youtubeVideoMedianViewsMin: catalogMetricRangeValueSchema,
+  youtubeVideoMedianViewsMax: catalogMetricRangeValueSchema,
+  youtubeShortsMedianViewsMin: catalogMetricRangeValueSchema,
+  youtubeShortsMedianViewsMax: catalogMetricRangeValueSchema,
+  youtubeFollowersMin: catalogMetricRangeValueSchema,
+  youtubeFollowersMax: catalogMetricRangeValueSchema,
   enrichmentStatus: z.array(channelEnrichmentStatusSchema).min(1).optional(),
   advancedReportStatus: z.array(channelAdvancedReportStatusSchema).min(1).optional(),
+}).superRefine((payload, context) => {
+  validateCatalogRange(payload, context, "youtubeVideoMedianViewsMin", "youtubeVideoMedianViewsMax");
+  validateCatalogRange(payload, context, "youtubeShortsMedianViewsMin", "youtubeShortsMedianViewsMax");
+  validateCatalogRange(payload, context, "youtubeFollowersMin", "youtubeFollowersMax");
 });
 
 export const channelEnrichmentDetailSchema = channelEnrichmentSummarySchema.extend({
@@ -146,6 +198,8 @@ export const channelSummarySchema = z.object({
   influencerType: z.string().nullable().optional(),
   youtubeEngagementRate: z.number().nullable().optional(),
   youtubeFollowers: z.string().nullable().optional(),
+  youtubeVideoMedianViews: z.string().nullable().optional(),
+  youtubeShortsMedianViews: z.string().nullable().optional(),
   thumbnailUrl: z.string().nullable(),
   enrichment: channelEnrichmentSummarySchema,
   advancedReport: channelAdvancedReportSummarySchema,

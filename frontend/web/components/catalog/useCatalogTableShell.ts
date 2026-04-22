@@ -1,6 +1,4 @@
 import type {
-  ChannelAdvancedReportStatus,
-  ChannelEnrichmentStatus,
   ListChannelsResponse,
   SegmentResponse,
 } from "@scouting-platform/contracts";
@@ -14,9 +12,13 @@ import {
   buildCatalogSearchParams,
   buildSavedSegmentFilters,
   getCatalogFiltersFromSavedSegment,
+  normalizeCatalogNumericFilterValue,
   parseCatalogUrlState,
-  toggleCatalogStatusFilter,
+  toggleCatalogMultiValueFilter,
+  type CatalogCreatorFilterOptions,
   type CatalogFiltersState,
+  type CatalogMultiValueFilterKey,
+  type CatalogNumericFilterKey,
   type CatalogUrlState,
 } from "../../lib/catalog-filters";
 import { createCsvExportBatch, fetchCsvExportBatchDetail } from "../../lib/csv-export-batches-api";
@@ -70,6 +72,7 @@ export type CatalogTableRequestState =
     };
 
 type UseCatalogTableShellInput = Readonly<{
+  creatorFilterOptions: CatalogCreatorFilterOptions;
   initialData: ListChannelsResponse | undefined;
   initialSavedSegments: SegmentResponse[] | undefined;
   pageSize: number;
@@ -128,6 +131,7 @@ function buildCatalogNavigationHref(
 }
 
 export function useCatalogTableShellModel({
+  creatorFilterOptions,
   initialData,
   initialSavedSegments,
   pageSize,
@@ -153,11 +157,32 @@ export function useCatalogTableShellModel({
       page: appliedState.page,
       pageSize,
       ...(appliedState.filters.query ? { query: appliedState.filters.query } : {}),
-      ...(appliedState.filters.enrichmentStatus.length > 0
-        ? { enrichmentStatus: appliedState.filters.enrichmentStatus }
+      ...(appliedState.filters.countryRegion.length > 0
+        ? { countryRegion: appliedState.filters.countryRegion }
         : {}),
-      ...(appliedState.filters.advancedReportStatus.length > 0
-        ? { advancedReportStatus: appliedState.filters.advancedReportStatus }
+      ...(appliedState.filters.influencerVertical.length > 0
+        ? { influencerVertical: appliedState.filters.influencerVertical }
+        : {}),
+      ...(appliedState.filters.influencerType.length > 0
+        ? { influencerType: appliedState.filters.influencerType }
+        : {}),
+      ...(appliedState.filters.youtubeVideoMedianViewsMin
+        ? { youtubeVideoMedianViewsMin: Number(appliedState.filters.youtubeVideoMedianViewsMin) }
+        : {}),
+      ...(appliedState.filters.youtubeVideoMedianViewsMax
+        ? { youtubeVideoMedianViewsMax: Number(appliedState.filters.youtubeVideoMedianViewsMax) }
+        : {}),
+      ...(appliedState.filters.youtubeShortsMedianViewsMin
+        ? { youtubeShortsMedianViewsMin: Number(appliedState.filters.youtubeShortsMedianViewsMin) }
+        : {}),
+      ...(appliedState.filters.youtubeShortsMedianViewsMax
+        ? { youtubeShortsMedianViewsMax: Number(appliedState.filters.youtubeShortsMedianViewsMax) }
+        : {}),
+      ...(appliedState.filters.youtubeFollowersMin
+        ? { youtubeFollowersMin: Number(appliedState.filters.youtubeFollowersMin) }
+        : {}),
+      ...(appliedState.filters.youtubeFollowersMax
+        ? { youtubeFollowersMax: Number(appliedState.filters.youtubeFollowersMax) }
         : {}),
     }),
     [appliedState, pageSize],
@@ -704,6 +729,7 @@ export function useCatalogTableShellModel({
 
   return {
     batchEnrichmentActionState,
+    creatorFilterOptions,
     draftFilters,
     hasPendingFilterChanges: !areCatalogFiltersEqual(draftFilters, appliedState.filters),
     latestCsvExportBatch,
@@ -785,19 +811,19 @@ export function useCatalogTableShellModel({
     onSavedSegmentNameChange: (value: string) => {
       setSavedSegmentName(value);
     },
-    onToggleAdvancedReportStatus: (value: ChannelAdvancedReportStatus) => {
-      setDraftFilters((current) => ({
-        ...current,
-        advancedReportStatus: toggleCatalogStatusFilter(current.advancedReportStatus, value),
-      }));
-    },
     onToggleChannelSelection: (channelId: string) => {
       setSelectedChannelIds((current) => toggleCatalogChannelSelection(current, channelId));
     },
-    onToggleEnrichmentStatus: (value: ChannelEnrichmentStatus) => {
+    onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => {
       setDraftFilters((current) => ({
         ...current,
-        enrichmentStatus: toggleCatalogStatusFilter(current.enrichmentStatus, value),
+        [key]: normalizeCatalogNumericFilterValue(value),
+      }));
+    },
+    onToggleMultiValueFilter: (key: CatalogMultiValueFilterKey, value: string) => {
+      setDraftFilters((current) => ({
+        ...current,
+        [key]: toggleCatalogMultiValueFilter(current[key], value),
       }));
     },
     onTogglePageSelection: () => {

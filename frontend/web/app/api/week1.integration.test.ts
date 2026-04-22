@@ -364,6 +364,73 @@ integration("week 1 API integration", () => {
     expect(payload.items[0]?.youtubeChannelId).toBe("UC_FILTER_MATCH");
   });
 
+  it("filters GET /api/channels by creator fields and YouTube metric ranges", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "user@example.com",
+        name: "Campaign User",
+        role: Role.USER,
+        passwordHash: "user-hash",
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const filteredChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_CREATOR_FILTER_MATCH",
+        title: "Creator Filter Match",
+        countryRegion: "Croatia",
+        influencerVertical: "Gaming",
+        influencerType: "Creator",
+        metrics: {
+          create: {
+            youtubeFollowers: 500000n,
+            youtubeVideoMedianViews: 220000n,
+            youtubeShortsMedianViews: 180000n,
+          },
+        },
+      },
+    });
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC_CREATOR_FILTER_SKIP",
+        title: "Creator Filter Skip",
+        countryRegion: "Croatia",
+        influencerVertical: "Gaming",
+        influencerType: "Creator",
+        metrics: {
+          create: {
+            youtubeFollowers: 200000n,
+            youtubeVideoMedianViews: 120000n,
+            youtubeShortsMedianViews: 80000n,
+          },
+        },
+      },
+    });
+
+    currentSessionUser = { id: user.id, role: "user" };
+
+    const response = await channelsRoute.GET(
+      new Request(
+        "http://localhost/api/channels?page=1&pageSize=20&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&influencerType=Creator&youtubeVideoMedianViewsMin=200000&youtubeVideoMedianViewsMax=250000&youtubeShortsMedianViewsMin=100000&youtubeShortsMedianViewsMax=200000&youtubeFollowersMin=400000&youtubeFollowersMax=600000",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.items).toHaveLength(1);
+    expect(payload.items[0]).toMatchObject({
+      id: filteredChannel.id,
+      youtubeChannelId: "UC_CREATOR_FILTER_MATCH",
+      youtubeFollowers: "500000",
+      youtubeVideoMedianViews: "220000",
+      youtubeShortsMedianViews: "180000",
+    });
+  });
+
   it("returns 400 for invalid channel filter params", async () => {
     const user = await prisma.user.create({
       data: {

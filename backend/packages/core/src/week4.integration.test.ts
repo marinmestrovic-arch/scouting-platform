@@ -1,12 +1,17 @@
 import {
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  HubspotPreviewEnrichmentJobStatus as PrismaHubspotPreviewEnrichmentJobStatus,
   PrismaClient,
   Role,
+  RunRequestStatus,
+  RunResultSource,
 } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchYoutubeChannelContextMock = vi.fn();
+const fetchYoutubeChannelPageEmailSignalMock = vi.fn();
 const enrichChannelWithOpenAiMock = vi.fn();
+const enrichCreatorProfilesWithOpenAiMock = vi.fn();
 
 vi.mock("@scouting-platform/integrations", async () => {
   const actual = await vi.importActual<typeof import("@scouting-platform/integrations")>(
@@ -16,7 +21,9 @@ vi.mock("@scouting-platform/integrations", async () => {
   return {
     ...actual,
     fetchYoutubeChannelContext: fetchYoutubeChannelContextMock,
+    fetchYoutubeChannelPageEmailSignal: fetchYoutubeChannelPageEmailSignalMock,
     enrichChannelWithOpenAi: enrichChannelWithOpenAiMock,
+    enrichCreatorProfilesWithOpenAi: enrichCreatorProfilesWithOpenAiMock,
   };
 });
 
@@ -124,6 +131,74 @@ const LEGACY_STORED_OPENAI_RAW_PAYLOAD = {
   ],
 } as const;
 
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function buildFreshMetricContext() {
+  return {
+    ...CACHED_CONTEXT,
+    recentVideos: [
+      {
+        youtubeVideoId: "fresh-video-1",
+        title: "Fresh long video one",
+        description: "Fresh video description",
+        publishedAt: daysAgoIso(7),
+        viewCount: 1000,
+        likeCount: 100,
+        commentCount: 50,
+        durationSeconds: 605,
+        isShort: false,
+        categoryId: "20",
+        categoryName: "Gaming",
+        tags: ["gaming", "commentary"],
+      },
+      {
+        youtubeVideoId: "fresh-video-2",
+        title: "Fresh long video two",
+        description: null,
+        publishedAt: daysAgoIso(14),
+        viewCount: 3000,
+        likeCount: 300,
+        commentCount: 150,
+        durationSeconds: 360,
+        isShort: false,
+        categoryId: "20",
+        categoryName: "Gaming",
+        tags: ["gaming"],
+      },
+      {
+        youtubeVideoId: "fresh-short-1",
+        title: "Fresh short one",
+        description: null,
+        publishedAt: daysAgoIso(21),
+        viewCount: 500,
+        likeCount: 50,
+        commentCount: 25,
+        durationSeconds: 45,
+        isShort: true,
+        categoryId: "27",
+        categoryName: "Education",
+        tags: ["education"],
+      },
+      {
+        youtubeVideoId: "fresh-short-2",
+        title: "Fresh short two",
+        description: null,
+        publishedAt: daysAgoIso(28),
+        viewCount: 1500,
+        likeCount: 150,
+        commentCount: 75,
+        durationSeconds: 60,
+        isShort: true,
+        categoryId: "27",
+        categoryName: "Education",
+        tags: ["education"],
+      },
+    ],
+  };
+}
+
 integration("week 4 core integration", () => {
   let prisma: PrismaClient;
   let core: CoreModule | null = null;
@@ -152,7 +227,15 @@ integration("week 4 core integration", () => {
     process.env.APP_ENCRYPTION_KEY = "12345678901234567890123456789012";
     process.env.OPENAI_API_KEY = "test-openai-key";
     fetchYoutubeChannelContextMock.mockReset();
+    fetchYoutubeChannelPageEmailSignalMock.mockReset();
+    fetchYoutubeChannelPageEmailSignalMock.mockResolvedValue({
+      fetchedUrl: null,
+      emails: [],
+      snippet: null,
+    });
     enrichChannelWithOpenAiMock.mockReset();
+    enrichCreatorProfilesWithOpenAiMock.mockReset();
+    enrichCreatorProfilesWithOpenAiMock.mockResolvedValue([]);
     vi.resetModules();
 
     await prisma.$executeRawUnsafe(`
@@ -160,6 +243,8 @@ integration("week 4 core integration", () => {
         channel_enrichments,
         channel_youtube_contexts,
         channel_manual_overrides,
+        hubspot_preview_enrichment_jobs,
+        run_hubspot_row_overrides,
         saved_segments,
         run_results,
         run_requests,
@@ -377,7 +462,8 @@ integration("week 4 core integration", () => {
       },
     });
 
-    fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
+    const youtubeContext = buildFreshMetricContext();
+    fetchYoutubeChannelContextMock.mockResolvedValue(youtubeContext);
     enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
 
     await getCore().executeChannelLlmEnrichment({
@@ -393,7 +479,7 @@ integration("week 4 core integration", () => {
       },
     });
     expect(contextRow.lastError).toBeNull();
-    expect(contextRow.context).toMatchObject(CACHED_CONTEXT);
+    expect(contextRow.context).toMatchObject(youtubeContext);
 
     const persistedChannel = await prisma.channel.findUniqueOrThrow({
       where: {
@@ -414,6 +500,8 @@ integration("week 4 core integration", () => {
     });
     expect(metrics.youtubeFollowers).toBe(1200n);
     expect(metrics.youtubeEngagementRate).toBeCloseTo(15, 5);
+    expect(metrics.youtubeVideoMedianViews).toBe(2000n);
+    expect(metrics.youtubeShortsMedianViews).toBe(1000n);
 
     const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
       where: {
@@ -447,7 +535,7 @@ integration("week 4 core integration", () => {
     });
 
     fetchYoutubeChannelContextMock.mockResolvedValueOnce({
-      ...CACHED_CONTEXT,
+      ...youtubeContext,
       title: "Channel Name Refreshed",
     });
     enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
@@ -467,6 +555,69 @@ integration("week 4 core integration", () => {
     expect(refreshedContext.context).toMatchObject({
       title: "Channel Name Refreshed",
     });
+  });
+
+  it("persists YouTube medians when Creator List preview refresh writes metrics", async () => {
+    const user = await createUser("preview-refresh@example.com");
+    const channel = await createChannel("UC-PREVIEW-MEDIANS", "Preview Median Channel");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelMetric.create({
+      data: {
+        channelId: channel.id,
+        youtubeFollowers: 99n,
+        youtubeVideoMedianViews: 99n,
+        youtubeShortsMedianViews: 99n,
+      },
+    });
+    const run = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Preview enrichment run",
+        query: "gaming creators",
+        target: 1,
+        status: RunRequestStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+    await prisma.runResult.create({
+      data: {
+        runRequestId: run.id,
+        channelId: channel.id,
+        rank: 1,
+        source: RunResultSource.DISCOVERY,
+      },
+    });
+    const job = await prisma.hubspotPreviewEnrichmentJob.create({
+      data: {
+        runRequestId: run.id,
+        requestedByUserId: user.id,
+        progressMessage: "Creator List enrichment queued.",
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce(buildFreshMetricContext());
+
+    await getCore().executeHubspotPreviewEnrichmentJob({
+      enrichmentJobId: job.id,
+      requestedByUserId: user.id,
+    });
+
+    const metrics = await prisma.channelMetric.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(metrics.youtubeFollowers).toBe(1200n);
+    expect(metrics.youtubeVideoMedianViews).toBe(2000n);
+    expect(metrics.youtubeShortsMedianViews).toBe(1000n);
+
+    const completedJob = await prisma.hubspotPreviewEnrichmentJob.findUniqueOrThrow({
+      where: {
+        id: job.id,
+      },
+    });
+    expect(completedJob.status).toBe(PrismaHubspotPreviewEnrichmentJobStatus.COMPLETED);
   });
 
   it("keeps enrichment successful when recent video stats are incomplete and persists diagnostics", async () => {

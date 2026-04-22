@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStringAsync } from "../../../lib/test-render";
 
-const { getSessionMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(() => ({
+const {
+  getSessionMock,
+  listChannelsMock,
+  listDropdownValuesMock,
+  listUserSegmentsMock,
+} = vi.hoisted(() => ({
   getSessionMock: vi.fn(async () => ({
     user: {
       id: "user-1",
@@ -14,6 +19,9 @@ const { getSessionMock, listChannelsMock, listUserSegmentsMock } = vi.hoisted(()
     page: 1,
     pageSize: 20,
   })),
+  listDropdownValuesMock: vi.fn(async () => ({
+    items: [],
+  })),
   listUserSegmentsMock: vi.fn(async () => []),
 }));
 
@@ -23,6 +31,7 @@ vi.mock("../../../lib/cached-auth", () => ({
 
 vi.mock("../../../lib/cached-data", () => ({
   getCachedChannels: listChannelsMock,
+  getCachedDropdownValues: listDropdownValuesMock,
   getCachedUserSegments: listUserSegmentsMock,
 }));
 
@@ -48,7 +57,7 @@ describe("catalog page", () => {
 
     expect(html).toContain("Catalog");
     expect(html).toContain(
-      "Browse the canonical creator catalog with a sticky filter rail, reusable segments, and table or card browsing modes.",
+      "Browse the canonical creator catalog with creator filters and table or card browsing modes.",
     );
     expect(databaseWorkspaceMock.mock.calls[0]?.[0]).toEqual({
       forcedTab: "catalog",
@@ -57,6 +66,11 @@ describe("catalog page", () => {
         total: 0,
         page: 1,
         pageSize: 20,
+      },
+      catalogCreatorFilterOptions: {
+        countryRegion: [],
+        influencerType: [],
+        influencerVertical: [],
       },
       initialSavedSegments: [],
     });

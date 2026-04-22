@@ -16,12 +16,11 @@ import {
   buildCatalogHref,
   DEFAULT_CATALOG_FILTERS,
   hasActiveCatalogFilters,
+  normalizeCatalogNumericFilterValue,
   parseCatalogFiltersFromSearchParams,
-  toggleCatalogStatusFilter,
-  ADVANCED_REPORT_FILTER_OPTIONS,
-  ENRICHMENT_FILTER_OPTIONS,
-  type CatalogFilterOption,
   type CatalogFiltersState,
+  type CatalogMultiValueFilterKey,
+  type CatalogNumericFilterKey,
 } from "../../lib/catalog-filters";
 import {
   CsvExportBatchesApiError,
@@ -49,11 +48,9 @@ type CsvExportManagerViewProps = Readonly<{
   hasActiveFilters: boolean;
   isRefreshing: boolean;
   catalogHref: string;
+  onMultiValueFilterTextChange: (key: CatalogMultiValueFilterKey, value: string) => void;
+  onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => void;
   onQueryChange: (value: string) => void;
-  onToggleEnrichmentStatus: (value: (typeof ENRICHMENT_FILTER_OPTIONS)[number]["value"]) => void;
-  onToggleAdvancedReportStatus: (
-    value: (typeof ADVANCED_REPORT_FILTER_OPTIONS)[number]["value"],
-  ) => void;
   onResetFilters: () => void;
   onCreateFilteredExport: () => void | Promise<void>;
   onReloadHistory: () => void;
@@ -174,44 +171,19 @@ export function shouldPollCsvExportBatches(
   return items.some((item) => item.status === "queued" || item.status === "running");
 }
 
-function CatalogFilterCheckboxGroup<T extends string>({
-  legend,
-  options,
-  selected,
-  onToggle,
-}: {
-  legend: string;
-  options: ReadonlyArray<CatalogFilterOption<T>>;
-  selected: readonly T[];
-  onToggle: (value: T) => void;
-}) {
-  return (
-    <fieldset className="csv-export__filter-group">
-      <legend>{legend}</legend>
-      <div className="csv-export__filter-options">
-        {options.map((option) => {
-          const checked = selected.includes(option.value);
-
-          return (
-            <label
-              className={`csv-export__filter-option${checked ? " csv-export__filter-option--selected" : ""}`}
-              key={option.value}
-            >
-              <input
-                checked={checked}
-                onChange={() => {
-                  onToggle(option.value);
-                }}
-                suppressHydrationWarning
-                type="checkbox"
-              />
-              <span>{option.label}</span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+function parseMultiValueText(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
   );
+}
+
+function formatMultiValueText(values: readonly string[]): string {
+  return values.join(", ");
 }
 
 function renderHistoryState(props: CsvExportManagerViewProps): ReactElement {
@@ -334,11 +306,11 @@ export function CsvExportManagerView(props: CsvExportManagerViewProps): ReactEle
     hasActiveFilters,
     catalogHref,
     onCreateFilteredExport,
+    onMultiValueFilterTextChange,
+    onNumericFilterChange,
     onQueryChange,
     onReloadHistory,
     onResetFilters,
-    onToggleAdvancedReportStatus,
-    onToggleEnrichmentStatus,
   } = props;
 
   return (
@@ -372,7 +344,7 @@ export function CsvExportManagerView(props: CsvExportManagerViewProps): ReactEle
           <header className="csv-export__panel-header">
             <h2 id="csv-export-filters-heading">Create filtered export</h2>
             <p>
-              Use the same query and status filters as the catalog. At least one filter is required before creating a CSV batch from this page.
+              Use the same creator filters as the catalog. At least one filter is required before creating a CSV batch from this page.
             </p>
           </header>
 
@@ -391,19 +363,140 @@ export function CsvExportManagerView(props: CsvExportManagerViewProps): ReactEle
               />
             </label>
 
-            <CatalogFilterCheckboxGroup
-              legend="Enrichment status"
-              onToggle={onToggleEnrichmentStatus}
-              options={ENRICHMENT_FILTER_OPTIONS}
-              selected={filters.enrichmentStatus}
-            />
+            <label className="csv-export__field">
+              <span>Country/Region</span>
+              <input
+                name="countryRegion"
+                onChange={(event) => {
+                  onMultiValueFilterTextChange("countryRegion", event.target.value);
+                }}
+                suppressHydrationWarning
+                type="text"
+                value={formatMultiValueText(filters.countryRegion)}
+              />
+            </label>
 
-            <CatalogFilterCheckboxGroup
-              legend="Advanced report status"
-              onToggle={onToggleAdvancedReportStatus}
-              options={ADVANCED_REPORT_FILTER_OPTIONS}
-              selected={filters.advancedReportStatus}
-            />
+            <label className="csv-export__field">
+              <span>Influencer Vertical</span>
+              <input
+                name="influencerVertical"
+                onChange={(event) => {
+                  onMultiValueFilterTextChange("influencerVertical", event.target.value);
+                }}
+                suppressHydrationWarning
+                type="text"
+                value={formatMultiValueText(filters.influencerVertical)}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>Influencer Type</span>
+              <input
+                name="influencerType"
+                onChange={(event) => {
+                  onMultiValueFilterTextChange("influencerType", event.target.value);
+                }}
+                suppressHydrationWarning
+                type="text"
+                value={formatMultiValueText(filters.influencerType)}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Video Median Views Min</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeVideoMedianViewsMin"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeVideoMedianViewsMin", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeVideoMedianViewsMin}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Video Median Views Max</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeVideoMedianViewsMax"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeVideoMedianViewsMax", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeVideoMedianViewsMax}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Shorts Median Views Min</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeShortsMedianViewsMin"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeShortsMedianViewsMin", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeShortsMedianViewsMin}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Shorts Median Views Max</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeShortsMedianViewsMax"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeShortsMedianViewsMax", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeShortsMedianViewsMax}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Followers Min</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeFollowersMin"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeFollowersMin", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeFollowersMin}
+              />
+            </label>
+
+            <label className="csv-export__field">
+              <span>YouTube Followers Max</span>
+              <input
+                inputMode="numeric"
+                min="0"
+                name="youtubeFollowersMax"
+                onChange={(event) => {
+                  onNumericFilterChange("youtubeFollowersMax", event.target.value);
+                }}
+                pattern="[0-9]*"
+                suppressHydrationWarning
+                type="number"
+                value={filters.youtubeFollowersMax}
+              />
+            </label>
           </div>
 
           <div className="csv-export__actions">
@@ -597,19 +690,20 @@ export function CsvExportManager() {
     });
   }
 
-  function handleToggleEnrichmentStatus(value: (typeof ENRICHMENT_FILTER_OPTIONS)[number]["value"]): void {
-    updateFilters({
-      ...filters,
-      enrichmentStatus: toggleCatalogStatusFilter(filters.enrichmentStatus, value),
-    });
-  }
-
-  function handleToggleAdvancedReportStatus(
-    value: (typeof ADVANCED_REPORT_FILTER_OPTIONS)[number]["value"],
+  function handleMultiValueFilterTextChange(
+    key: CatalogMultiValueFilterKey,
+    value: string,
   ): void {
     updateFilters({
       ...filters,
-      advancedReportStatus: toggleCatalogStatusFilter(filters.advancedReportStatus, value),
+      [key]: parseMultiValueText(value),
+    });
+  }
+
+  function handleNumericFilterChange(key: CatalogNumericFilterKey, value: string): void {
+    updateFilters({
+      ...filters,
+      [key]: normalizeCatalogNumericFilterValue(value),
     });
   }
 
@@ -635,12 +729,12 @@ export function CsvExportManager() {
       historyState={historyState}
       isRefreshing={isRefreshing}
       onCreateFilteredExport={handleCreateFilteredExport}
+      onMultiValueFilterTextChange={handleMultiValueFilterTextChange}
+      onNumericFilterChange={handleNumericFilterChange}
       onQueryChange={handleQueryChange}
       onReloadHistory={handleReloadHistory}
       onResetFilters={handleResetFilters}
       onRetryHistory={handleRetryHistory}
-      onToggleAdvancedReportStatus={handleToggleAdvancedReportStatus}
-      onToggleEnrichmentStatus={handleToggleEnrichmentStatus}
     />
   );
 }

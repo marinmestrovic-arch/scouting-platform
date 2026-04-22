@@ -1,6 +1,11 @@
 import type { ListChannelsResponse, SegmentResponse } from "@scouting-platform/contracts";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  CatalogFiltersState,
+  CatalogMultiValueFilterKey,
+  CatalogNumericFilterKey,
+} from "../../lib/catalog-filters";
 
 const {
   createCsvExportBatchMock,
@@ -102,14 +107,11 @@ type CatalogShellElement = ReactElement<{
   onRetry: () => void;
   onRetrySavedSegments: () => void;
   onDraftQueryChange: (value: string) => void;
+  onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => void;
   onToggleChannelSelection: (channelId: string) => void;
-  onToggleEnrichmentStatus: (value: "completed" | "failed") => void;
+  onToggleMultiValueFilter: (key: CatalogMultiValueFilterKey, value: string) => void;
   onTogglePageSelection: () => void;
-  draftFilters: {
-    query: string;
-    enrichmentStatus: string[];
-    advancedReportStatus: string[];
-  };
+  draftFilters: CatalogFiltersState;
   requestState: {
     status: "loading" | "error" | "ready";
   };
@@ -197,14 +199,31 @@ function createSearchParams(
   return searchParams;
 }
 
+function buildCatalogFilters(overrides?: Partial<CatalogFiltersState>): CatalogFiltersState {
+  return {
+    query: "",
+    countryRegion: [],
+    influencerVertical: [],
+    influencerType: [],
+    youtubeVideoMedianViewsMin: "",
+    youtubeVideoMedianViewsMax: "",
+    youtubeShortsMedianViewsMin: "",
+    youtubeShortsMedianViewsMax: "",
+    youtubeFollowersMin: "",
+    youtubeFollowersMax: "",
+    ...overrides,
+  };
+}
+
 function createSavedSegment(overrides?: Partial<SegmentResponse>): SegmentResponse {
   return {
     id: "33402e7e-e5c8-41e8-b94a-a4086ef0f6af",
     name: "Space creators",
     filters: {
       query: "space",
-      enrichmentStatus: ["completed"],
-      advancedReportStatus: ["pending_approval"],
+      countryRegion: ["Croatia"],
+      influencerVertical: ["Gaming"],
+      youtubeVideoMedianViewsMin: 100000,
     },
     createdAt: "2026-03-08T10:00:00.000Z",
     updatedAt: "2026-03-08T10:00:00.000Z",
@@ -332,11 +351,7 @@ function renderShell(options?: {
     error: string;
   };
   searchParams?: URLSearchParams;
-  draftFilters?: {
-    query: string;
-    enrichmentStatus: string[];
-    advancedReportStatus: string[];
-  };
+  draftFilters?: CatalogFiltersState;
   reloadToken?: number;
   savedSegments?: SegmentResponse[];
   savedSegmentsRequestState?: SavedSegmentsRequestState;
@@ -379,16 +394,22 @@ function renderShell(options?: {
   });
   useSearchParamsMock.mockReturnValue(
     options?.searchParams ??
-      createSearchParams({ page: "2", query: "space", enrichmentStatus: ["failed"] }),
+      createSearchParams({
+        page: "2",
+        query: "space",
+        countryRegion: ["Croatia"],
+        youtubeVideoMedianViewsMin: "100000",
+      }),
   );
 
   useStateMock
     .mockReturnValueOnce([
-      options?.draftFilters ?? {
-        query: "space",
-        enrichmentStatus: ["failed"],
-        advancedReportStatus: [],
-      },
+      options?.draftFilters ??
+        buildCatalogFilters({
+          query: "space",
+          countryRegion: ["Croatia"],
+          youtubeVideoMedianViewsMin: "100000",
+        }),
       setDraftFilters,
     ])
     .mockReturnValueOnce([
@@ -530,34 +551,25 @@ describe("catalog table shell behavior", () => {
     } = renderShell();
 
     const setDraftFiltersUpdater = setDraftFilters.mock.calls[0]?.[0] as
-      | ((current: {
-          query: string;
-          enrichmentStatus: string[];
-          advancedReportStatus: string[];
-        }) => {
-          query: string;
-          enrichmentStatus: string[];
-          advancedReportStatus: string[];
-        })
+      | ((current: CatalogFiltersState) => CatalogFiltersState)
       | undefined;
 
     expect(
-      setDraftFiltersUpdater?.({
-        query: "",
-        enrichmentStatus: [],
-        advancedReportStatus: [],
+      setDraftFiltersUpdater?.(buildCatalogFilters()),
+    ).toEqual(
+      buildCatalogFilters({
+        query: "space",
+        countryRegion: ["Croatia"],
+        youtubeVideoMedianViewsMin: "100000",
       }),
-    ).toEqual({
-      query: "space",
-      enrichmentStatus: ["failed"],
-      advancedReportStatus: [],
-    });
+    );
     expect(fetchChannelsMock).toHaveBeenCalledWith(
       {
         page: 2,
         pageSize: 20,
         query: "space",
-        enrichmentStatus: ["failed"],
+        countryRegion: ["Croatia"],
+        youtubeVideoMedianViewsMin: 100000,
       },
       expect.any(AbortSignal),
     );
@@ -752,17 +764,17 @@ describe("catalog table shell behavior", () => {
 
   it("applies draft filters by replacing the URL and resetting to page 1", () => {
     const { element } = renderShell({
-      draftFilters: {
+      draftFilters: buildCatalogFilters({
         query: "mars",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: ["pending_approval"],
-      },
+        countryRegion: ["Croatia"],
+        influencerVertical: ["Gaming"],
+      }),
     });
 
     element.props.onApplyFilters();
 
     expect(replaceMock).toHaveBeenCalledWith(
-      "/catalog?page=1&query=mars&enrichmentStatus=completed&advancedReportStatus=pending_approval",
+      "/catalog?page=1&query=mars&countryRegion=Croatia&influencerVertical=Gaming",
     );
   });
 
@@ -773,7 +785,7 @@ describe("catalog table shell behavior", () => {
       name: "Launch channels",
       filters: {
         query: "launch",
-        enrichmentStatus: ["completed"],
+        countryRegion: ["Croatia"],
       },
     });
 
@@ -783,18 +795,19 @@ describe("catalog table shell behavior", () => {
 
     element.props.onLoadSegment(segment);
 
-    expect(setDraftFilters).toHaveBeenCalledWith({
-      query: "launch",
-      enrichmentStatus: ["completed"],
-      advancedReportStatus: [],
-    });
+    expect(setDraftFilters).toHaveBeenCalledWith(
+      buildCatalogFilters({
+        query: "launch",
+        countryRegion: ["Croatia"],
+      }),
+    );
     expect(setSavedSegmentName).toHaveBeenCalledWith("Launch channels");
     expect(setSavedSegmentOperationStatus).toHaveBeenCalledWith({
       type: "success",
       message: 'Loaded segment "Launch channels".',
     });
     expect(replaceMock).toHaveBeenCalledWith(
-      "/catalog?page=1&query=launch&enrichmentStatus=completed",
+      "/catalog?page=1&query=launch&countryRegion=Croatia",
     );
   });
 
@@ -809,11 +822,10 @@ describe("catalog table shell behavior", () => {
       setSavedSegmentOperationStatus,
       setSavedSegments,
     } = renderShell({
-      draftFilters: {
+      draftFilters: buildCatalogFilters({
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: [],
-      },
+        countryRegion: ["Croatia"],
+      }),
       savedSegmentName: "  Space creators  ",
     });
 
@@ -831,7 +843,7 @@ describe("catalog table shell behavior", () => {
       name: "Space creators",
       filters: {
         query: "space",
-        enrichmentStatus: ["completed"],
+        countryRegion: ["Croatia"],
       },
     });
     expect(setPendingSegmentAction).toHaveBeenNthCalledWith(1, "create");
@@ -892,7 +904,11 @@ describe("catalog table shell behavior", () => {
 
   it("preserves active filters while paging forward and backward", () => {
     const first = renderShell({
-      searchParams: createSearchParams({ page: "1", query: "space", enrichmentStatus: ["failed"] }),
+      searchParams: createSearchParams({
+        page: "1",
+        query: "space",
+        countryRegion: ["Croatia"],
+      }),
       requestState: createReadyState({
         total: 21,
         page: 1,
@@ -901,12 +917,16 @@ describe("catalog table shell behavior", () => {
     });
     first.element.props.onNextPage();
 
-    expect(replaceMock).toHaveBeenCalledWith("/catalog?page=2&query=space&enrichmentStatus=failed");
+    expect(replaceMock).toHaveBeenCalledWith("/catalog?page=2&query=space&countryRegion=Croatia");
 
     replaceMock.mockReset();
 
     const second = renderShell({
-      searchParams: createSearchParams({ page: "2", query: "space", enrichmentStatus: ["failed"] }),
+      searchParams: createSearchParams({
+        page: "2",
+        query: "space",
+        countryRegion: ["Croatia"],
+      }),
       requestState: createReadyState({
         total: 21,
         page: 2,
@@ -915,7 +935,7 @@ describe("catalog table shell behavior", () => {
     });
     second.element.props.onPreviousPage();
 
-    expect(replaceMock).toHaveBeenCalledWith("/catalog?page=1&query=space&enrichmentStatus=failed");
+    expect(replaceMock).toHaveBeenCalledWith("/catalog?page=1&query=space&countryRegion=Croatia");
   });
 
   it("retries both channel and saved segment loads by bumping reload tokens", () => {

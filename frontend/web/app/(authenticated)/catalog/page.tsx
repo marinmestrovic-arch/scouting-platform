@@ -1,10 +1,19 @@
 import React, { Suspense } from "react";
+import type { DropdownValue } from "@scouting-platform/contracts";
 import { getSession } from "../../../lib/cached-auth";
-import { getCachedChannels, getCachedUserSegments } from "../../../lib/cached-data";
+import {
+  getCachedChannels,
+  getCachedDropdownValues,
+  getCachedUserSegments,
+} from "../../../lib/cached-data";
 import { DatabaseWorkspace } from "../../../components/database/database-workspace";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { SkeletonFilterBar, SkeletonPageBody, SkeletonTable } from "../../../components/ui/skeleton";
-import { parseCatalogFiltersFromSearchParams } from "../../../lib/catalog-filters";
+import {
+  buildCatalogChannelFilters,
+  parseCatalogFiltersFromSearchParams,
+  type CatalogCreatorFilterOptions,
+} from "../../../lib/catalog-filters";
 
 type CatalogPageProps = Readonly<{
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -32,29 +41,63 @@ function toUrlSearchParams(
   return searchParams;
 }
 
+function toCatalogCreatorFilterOptions(items: readonly DropdownValue[]): CatalogCreatorFilterOptions {
+  return {
+    countryRegion: items
+      .filter((item) => item.fieldKey === "countryRegion")
+      .map((item) => ({ value: item.value, label: item.value })),
+    influencerVertical: items
+      .filter((item) => item.fieldKey === "influencerVertical")
+      .map((item) => ({ value: item.value, label: item.value })),
+    influencerType: items
+      .filter((item) => item.fieldKey === "influencerType")
+      .map((item) => ({ value: item.value, label: item.value })),
+  };
+}
+
 async function CatalogData({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> | undefined }) {
   const session = await getSession();
   const resolvedSearchParams = toUrlSearchParams((await searchParams) ?? {});
   const filters = parseCatalogFiltersFromSearchParams(resolvedSearchParams);
+  const requestFilters = buildCatalogChannelFilters(filters);
   const rawPage = Number.parseInt(resolvedSearchParams.get("page") ?? "1", 10);
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
-  const [initialData, initialSavedSegments] = await Promise.all([
-    getCachedChannels({
-      page,
-      pageSize: 20,
-      ...(filters.query ? { query: filters.query } : {}),
-      ...(filters.enrichmentStatus.length > 0
-        ? { enrichmentStatus: filters.enrichmentStatus }
-        : {}),
-      ...(filters.advancedReportStatus.length > 0
-        ? { advancedReportStatus: filters.advancedReportStatus }
-        : {}),
-    }),
-    session?.user?.id ? getCachedUserSegments(session.user.id) : Promise.resolve([]),
-  ]);
+  const initialData = await getCachedChannels({
+    page,
+    pageSize: 20,
+    ...(requestFilters.query ? { query: requestFilters.query } : {}),
+    ...(requestFilters.countryRegion?.length
+      ? { countryRegion: requestFilters.countryRegion }
+      : {}),
+    ...(requestFilters.influencerVertical?.length
+      ? { influencerVertical: requestFilters.influencerVertical }
+      : {}),
+    ...(requestFilters.influencerType?.length ? { influencerType: requestFilters.influencerType } : {}),
+    ...(requestFilters.youtubeVideoMedianViewsMin !== undefined
+      ? { youtubeVideoMedianViewsMin: requestFilters.youtubeVideoMedianViewsMin }
+      : {}),
+    ...(requestFilters.youtubeVideoMedianViewsMax !== undefined
+      ? { youtubeVideoMedianViewsMax: requestFilters.youtubeVideoMedianViewsMax }
+      : {}),
+    ...(requestFilters.youtubeShortsMedianViewsMin !== undefined
+      ? { youtubeShortsMedianViewsMin: requestFilters.youtubeShortsMedianViewsMin }
+      : {}),
+    ...(requestFilters.youtubeShortsMedianViewsMax !== undefined
+      ? { youtubeShortsMedianViewsMax: requestFilters.youtubeShortsMedianViewsMax }
+      : {}),
+    ...(requestFilters.youtubeFollowersMin !== undefined
+      ? { youtubeFollowersMin: requestFilters.youtubeFollowersMin }
+      : {}),
+    ...(requestFilters.youtubeFollowersMax !== undefined
+      ? { youtubeFollowersMax: requestFilters.youtubeFollowersMax }
+      : {}),
+  });
+  const initialSavedSegments = session?.user?.id ? await getCachedUserSegments(session.user.id) : [];
+  const dropdownValuesResponse = await getCachedDropdownValues();
 
   return (
     <DatabaseWorkspace
+      catalogCreatorFilterOptions={toCatalogCreatorFilterOptions(dropdownValuesResponse.items)}
       forcedTab="catalog"
       initialCatalogData={initialData}
       initialSavedSegments={initialSavedSegments}
@@ -110,7 +153,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
           { label: "Database", href: "/database" },
           { label: "Catalog" },
         ]}
-        description="Browse the canonical creator catalog with a sticky filter rail, reusable segments, and table or card browsing modes."
+        description="Browse the canonical creator catalog with creator filters and table or card browsing modes."
         title="Catalog"
       />
       <div className="page-container page-section__body">

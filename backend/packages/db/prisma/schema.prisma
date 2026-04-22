@@ -422,6 +422,9 @@ model Channel {
   channelAssessments     RunChannelAssessment[]
 
   @@index([youtubeChannelId], map: "channels_youtube_channel_id_idx")
+  @@index([countryRegion], map: "channels_country_region_idx")
+  @@index([influencerVertical], map: "channels_influencer_vertical_idx")
+  @@index([influencerType], map: "channels_influencer_type_idx")
   @@index([createdAt, id], map: "channels_created_at_id_idx")
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "channels_title_trgm_idx")
   @@index([handle(ops: raw("gin_trgm_ops"))], type: Gin, map: "channels_handle_trgm_idx")
@@ -448,19 +451,23 @@ model ChannelContact {
 }
 
 model ChannelMetric {
-  channelId             String          @id @map("channel_id") @db.Uuid
-  subscriberCount       BigInt?         @map("subscriber_count")
-  viewCount             BigInt?         @map("view_count")
-  videoCount            BigInt?         @map("video_count")
-  youtubeEngagementRate Float?          @map("youtube_engagement_rate")
-  youtubeFollowers      BigInt?         @map("youtube_followers")
-  csvImportBatchId      String?         @map("csv_import_batch_id") @db.Uuid
-  createdAt             DateTime        @default(now()) @map("created_at")
-  updatedAt             DateTime        @updatedAt @map("updated_at")
-  channel               Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  csvImportBatch        CsvImportBatch? @relation(fields: [csvImportBatchId], references: [id], onDelete: SetNull)
+  channelId                String          @id @map("channel_id") @db.Uuid
+  subscriberCount          BigInt?         @map("subscriber_count")
+  viewCount                BigInt?         @map("view_count")
+  videoCount               BigInt?         @map("video_count")
+  youtubeEngagementRate    Float?          @map("youtube_engagement_rate")
+  youtubeFollowers         BigInt?         @map("youtube_followers")
+  youtubeVideoMedianViews  BigInt?         @map("youtube_video_median_views")
+  youtubeShortsMedianViews BigInt?         @map("youtube_shorts_median_views")
+  csvImportBatchId         String?         @map("csv_import_batch_id") @db.Uuid
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+  channel                  Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  csvImportBatch           CsvImportBatch? @relation(fields: [csvImportBatchId], references: [id], onDelete: SetNull)
 
   @@index([csvImportBatchId], map: "channel_metrics_csv_import_batch_id_idx")
+  @@index([youtubeVideoMedianViews], map: "channel_metrics_youtube_video_median_views_idx")
+  @@index([youtubeShortsMedianViews], map: "channel_metrics_youtube_shorts_median_views_idx")
   @@map("channel_metrics")
 }
 

@@ -333,6 +333,10 @@ Do not remove enrichment status fields from backend contracts in the same edit u
 - Social Media Link is always a channel URL when enough YouTube identity exists.
 - Old saved segments with status fields do not crash the UI.
 
+### Run 2 Implementation Note
+
+`ChannelMetric` still has no per-field source tracking. Run 2 persists YouTube video and Shorts medians from automated YouTube enrichment and Creator List preview refreshes, so those writers can overwrite existing median metric values. Preserving source precedence for imported medians requires adding metric source metadata in a later run.
+
 ---
 
 ## Run 3: Influencer Profile View and Hype Advanced Report Removal

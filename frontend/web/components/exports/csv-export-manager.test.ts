@@ -35,20 +35,37 @@ function buildSummary(overrides?: Partial<CsvExportBatchSummary>): CsvExportBatc
   };
 }
 
+function buildFilters(
+  overrides?: Partial<Parameters<typeof CsvExportManagerView>[0]["filters"]>,
+): Parameters<typeof CsvExportManagerView>[0]["filters"] {
+  return {
+    query: "",
+    countryRegion: [],
+    influencerVertical: [],
+    influencerType: [],
+    youtubeVideoMedianViewsMin: "",
+    youtubeVideoMedianViewsMax: "",
+    youtubeShortsMedianViewsMin: "",
+    youtubeShortsMedianViewsMax: "",
+    youtubeFollowersMin: "",
+    youtubeFollowersMax: "",
+    ...overrides,
+  };
+}
+
 describe("csv export manager view", () => {
   it("renders loading history and filter creation controls", () => {
     const html = renderToStaticMarkup(
       createElement(CsvExportManagerView, {
-        catalogHref: "/catalog?page=1&query=space&enrichmentStatus=completed",
+        catalogHref: "/catalog?page=1&query=space&countryRegion=Croatia",
         createState: {
           type: "idle",
           message: "",
         },
-        filters: {
+        filters: buildFilters({
           query: "space",
-          enrichmentStatus: ["completed"],
-          advancedReportStatus: [],
-        },
+          countryRegion: ["Croatia"],
+        }),
         hasActiveFilters: true,
         historyState: {
           status: "loading",
@@ -57,19 +74,19 @@ describe("csv export manager view", () => {
         },
         isRefreshing: false,
         onCreateFilteredExport: vi.fn(),
+        onMultiValueFilterTextChange: vi.fn(),
+        onNumericFilterChange: vi.fn(),
         onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
         onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
-        onToggleAdvancedReportStatus: vi.fn(),
-        onToggleEnrichmentStatus: vi.fn(),
       }),
     );
 
     expect(html).toContain("Create filtered export");
     expect(html).toContain("Loading CSV export history...");
     expect(html).toContain(
-      'href="/catalog?page=1&amp;query=space&amp;enrichmentStatus=completed"',
+      'href="/catalog?page=1&amp;query=space&amp;countryRegion=Croatia"',
     );
   });
 
@@ -81,11 +98,7 @@ describe("csv export manager view", () => {
           type: "success",
           message: "Filtered CSV export queued. History refreshes automatically while processing continues.",
         },
-        filters: {
-          query: "",
-          enrichmentStatus: [],
-          advancedReportStatus: [],
-        },
+        filters: buildFilters(),
         hasActiveFilters: false,
         historyState: {
           status: "ready",
@@ -107,12 +120,12 @@ describe("csv export manager view", () => {
         },
         isRefreshing: true,
         onCreateFilteredExport: vi.fn(),
+        onMultiValueFilterTextChange: vi.fn(),
+        onNumericFilterChange: vi.fn(),
         onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
         onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
-        onToggleAdvancedReportStatus: vi.fn(),
-        onToggleEnrichmentStatus: vi.fn(),
       }),
     );
 
@@ -136,11 +149,7 @@ describe("csv export manager view", () => {
           type: "error",
           message: "Choose at least one filter before creating a filtered export.",
         },
-        filters: {
-          query: "",
-          enrichmentStatus: [],
-          advancedReportStatus: [],
-        },
+        filters: buildFilters(),
         hasActiveFilters: false,
         historyState: {
           status: "ready",
@@ -149,12 +158,12 @@ describe("csv export manager view", () => {
         },
         isRefreshing: false,
         onCreateFilteredExport: vi.fn(),
+        onMultiValueFilterTextChange: vi.fn(),
+        onNumericFilterChange: vi.fn(),
         onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
         onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
-        onToggleAdvancedReportStatus: vi.fn(),
-        onToggleEnrichmentStatus: vi.fn(),
       }),
     );
 

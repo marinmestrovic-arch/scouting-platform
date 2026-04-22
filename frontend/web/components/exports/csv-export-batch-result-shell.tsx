@@ -108,7 +108,23 @@ function formatFilterValue(values: readonly string[]): string {
     return "Any";
   }
 
-  return values.map((value) => toTitleCase(value)).join(", ");
+  return values.join(", ");
+}
+
+function formatRangeFilter(min: string, max: string): string {
+  if (min && max) {
+    return `${min}-${max}`;
+  }
+
+  if (min) {
+    return `>= ${min}`;
+  }
+
+  if (max) {
+    return `<= ${max}`;
+  }
+
+  return "Any";
 }
 
 function getNormalizedScopeFilters(
@@ -116,6 +132,27 @@ function getNormalizedScopeFilters(
 ): CatalogFiltersState {
   return normalizeCatalogFilters({
     ...(filters.query ? { query: filters.query } : {}),
+    ...(filters.countryRegion ? { countryRegion: filters.countryRegion } : {}),
+    ...(filters.influencerVertical ? { influencerVertical: filters.influencerVertical } : {}),
+    ...(filters.influencerType ? { influencerType: filters.influencerType } : {}),
+    ...(filters.youtubeVideoMedianViewsMin !== undefined
+      ? { youtubeVideoMedianViewsMin: filters.youtubeVideoMedianViewsMin }
+      : {}),
+    ...(filters.youtubeVideoMedianViewsMax !== undefined
+      ? { youtubeVideoMedianViewsMax: filters.youtubeVideoMedianViewsMax }
+      : {}),
+    ...(filters.youtubeShortsMedianViewsMin !== undefined
+      ? { youtubeShortsMedianViewsMin: filters.youtubeShortsMedianViewsMin }
+      : {}),
+    ...(filters.youtubeShortsMedianViewsMax !== undefined
+      ? { youtubeShortsMedianViewsMax: filters.youtubeShortsMedianViewsMax }
+      : {}),
+    ...(filters.youtubeFollowersMin !== undefined
+      ? { youtubeFollowersMin: filters.youtubeFollowersMin }
+      : {}),
+    ...(filters.youtubeFollowersMax !== undefined
+      ? { youtubeFollowersMax: filters.youtubeFollowersMax }
+      : {}),
     ...(filters.enrichmentStatus ? { enrichmentStatus: filters.enrichmentStatus } : {}),
     ...(filters.advancedReportStatus
       ? { advancedReportStatus: filters.advancedReportStatus }
@@ -172,12 +209,43 @@ function renderScopeState(batch: CsvExportBatchDetail) {
           <dd>{normalizedFilters.query || "Any"}</dd>
         </div>
         <div>
-          <dt>Enrichment</dt>
-          <dd>{formatFilterValue(normalizedFilters.enrichmentStatus)}</dd>
+          <dt>Country/Region</dt>
+          <dd>{formatFilterValue(normalizedFilters.countryRegion)}</dd>
         </div>
         <div>
-          <dt>Advanced report</dt>
-          <dd>{formatFilterValue(normalizedFilters.advancedReportStatus)}</dd>
+          <dt>Influencer Vertical</dt>
+          <dd>{formatFilterValue(normalizedFilters.influencerVertical)}</dd>
+        </div>
+        <div>
+          <dt>Influencer Type</dt>
+          <dd>{formatFilterValue(normalizedFilters.influencerType)}</dd>
+        </div>
+        <div>
+          <dt>Video Median Views</dt>
+          <dd>
+            {formatRangeFilter(
+              normalizedFilters.youtubeVideoMedianViewsMin,
+              normalizedFilters.youtubeVideoMedianViewsMax,
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Shorts Median Views</dt>
+          <dd>
+            {formatRangeFilter(
+              normalizedFilters.youtubeShortsMedianViewsMin,
+              normalizedFilters.youtubeShortsMedianViewsMax,
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>YouTube Followers</dt>
+          <dd>
+            {formatRangeFilter(
+              normalizedFilters.youtubeFollowersMin,
+              normalizedFilters.youtubeFollowersMax,
+            )}
+          </dd>
         </div>
       </dl>
     </>

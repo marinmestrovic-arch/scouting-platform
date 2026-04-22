@@ -1,38 +1,37 @@
 "use client";
 
 import type {
-  ChannelAdvancedReportStatus,
-  ChannelEnrichmentStatus,
   ListChannelsResponse,
   SegmentResponse,
 } from "@scouting-platform/contracts";
 import React from "react";
 
 import {
-  ADVANCED_REPORT_FILTER_OPTIONS,
-  ENRICHMENT_FILTER_OPTIONS,
+  EMPTY_CATALOG_CREATOR_FILTER_OPTIONS,
   areCatalogFiltersEqual,
   buildCatalogHref,
   buildCatalogSearchParams,
   buildSavedSegmentFilters,
+  countActiveCatalogFilters,
   formatSavedSegmentSummary,
   getCatalogFiltersFromSavedSegment,
   normalizeCatalogFilters,
+  normalizeCatalogNumericFilterValue,
   parseCatalogUrlState,
-  toggleCatalogStatusFilter,
+  toggleCatalogMultiValueFilter,
+  type CatalogCreatorFilterOptions,
   type CatalogFiltersState,
+  type CatalogMultiValueFilterKey,
+  type CatalogNumericFilterKey,
 } from "../../lib/catalog-filters";
 import { CatalogBatchCards } from "./CatalogBatchCards";
 import { CatalogFilters } from "./CatalogFilters";
-import { CatalogSegments } from "./CatalogSegments";
 import { CatalogTable } from "./CatalogTable";
 import type {
   BatchEnrichmentActionState,
   CatalogCsvExportBatchState,
   CatalogHubspotPushBatchState,
   CatalogViewMode,
-  SavedSegmentOperationStatus,
-  SavedSegmentsRequestState,
 } from "./catalog-table-shared";
 import {
   areAllCatalogPageRowsSelected,
@@ -62,13 +61,12 @@ import {
 } from "./useCatalogTableShell";
 
 export {
-  ADVANCED_REPORT_FILTER_OPTIONS,
-  ENRICHMENT_FILTER_OPTIONS,
   areAllCatalogPageRowsSelected,
   areCatalogFiltersEqual,
   buildCatalogHref,
   buildCatalogSearchParams,
   buildSavedSegmentFilters,
+  countActiveCatalogFilters,
   countSelectedCatalogPageRows,
   formatCatalogSelectionSummary,
   formatChannelCountSummary,
@@ -82,44 +80,37 @@ export {
   hasPreviousCatalogPage,
   mergeCatalogBatchEnrichmentResults,
   normalizeCatalogFilters,
+  normalizeCatalogNumericFilterValue,
   parseCatalogUrlState,
   shouldPollCatalogCsvExportBatch,
   shouldPollCatalogEnrichmentRows,
   shouldPollCatalogHubspotPushBatch,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
+  toggleCatalogMultiValueFilter,
   toggleCatalogPageSelection,
-  toggleCatalogStatusFilter,
 };
 
 type CatalogTableShellProps = {
   pageSize?: number;
   initialData?: ListChannelsResponse;
   initialSavedSegments?: SegmentResponse[];
+  creatorFilterOptions?: CatalogCreatorFilterOptions;
 };
 
 type CatalogTableShellViewProps = {
+  creatorFilterOptions: CatalogCreatorFilterOptions;
   draftFilters: CatalogFiltersState;
   requestState: CatalogTableRequestState;
   selectedChannelIds: readonly string[];
-  savedSegments: SegmentResponse[];
-  savedSegmentsRequestState: SavedSegmentsRequestState;
-  savedSegmentName: string;
-  savedSegmentOperationStatus: SavedSegmentOperationStatus;
   batchEnrichmentActionState: BatchEnrichmentActionState;
   latestCsvExportBatch: CatalogCsvExportBatchState;
   latestHubspotPushBatch: CatalogHubspotPushBatchState;
-  pendingSegmentAction: string | null;
   hasPendingFilterChanges: boolean;
   viewMode?: CatalogViewMode;
-  onSavedSegmentNameChange: (value: string) => void;
-  onCreateSegment: () => void | Promise<void>;
-  onLoadSegment: (segment: SegmentResponse) => void;
-  onDeleteSegment: (segment: SegmentResponse) => void | Promise<void>;
-  onRetrySavedSegments: () => void;
   onDraftQueryChange: (value: string) => void;
-  onToggleEnrichmentStatus: (value: ChannelEnrichmentStatus) => void;
-  onToggleAdvancedReportStatus: (value: ChannelAdvancedReportStatus) => void;
+  onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => void;
+  onToggleMultiValueFilter: (key: CatalogMultiValueFilterKey, value: string) => void;
   onToggleChannelSelection: (channelId: string) => void;
   onTogglePageSelection: () => void;
   onExportSelectedChannels: () => void | Promise<void>;
@@ -136,27 +127,18 @@ type CatalogTableShellViewProps = {
 export { CATALOG_BATCH_STATUS_POLL_INTERVAL_MS, CATALOG_ENRICHMENT_POLL_INTERVAL_MS };
 
 export function CatalogTableShellView({
+  creatorFilterOptions,
   draftFilters,
   requestState,
   selectedChannelIds,
-  savedSegments,
-  savedSegmentsRequestState,
-  savedSegmentName,
-  savedSegmentOperationStatus,
   batchEnrichmentActionState,
   latestCsvExportBatch,
   latestHubspotPushBatch,
-  pendingSegmentAction,
   hasPendingFilterChanges,
   viewMode = "table",
-  onSavedSegmentNameChange,
-  onCreateSegment,
-  onLoadSegment,
-  onDeleteSegment,
-  onRetrySavedSegments,
   onDraftQueryChange,
-  onToggleEnrichmentStatus,
-  onToggleAdvancedReportStatus,
+  onNumericFilterChange,
+  onToggleMultiValueFilter,
   onToggleChannelSelection,
   onTogglePageSelection,
   onExportSelectedChannels,
@@ -169,30 +151,29 @@ export function CatalogTableShellView({
   onPreviousPage,
   onNextPage,
 }: CatalogTableShellViewProps) {
+  const searchOptions =
+    requestState.status === "ready"
+      ? requestState.data.items.map((channel) => ({
+          value: channel.title,
+          label: channel.title,
+          meta: [channel.handle, channel.youtubeChannelId].filter(Boolean).join(" · "),
+        }))
+      : [];
+
   return (
     <div className="catalog-table">
       <div className="catalog-layout">
         <div className="catalog-layout__rail-stack">
           <CatalogFilters
+            creatorFilterOptions={creatorFilterOptions}
             draftFilters={draftFilters}
             hasPendingFilterChanges={hasPendingFilterChanges}
+            searchOptions={searchOptions}
             onApplyFilters={onApplyFilters}
             onDraftQueryChange={onDraftQueryChange}
+            onNumericFilterChange={onNumericFilterChange}
             onResetFilters={onResetFilters}
-            onToggleAdvancedReportStatus={onToggleAdvancedReportStatus}
-            onToggleEnrichmentStatus={onToggleEnrichmentStatus}
-          />
-          <CatalogSegments
-            pendingSegmentAction={pendingSegmentAction}
-            savedSegmentName={savedSegmentName}
-            savedSegmentOperationStatus={savedSegmentOperationStatus}
-            savedSegments={savedSegments}
-            savedSegmentsRequestState={savedSegmentsRequestState}
-            onCreateSegment={onCreateSegment}
-            onDeleteSegment={onDeleteSegment}
-            onLoadSegment={onLoadSegment}
-            onRetrySavedSegments={onRetrySavedSegments}
-            onSavedSegmentNameChange={onSavedSegmentNameChange}
+            onToggleMultiValueFilter={onToggleMultiValueFilter}
           />
         </div>
 
@@ -246,11 +227,13 @@ export function CatalogTableShellView({
 }
 
 export function CatalogTableShell({
+  creatorFilterOptions = EMPTY_CATALOG_CREATOR_FILTER_OPTIONS,
   pageSize = DEFAULT_PAGE_SIZE,
   initialData,
   initialSavedSegments,
 }: CatalogTableShellProps) {
   const model = useCatalogTableShellModel({
+    creatorFilterOptions,
     initialData,
     initialSavedSegments,
     pageSize,

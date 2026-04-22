@@ -158,7 +158,20 @@ async function mapWithConcurrencyLimit<Input, Output>(
 export async function fetchChannels(
   input: Pick<
     ListChannelsQuery,
-    "page" | "pageSize" | "query" | "enrichmentStatus" | "advancedReportStatus"
+    | "page"
+    | "pageSize"
+    | "query"
+    | "countryRegion"
+    | "influencerVertical"
+    | "influencerType"
+    | "youtubeVideoMedianViewsMin"
+    | "youtubeVideoMedianViewsMax"
+    | "youtubeShortsMedianViewsMin"
+    | "youtubeShortsMedianViewsMax"
+    | "youtubeFollowersMin"
+    | "youtubeFollowersMax"
+    | "enrichmentStatus"
+    | "advancedReportStatus"
   >,
   signal?: AbortSignal,
 ): Promise<ListChannelsResponse> {
@@ -172,7 +185,7 @@ export async function fetchChannels(
     searchParams.set("query", requestQuery.query);
   }
 
-  appendStatusFilters(searchParams, requestQuery);
+  appendCatalogFilters(searchParams, requestQuery);
 
   try {
     const response = await fetch(`/api/channels?${searchParams.toString()}`, {
@@ -332,15 +345,44 @@ export async function requestChannelEnrichmentBatch(
   );
 }
 
-function appendStatusFilters(
+function appendCatalogFilters(
   searchParams: URLSearchParams,
   requestQuery: CatalogChannelFilters,
 ): void {
+  for (const value of requestQuery.countryRegion ?? []) {
+    searchParams.append("countryRegion", value);
+  }
+
+  for (const value of requestQuery.influencerVertical ?? []) {
+    searchParams.append("influencerVertical", value);
+  }
+
+  for (const value of requestQuery.influencerType ?? []) {
+    searchParams.append("influencerType", value);
+  }
+
+  appendNumericFilter(searchParams, "youtubeVideoMedianViewsMin", requestQuery.youtubeVideoMedianViewsMin);
+  appendNumericFilter(searchParams, "youtubeVideoMedianViewsMax", requestQuery.youtubeVideoMedianViewsMax);
+  appendNumericFilter(searchParams, "youtubeShortsMedianViewsMin", requestQuery.youtubeShortsMedianViewsMin);
+  appendNumericFilter(searchParams, "youtubeShortsMedianViewsMax", requestQuery.youtubeShortsMedianViewsMax);
+  appendNumericFilter(searchParams, "youtubeFollowersMin", requestQuery.youtubeFollowersMin);
+  appendNumericFilter(searchParams, "youtubeFollowersMax", requestQuery.youtubeFollowersMax);
+
   for (const status of requestQuery.enrichmentStatus ?? []) {
     searchParams.append("enrichmentStatus", status);
   }
 
   for (const status of requestQuery.advancedReportStatus ?? []) {
     searchParams.append("advancedReportStatus", status);
+  }
+}
+
+function appendNumericFilter(
+  searchParams: URLSearchParams,
+  key: string,
+  value: number | undefined,
+): void {
+  if (value !== undefined) {
+    searchParams.set(key, String(value));
   }
 }

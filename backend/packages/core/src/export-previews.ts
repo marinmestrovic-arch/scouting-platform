@@ -124,6 +124,8 @@ const runPreviewSelect = {
             select: {
               youtubeEngagementRate: true,
               youtubeFollowers: true,
+              youtubeVideoMedianViews: true,
+              youtubeShortsMedianViews: true,
             },
           },
           youtubeContext: {
@@ -1637,6 +1639,8 @@ async function refreshCreatorListYoutubeSignals(input: {
         videoCount: toNullableBigInt(context.videoCount),
         youtubeEngagementRate: metrics.medianVideoEngagementRate,
         youtubeFollowers: toNullableBigInt(context.subscriberCount),
+        youtubeVideoMedianViews: toNullableBigInt(metrics.medianVideoViews),
+        youtubeShortsMedianViews: toNullableBigInt(metrics.medianShortsViews),
       },
       update: {
         subscriberCount: toNullableBigInt(context.subscriberCount),
@@ -1644,6 +1648,8 @@ async function refreshCreatorListYoutubeSignals(input: {
         videoCount: toNullableBigInt(context.videoCount),
         youtubeEngagementRate: metrics.medianVideoEngagementRate,
         youtubeFollowers: toNullableBigInt(context.subscriberCount),
+        youtubeVideoMedianViews: toNullableBigInt(metrics.medianVideoViews),
+        youtubeShortsMedianViews: toNullableBigInt(metrics.medianShortsViews),
       },
     });
   });

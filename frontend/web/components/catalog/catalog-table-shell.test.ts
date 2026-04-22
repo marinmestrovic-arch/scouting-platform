@@ -5,7 +5,6 @@ import type {
   HubspotPushBatchDetail,
   HubspotPushBatchSummary,
   ListChannelsResponse,
-  SegmentResponse,
 } from "@scouting-platform/contracts";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -72,8 +71,8 @@ import {
   shouldPollCatalogHubspotPushBatch,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
+  toggleCatalogMultiValueFilter,
   toggleCatalogPageSelection,
-  toggleCatalogStatusFilter,
 } from "./catalog-table-shell";
 
 function createAdvancedReportSummary() {
@@ -95,6 +94,8 @@ const pagedChannels: ListChannelsResponse = {
       handle: "@channelone",
       youtubeUrl: "https://youtube.com/@channelone",
       youtubeEngagementRate: 3.2,
+      youtubeVideoMedianViews: "220000",
+      youtubeShortsMedianViews: "180000",
       youtubeFollowers: "500000",
       thumbnailUrl: "https://example.com/channel-one.jpg",
       enrichment: {
@@ -112,6 +113,8 @@ const pagedChannels: ListChannelsResponse = {
         handle: null,
         youtubeUrl: null,
         youtubeEngagementRate: null,
+        youtubeVideoMedianViews: null,
+        youtubeShortsMedianViews: null,
         youtubeFollowers: null,
         thumbnailUrl: null,
         enrichment: {
@@ -143,6 +146,8 @@ function buildChannelResponse(
         handle: `@page${page}`,
         youtubeUrl: `https://youtube.com/@page${page}`,
         youtubeEngagementRate: 2.4,
+        youtubeVideoMedianViews: "120000",
+        youtubeShortsMedianViews: "95000",
         youtubeFollowers: "150000",
         thumbnailUrl: null,
         enrichment: {
@@ -160,30 +165,10 @@ function buildChannelResponse(
   };
 }
 
-const defaultSavedSegments: SegmentResponse[] = [
-  {
-    id: "8fcaf11c-d515-4135-817f-3f98b4f3cb7e",
-    name: "Space creators",
-    filters: {
-      query: "space",
-      enrichmentStatus: ["completed"],
-      advancedReportStatus: ["pending_approval"],
-    },
-    createdAt: "2026-03-08T10:00:00.000Z",
-    updatedAt: "2026-03-08T10:00:00.000Z",
-  },
-];
-
 function renderView(
   requestState: Parameters<typeof CatalogTableShellView>[0]["requestState"],
   options?: {
     selectedChannelIds?: string[];
-    savedSegments?: SegmentResponse[];
-    savedSegmentsRequestState?: Parameters<typeof CatalogTableShellView>[0]["savedSegmentsRequestState"];
-    savedSegmentName?: string;
-    savedSegmentOperationStatus?: Parameters<
-      typeof CatalogTableShellView
-    >[0]["savedSegmentOperationStatus"];
     batchEnrichmentActionState?: Parameters<
       typeof CatalogTableShellView
     >[0]["batchEnrichmentActionState"];
@@ -191,27 +176,28 @@ function renderView(
     latestHubspotPushBatch?: Parameters<
       typeof CatalogTableShellView
     >[0]["latestHubspotPushBatch"];
-    pendingSegmentAction?: string | null;
   },
 ): string {
   return renderToStaticMarkup(
     createElement(CatalogTableShellView, {
+      creatorFilterOptions: {
+        countryRegion: [{ value: "Croatia", label: "Croatia" }],
+        influencerVertical: [{ value: "Gaming", label: "Gaming" }],
+        influencerType: [{ value: "Creator", label: "Creator" }],
+      },
       draftFilters: {
         query: "space",
-        enrichmentStatus: ["completed"],
-        advancedReportStatus: ["pending_approval"],
+        countryRegion: ["Croatia"],
+        influencerVertical: ["Gaming"],
+        influencerType: ["Creator"],
+        youtubeVideoMedianViewsMin: "100000",
+        youtubeVideoMedianViewsMax: "",
+        youtubeShortsMedianViewsMin: "",
+        youtubeShortsMedianViewsMax: "",
+        youtubeFollowersMin: "",
+        youtubeFollowersMax: "",
       },
       selectedChannelIds: options?.selectedChannelIds ?? [],
-      savedSegments: options?.savedSegments ?? defaultSavedSegments,
-      savedSegmentsRequestState: options?.savedSegmentsRequestState ?? {
-        status: "ready",
-        error: null,
-      },
-      savedSegmentName: options?.savedSegmentName ?? "",
-      savedSegmentOperationStatus: options?.savedSegmentOperationStatus ?? {
-        type: "idle",
-        message: "",
-      },
       batchEnrichmentActionState: options?.batchEnrichmentActionState ?? {
         type: "idle",
         message: "",
@@ -230,27 +216,21 @@ function renderView(
         error: null,
         isRefreshing: false,
       },
-      pendingSegmentAction: options?.pendingSegmentAction ?? null,
       requestState,
       hasPendingFilterChanges: true,
-      onCreateSegment: vi.fn(),
-      onDeleteSegment: vi.fn(),
       onApplyFilters: vi.fn(),
       onClearSelection: vi.fn(),
       onDraftQueryChange: vi.fn(),
       onExportSelectedChannels: vi.fn(),
-      onLoadSegment: vi.fn(),
       onNextPage: vi.fn(),
       onPreviousPage: vi.fn(),
       onPushSelectedChannelsToHubspot: vi.fn(),
       onRequestSelectedEnrichment: vi.fn(),
       onResetFilters: vi.fn(),
-      onRetrySavedSegments: vi.fn(),
       onRetry: vi.fn(),
-      onSavedSegmentNameChange: vi.fn(),
-      onToggleAdvancedReportStatus: vi.fn(),
       onToggleChannelSelection: vi.fn(),
-      onToggleEnrichmentStatus: vi.fn(),
+      onNumericFilterChange: vi.fn(),
+      onToggleMultiValueFilter: vi.fn(),
       onTogglePageSelection: vi.fn(),
     }),
   );
@@ -294,7 +274,7 @@ describe("catalog table shell view", () => {
 
   it("parses, serializes, and compares URL-backed filter state", () => {
     const searchParams = new URLSearchParams(
-      "page=3&query=space&enrichmentStatus=failed&enrichmentStatus=completed&advancedReportStatus=stale",
+      "page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000&enrichmentStatus=failed&advancedReportStatus=stale",
     );
 
     const parsed = parseCatalogUrlState(searchParams);
@@ -303,32 +283,46 @@ describe("catalog table shell view", () => {
       page: 3,
       filters: {
         query: "space",
-        enrichmentStatus: ["completed", "failed"],
-        advancedReportStatus: ["stale"],
+        countryRegion: ["Croatia", "Germany"],
+        influencerVertical: ["Gaming"],
+        influencerType: [],
+        youtubeVideoMedianViewsMin: "100000",
+        youtubeVideoMedianViewsMax: "",
+        youtubeShortsMedianViewsMin: "",
+        youtubeShortsMedianViewsMax: "",
+        youtubeFollowersMin: "",
+        youtubeFollowersMax: "500000",
       },
     });
 
     expect(buildCatalogSearchParams(parsed).toString()).toBe(
-      "page=3&query=space&enrichmentStatus=completed&enrichmentStatus=failed&advancedReportStatus=stale",
+      "page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000",
     );
     expect(buildCatalogHref("/catalog", parsed)).toBe(
-      "/catalog?page=3&query=space&enrichmentStatus=completed&enrichmentStatus=failed&advancedReportStatus=stale",
+      "/catalog?page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000",
     );
     expect(
       areCatalogFiltersEqual(parsed.filters, {
         query: "space",
-        enrichmentStatus: ["completed", "failed"],
-        advancedReportStatus: ["stale"],
+        countryRegion: ["Croatia", "Germany"],
+        influencerVertical: ["Gaming"],
+        influencerType: [],
+        youtubeVideoMedianViewsMin: "100000",
+        youtubeVideoMedianViewsMax: "",
+        youtubeShortsMedianViewsMin: "",
+        youtubeShortsMedianViewsMax: "",
+        youtubeFollowersMin: "",
+        youtubeFollowersMax: "500000",
       }),
     ).toBe(true);
   });
 
-  it("toggles status filters while preserving current selections", () => {
-    const afterAdd = toggleCatalogStatusFilter(["completed"], "failed");
-    expect(afterAdd).toEqual(["completed", "failed"]);
+  it("toggles multi-value filters while preserving current selections", () => {
+    const afterAdd = toggleCatalogMultiValueFilter(["Croatia"], "Germany");
+    expect(afterAdd).toEqual(["Croatia", "Germany"]);
 
-    const afterRemove = toggleCatalogStatusFilter(afterAdd, "completed");
-    expect(afterRemove).toEqual(["failed"]);
+    const afterRemove = toggleCatalogMultiValueFilter(afterAdd, "Croatia");
+    expect(afterRemove).toEqual(["Germany"]);
   });
 
   it("tracks row selection across individual rows and the current page", () => {
@@ -525,19 +519,50 @@ describe("catalog table shell view", () => {
   it("round-trips saved segment filters into catalog filter state", () => {
     const filters = buildSavedSegmentFilters({
       query: "  space  ",
-      enrichmentStatus: ["failed", "completed"],
-      advancedReportStatus: ["stale"],
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      influencerType: [],
+      youtubeVideoMedianViewsMin: "100000",
+      youtubeVideoMedianViewsMax: "",
+      youtubeShortsMedianViewsMin: "",
+      youtubeShortsMedianViewsMax: "",
+      youtubeFollowersMin: "",
+      youtubeFollowersMax: "500000",
     });
 
     expect(filters).toEqual({
       query: "space",
-      enrichmentStatus: ["completed", "failed"],
-      advancedReportStatus: ["stale"],
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      youtubeVideoMedianViewsMin: 100000,
+      youtubeFollowersMax: 500000,
     });
     expect(getCatalogFiltersFromSavedSegment(filters)).toEqual({
       query: "space",
-      enrichmentStatus: ["completed", "failed"],
+      countryRegion: ["Croatia", "Germany"],
+      influencerVertical: ["Gaming"],
+      influencerType: [],
+      youtubeVideoMedianViewsMin: "100000",
+      youtubeVideoMedianViewsMax: "",
+      youtubeShortsMedianViewsMin: "",
+      youtubeShortsMedianViewsMax: "",
+      youtubeFollowersMin: "",
+      youtubeFollowersMax: "500000",
+    });
+    expect(getCatalogFiltersFromSavedSegment({
+      enrichmentStatus: ["completed"],
       advancedReportStatus: ["stale"],
+    })).toEqual({
+      query: "",
+      countryRegion: [],
+      influencerVertical: [],
+      influencerType: [],
+      youtubeVideoMedianViewsMin: "",
+      youtubeVideoMedianViewsMax: "",
+      youtubeShortsMedianViewsMin: "",
+      youtubeShortsMedianViewsMax: "",
+      youtubeFollowersMin: "",
+      youtubeFollowersMax: "",
     });
     expect(
       formatSavedSegmentSummary({
@@ -553,10 +578,11 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    expect(html).toContain("Segments");
-    expect(html).toContain("Enrichment Status");
+    expect(html).toContain("Country/Region");
+    expect(html).toContain("YouTube Video Median Views");
     expect(html).toContain("Apply");
     expect(html).toContain("Loading channels...");
+    expect(html).not.toContain(">Save</button>");
   });
 
   it("renders actionable error feedback", () => {
@@ -571,78 +597,6 @@ describe("catalog table shell view", () => {
     expect(html).toContain("role=\"alert\"");
   });
 
-  it("renders saved segment actions and summaries", () => {
-    const html = renderView(
-      {
-        status: "ready",
-        data: {
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 20,
-        },
-        error: null,
-      },
-      {
-        savedSegmentName: "Space creators",
-      },
-    );
-
-    expect(html).toContain(">Save</button>");
-    expect(html).toContain("Space creators");
-    expect(html).toContain("Search: space");
-    expect(html).toContain("Enrichment: Ready");
-    expect(html).toContain("Report: Pending approval");
-    expect(html).toContain(">Load</button>");
-    expect(html).toContain(">Delete</button>");
-  });
-
-  it("renders saved segment loading and empty states", () => {
-    const loadingHtml = renderView(
-      {
-        status: "ready",
-        data: {
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 20,
-        },
-        error: null,
-      },
-      {
-        savedSegments: [],
-        savedSegmentsRequestState: {
-          status: "loading",
-          error: null,
-        },
-      },
-    );
-
-    expect(loadingHtml).toContain("Loading saved segments...");
-
-    const emptyHtml = renderView(
-      {
-        status: "ready",
-        data: {
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 20,
-        },
-        error: null,
-      },
-      {
-        savedSegments: [],
-        savedSegmentsRequestState: {
-          status: "ready",
-          error: null,
-        },
-      },
-    );
-
-    expect(emptyHtml).toContain("No saved segments yet.");
-  });
-
   it("renders empty state with both paging buttons disabled", () => {
     const html = renderView({
       status: "ready",
@@ -655,7 +609,7 @@ describe("catalog table shell view", () => {
       error: null,
     });
 
-    expect(html).toContain("Active filters: 3");
+    expect(html).toContain("Active filters: 5");
     expect(html).toContain("0 channels");
     expect(html).toContain("No channels match the current filters.");
     expect(html).toContain("Page 1");
@@ -732,6 +686,8 @@ describe("catalog table shell view", () => {
           handle: index === 0 ? "@channelone" : null,
           youtubeUrl: index === 0 ? "https://youtube.com/@channelone" : null,
           youtubeEngagementRate: index === 0 ? 3.2 : null,
+          youtubeVideoMedianViews: index === 0 ? "220000" : null,
+          youtubeShortsMedianViews: index === 0 ? "180000" : null,
           youtubeFollowers: index === 0 ? "500000" : null,
           thumbnailUrl: index === 0 ? "https://example.com/thumb.jpg" : null,
           enrichment: {
@@ -750,7 +706,10 @@ describe("catalog table shell view", () => {
     });
 
     expect(html).toContain("value=\"space\"");
-    expect(html).toContain("Pending approval");
+    expect(html).toContain("YouTube Video Median Views");
+    expect(html).toContain("YouTube Shorts Median Views");
+    expect(html).toContain("220,000");
+    expect(html).toContain("180,000");
     expect(html).toContain("href=\"/catalog/00000000-0000-0000-0000-000000000001\"");
     expect(html).toContain("Platforms");
     expect(html).toContain("Country/Region");

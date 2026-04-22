@@ -37,6 +37,15 @@ export type ListChannelsInput = {
   page: number;
   pageSize: number;
   query?: string;
+  countryRegion?: string[];
+  influencerVertical?: string[];
+  influencerType?: string[];
+  youtubeVideoMedianViewsMin?: number;
+  youtubeVideoMedianViewsMax?: number;
+  youtubeShortsMedianViewsMin?: number;
+  youtubeShortsMedianViewsMax?: number;
+  youtubeFollowersMin?: number;
+  youtubeFollowersMax?: number;
   enrichmentStatus?: ContractChannelEnrichmentStatus[];
   advancedReportStatus?: ChannelAdvancedReportStatus[];
 };
@@ -74,6 +83,8 @@ export type ChannelSummary = {
   influencerType: string | null;
   youtubeEngagementRate: number | null;
   youtubeFollowers: string | null;
+  youtubeVideoMedianViews: string | null;
+  youtubeShortsMedianViews: string | null;
   thumbnailUrl: string | null;
   enrichment: ChannelEnrichmentSummary;
   advancedReport: ChannelAdvancedReportSummary;
@@ -182,6 +193,8 @@ const channelListSelect = {
     select: {
       youtubeEngagementRate: true,
       youtubeFollowers: true,
+      youtubeVideoMedianViews: true,
+      youtubeShortsMedianViews: true,
     },
   },
   contacts: {
@@ -230,6 +243,8 @@ const channelDetailSelect = {
     select: {
       youtubeEngagementRate: true,
       youtubeFollowers: true,
+      youtubeVideoMedianViews: true,
+      youtubeShortsMedianViews: true,
     },
   },
   contacts: {
@@ -468,6 +483,26 @@ function toNullableBigIntString(value: bigint | null | undefined): string | null
   return value === null || value === undefined ? null : value.toString();
 }
 
+function resolveSocialMediaLink(channel: {
+  youtubeChannelId: string;
+  youtubeUrl: string | null;
+  handle: string | null;
+}): string {
+  const youtubeUrl = channel.youtubeUrl?.trim();
+
+  if (youtubeUrl) {
+    return youtubeUrl;
+  }
+
+  const handle = channel.handle?.trim();
+
+  if (handle?.startsWith("@")) {
+    return `https://www.youtube.com/${handle}`;
+  }
+
+  return `https://www.youtube.com/channel/${channel.youtubeChannelId}`;
+}
+
 function toChannelInsights(row: ChannelInsightsRow | null): ChannelInsights {
   return {
     audienceCountries: row ? toAudienceCountries(row.audienceCountries) : [],
@@ -531,6 +566,8 @@ function toChannelSummary(channel: {
   metrics: {
     youtubeEngagementRate: number | null;
     youtubeFollowers: bigint | null;
+    youtubeVideoMedianViews: bigint | null;
+    youtubeShortsMedianViews: bigint | null;
   } | null;
   contacts: Array<{
     email: string;
@@ -562,7 +599,7 @@ function toChannelSummary(channel: {
     title: channel.title,
     handle: channel.handle,
     youtubeUrl: channel.youtubeUrl,
-    socialMediaLink: channel.youtubeUrl,
+    socialMediaLink: resolveSocialMediaLink(channel),
     platforms: ["YouTube"],
     countryRegion: channel.countryRegion ?? primaryCountry,
     email: channel.contacts[0]?.email ?? null,
@@ -570,6 +607,8 @@ function toChannelSummary(channel: {
     influencerType: channel.influencerType,
     youtubeEngagementRate: channel.metrics?.youtubeEngagementRate ?? null,
     youtubeFollowers: toNullableBigIntString(channel.metrics?.youtubeFollowers),
+    youtubeVideoMedianViews: toNullableBigIntString(channel.metrics?.youtubeVideoMedianViews),
+    youtubeShortsMedianViews: toNullableBigIntString(channel.metrics?.youtubeShortsMedianViews),
     thumbnailUrl: channel.thumbnailUrl,
     enrichment: toChannelEnrichmentSummary(channel.updatedAt, channel.enrichment),
     advancedReport: toChannelAdvancedReportSummary(channel.advancedReportRequests[0] ?? null),
@@ -592,6 +631,8 @@ function toChannelDetail(channel: {
   metrics: {
     youtubeEngagementRate: number | null;
     youtubeFollowers: bigint | null;
+    youtubeVideoMedianViews: bigint | null;
+    youtubeShortsMedianViews: bigint | null;
   } | null;
   contacts: Array<{
     email: string;
@@ -645,6 +686,207 @@ function buildChannelListSearchWhereSql(query: string | undefined): Prisma.Sql {
       OR c.handle ILIKE ${normalizedQuery}
       OR c.youtube_channel_id ILIKE ${normalizedQuery}
     )
+  `;
+}
+
+function normalizeTextFilterValues(values: readonly string[] | undefined): string[] {
+  if (!values) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)),
+  );
+}
+
+function hasMetricRangeFilters(input: ListChannelsInput): boolean {
+  return (
+    input.youtubeVideoMedianViewsMin !== undefined ||
+    input.youtubeVideoMedianViewsMax !== undefined ||
+    input.youtubeShortsMedianViewsMin !== undefined ||
+    input.youtubeShortsMedianViewsMax !== undefined ||
+    input.youtubeFollowersMin !== undefined ||
+    input.youtubeFollowersMax !== undefined
+  );
+}
+
+function toBigIntRangeBound(value: number | undefined): bigint | undefined {
+  return value === undefined ? undefined : BigInt(value);
+}
+
+function buildMetricRangeFilter(
+  min: number | undefined,
+  max: number | undefined,
+): Prisma.BigIntNullableFilter | undefined {
+  const filter: Prisma.BigIntNullableFilter = {};
+  const minValue = toBigIntRangeBound(min);
+  const maxValue = toBigIntRangeBound(max);
+
+  if (minValue !== undefined) {
+    filter.gte = minValue;
+  }
+
+  if (maxValue !== undefined) {
+    filter.lte = maxValue;
+  }
+
+  return Object.keys(filter).length > 0 ? filter : undefined;
+}
+
+function buildChannelListWhere(input: ListChannelsInput): Prisma.ChannelWhereInput | undefined {
+  const query = input.query?.trim();
+  const countryRegion = normalizeTextFilterValues(input.countryRegion);
+  const influencerVertical = normalizeTextFilterValues(input.influencerVertical);
+  const influencerType = normalizeTextFilterValues(input.influencerType);
+  const filters: Prisma.ChannelWhereInput[] = [];
+
+  if (query) {
+    filters.push({
+      OR: [
+        {
+          title: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          handle: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          youtubeChannelId: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+      ],
+    });
+  }
+
+  if (countryRegion.length > 0) {
+    filters.push({
+      countryRegion: {
+        in: countryRegion,
+      },
+    });
+  }
+
+  if (influencerVertical.length > 0) {
+    filters.push({
+      influencerVertical: {
+        in: influencerVertical,
+      },
+    });
+  }
+
+  if (influencerType.length > 0) {
+    filters.push({
+      influencerType: {
+        in: influencerType,
+      },
+    });
+  }
+
+  if (hasMetricRangeFilters(input)) {
+    const metricWhere: Prisma.ChannelMetricWhereInput = {};
+    const videoMedianRange = buildMetricRangeFilter(
+      input.youtubeVideoMedianViewsMin,
+      input.youtubeVideoMedianViewsMax,
+    );
+    const shortsMedianRange = buildMetricRangeFilter(
+      input.youtubeShortsMedianViewsMin,
+      input.youtubeShortsMedianViewsMax,
+    );
+    const followersRange = buildMetricRangeFilter(input.youtubeFollowersMin, input.youtubeFollowersMax);
+
+    if (videoMedianRange) {
+      metricWhere.youtubeVideoMedianViews = videoMedianRange;
+    }
+
+    if (shortsMedianRange) {
+      metricWhere.youtubeShortsMedianViews = shortsMedianRange;
+    }
+
+    if (followersRange) {
+      metricWhere.youtubeFollowers = followersRange;
+    }
+
+    filters.push({
+      metrics: {
+        is: metricWhere,
+      },
+    });
+  }
+
+  return filters.length > 0
+    ? {
+        AND: filters,
+      }
+    : undefined;
+}
+
+function buildChannelListCreatorFilterJoinSql(input: ListChannelsInput): Prisma.Sql {
+  return hasMetricRangeFilters(input)
+    ? Prisma.sql`
+        INNER JOIN channel_metrics cm
+          ON cm.channel_id = c.id
+      `
+    : Prisma.empty;
+}
+
+function buildChannelListCreatorFilterWhereSql(input: ListChannelsInput): Prisma.Sql {
+  const countryRegion = normalizeTextFilterValues(input.countryRegion);
+  const influencerVertical = normalizeTextFilterValues(input.influencerVertical);
+  const influencerType = normalizeTextFilterValues(input.influencerType);
+  const countryRegionFilter =
+    countryRegion.length > 0
+      ? Prisma.sql`AND c.country_region = ANY(ARRAY[${Prisma.join(countryRegion)}]::text[])`
+      : Prisma.empty;
+  const influencerVerticalFilter =
+    influencerVertical.length > 0
+      ? Prisma.sql`AND c.influencer_vertical = ANY(ARRAY[${Prisma.join(influencerVertical)}]::text[])`
+      : Prisma.empty;
+  const influencerTypeFilter =
+    influencerType.length > 0
+      ? Prisma.sql`AND c.influencer_type = ANY(ARRAY[${Prisma.join(influencerType)}]::text[])`
+      : Prisma.empty;
+  const videoMedianMinFilter =
+    input.youtubeVideoMedianViewsMin !== undefined
+      ? Prisma.sql`AND cm.youtube_video_median_views >= ${BigInt(input.youtubeVideoMedianViewsMin)}`
+      : Prisma.empty;
+  const videoMedianMaxFilter =
+    input.youtubeVideoMedianViewsMax !== undefined
+      ? Prisma.sql`AND cm.youtube_video_median_views <= ${BigInt(input.youtubeVideoMedianViewsMax)}`
+      : Prisma.empty;
+  const shortsMedianMinFilter =
+    input.youtubeShortsMedianViewsMin !== undefined
+      ? Prisma.sql`AND cm.youtube_shorts_median_views >= ${BigInt(input.youtubeShortsMedianViewsMin)}`
+      : Prisma.empty;
+  const shortsMedianMaxFilter =
+    input.youtubeShortsMedianViewsMax !== undefined
+      ? Prisma.sql`AND cm.youtube_shorts_median_views <= ${BigInt(input.youtubeShortsMedianViewsMax)}`
+      : Prisma.empty;
+  const followersMinFilter =
+    input.youtubeFollowersMin !== undefined
+      ? Prisma.sql`AND cm.youtube_followers >= ${BigInt(input.youtubeFollowersMin)}`
+      : Prisma.empty;
+  const followersMaxFilter =
+    input.youtubeFollowersMax !== undefined
+      ? Prisma.sql`AND cm.youtube_followers <= ${BigInt(input.youtubeFollowersMax)}`
+      : Prisma.empty;
+
+  return Prisma.sql`
+    ${countryRegionFilter}
+    ${influencerVerticalFilter}
+    ${influencerTypeFilter}
+    ${videoMedianMinFilter}
+    ${videoMedianMaxFilter}
+    ${shortsMedianMinFilter}
+    ${shortsMedianMaxFilter}
+    ${followersMinFilter}
+    ${followersMaxFilter}
   `;
 }
 
@@ -737,27 +979,29 @@ async function listChannelIdsForResolvedFilters(input: ListChannelsInput): Promi
   const skip = (input.page - 1) * input.pageSize;
   const searchWhereSql = buildChannelListSearchWhereSql(query);
   const joinSql = buildChannelListResolvedStatusJoinSql(input);
+  const creatorFilterJoinSql = buildChannelListCreatorFilterJoinSql(input);
+  const creatorFilterWhereSql = buildChannelListCreatorFilterWhereSql(input);
   const resolvedStatusWhereSql = buildChannelListResolvedStatusWhereSql(input);
   const baseSql = Prisma.sql`
     FROM channels c
     ${joinSql}
+    ${creatorFilterJoinSql}
     WHERE 1 = 1
     ${searchWhereSql}
+    ${creatorFilterWhereSql}
     ${resolvedStatusWhereSql}
   `;
-  const [countRows, idRows] = await prisma.$transaction([
-    prisma.$queryRaw<ChannelCountRow[]>(Prisma.sql`
-      SELECT COUNT(*)::bigint AS total
-      ${baseSql}
-    `),
-    prisma.$queryRaw<ChannelListIdRow[]>(Prisma.sql`
-      SELECT c.id
-      ${baseSql}
-      ORDER BY c.created_at DESC, c.id DESC
-      OFFSET ${skip}
-      LIMIT ${input.pageSize}
-    `),
-  ]);
+  const countRows = await prisma.$queryRaw<ChannelCountRow[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS total
+    ${baseSql}
+  `);
+  const idRows = await prisma.$queryRaw<ChannelListIdRow[]>(Prisma.sql`
+    SELECT c.id
+    ${baseSql}
+    ORDER BY c.created_at DESC, c.id DESC
+    OFFSET ${skip}
+    LIMIT ${input.pageSize}
+  `);
 
   return {
     ids: idRows.map((row) => row.id),
@@ -799,33 +1043,9 @@ export async function listChannels(input: ListChannelsInput): Promise<{
   page: number;
   pageSize: number;
 }> {
-  const query = input.query?.trim();
   const hasResolvedStatusFilters =
     (input.enrichmentStatus?.length ?? 0) > 0 || (input.advancedReportStatus?.length ?? 0) > 0;
-  const where: Prisma.ChannelWhereInput | undefined = query
-    ? {
-        OR: [
-          {
-            title: {
-              contains: query,
-              mode: "insensitive" as const,
-            },
-          },
-          {
-            handle: {
-              contains: query,
-              mode: "insensitive" as const,
-            },
-          },
-          {
-            youtubeChannelId: {
-              contains: query,
-              mode: "insensitive" as const,
-            },
-          },
-        ],
-      }
-    : undefined;
+  const where = buildChannelListWhere(input);
 
   if (hasResolvedStatusFilters) {
     const { ids, total } = await listChannelIdsForResolvedFilters(input);
@@ -865,17 +1085,20 @@ export async function listChannels(input: ListChannelsInput): Promise<{
   const findManyArgs = {
     skip,
     take: input.pageSize,
-    orderBy: {
-      createdAt: "desc",
-    },
+    orderBy: [
+      {
+        createdAt: "desc",
+      },
+      {
+        id: "desc",
+      },
+    ],
     select: channelListSelect,
     ...(where ? { where } : {}),
   } satisfies Prisma.ChannelFindManyArgs;
 
-  const [total, channels] = await prisma.$transaction([
-    prisma.channel.count(where ? { where } : undefined),
-    prisma.channel.findMany(findManyArgs),
-  ]);
+  const total = await prisma.channel.count(where ? { where } : undefined);
+  const channels = await prisma.channel.findMany(findManyArgs);
 
   return {
     items: channels.map((channel) => toChannelSummary(channel)),
@@ -929,7 +1152,7 @@ export async function upsertChannelSkeleton(input: {
     thumbnailUrl: input.thumbnailUrl ?? null,
   };
 
-  return withDbTransaction(async (tx) => {
+  const channelId = await withDbTransaction(async (tx) => {
     const existing = await tx.channel.findUnique({
       where: {
         youtubeChannelId: input.youtubeChannelId,
@@ -940,14 +1163,6 @@ export async function upsertChannelSkeleton(input: {
         handle: true,
         description: true,
         thumbnailUrl: true,
-        manualOverrides: {
-          select: {
-            id: true,
-            field: true,
-            value: true,
-            fallbackValue: true,
-          },
-        },
       },
     });
 
@@ -961,12 +1176,12 @@ export async function upsertChannelSkeleton(input: {
           description: automatedValues.description,
           thumbnailUrl: automatedValues.thumbnailUrl,
         },
-        select: channelDetailSelect,
+        select: {
+          id: true,
+        },
       });
 
-      const lastCompletedReport = await getLatestCompletedAdvancedReport(tx, created.id);
-
-      return toChannelDetail(created, lastCompletedReport);
+      return created.id;
     }
 
     const updateData: Prisma.ChannelUpdateInput = {
@@ -976,8 +1191,19 @@ export async function upsertChannelSkeleton(input: {
       description: automatedValues.description,
       thumbnailUrl: automatedValues.thumbnailUrl,
     };
+    const manualOverrides = await tx.channelManualOverride.findMany({
+      where: {
+        channelId: existing.id,
+      },
+      select: {
+        id: true,
+        field: true,
+        value: true,
+        fallbackValue: true,
+      },
+    });
 
-    for (const manualOverride of existing.manualOverrides) {
+    for (const manualOverride of manualOverrides) {
       const config = getManualOverrideConfigByPrismaField(manualOverride.field);
       const automatedValue = getMutableChannelFieldValue(automatedValues, config.channelField);
 
@@ -1004,13 +1230,20 @@ export async function upsertChannelSkeleton(input: {
         id: existing.id,
       },
       data: updateData,
-      select: channelDetailSelect,
+      select: {
+        id: true,
+      },
     });
 
-    const lastCompletedReport = await getLatestCompletedAdvancedReport(tx, updated.id);
-
-    return toChannelDetail(updated, lastCompletedReport);
+    return updated.id;
   });
+  const detail = await getChannelById(channelId);
+
+  if (!detail) {
+    throw new ServiceError("CHANNEL_NOT_FOUND", 404, "Channel not found");
+  }
+
+  return detail;
 }
 
 export async function patchChannelManualOverrides(input: {
@@ -1018,7 +1251,7 @@ export async function patchChannelManualOverrides(input: {
   actorUserId: string;
   operations: ChannelManualOverrideOperation[];
 }): Promise<PatchChannelManualOverridesResponse> {
-  return withDbTransaction(async (tx) => {
+  const applied = await withDbTransaction(async (tx) => {
     const channel = await tx.channel.findUnique({
       where: {
         id: input.channelId,
@@ -1133,21 +1366,17 @@ export async function patchChannelManualOverrides(input: {
       });
     }
 
-    const updatedChannel =
-      Object.keys(channelUpdateData).length > 0
-        ? await tx.channel.update({
-            where: {
-              id: input.channelId,
-            },
-            data: channelUpdateData,
-            select: channelDetailSelect,
-          })
-        : await tx.channel.findUniqueOrThrow({
-            where: {
-              id: input.channelId,
-            },
-            select: channelDetailSelect,
-          });
+    if (Object.keys(channelUpdateData).length > 0) {
+      await tx.channel.update({
+        where: {
+          id: input.channelId,
+        },
+        data: channelUpdateData,
+        select: {
+          id: true,
+        },
+      });
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -1161,12 +1390,16 @@ export async function patchChannelManualOverrides(input: {
       },
     });
 
-    return {
-      channel: toChannelDetail(
-        updatedChannel,
-        await getLatestCompletedAdvancedReport(tx, updatedChannel.id),
-      ),
-      applied,
-    };
+    return applied;
   });
+  const channel = await getChannelById(input.channelId);
+
+  if (!channel) {
+    throw new ServiceError("CHANNEL_NOT_FOUND", 404, "Channel not found");
+  }
+
+  return {
+    channel,
+    applied,
+  };
 }

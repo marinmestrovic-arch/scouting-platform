@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
+import type { CatalogCreatorFilterOptions } from "../../lib/catalog-filters";
 import {
   buildDatabaseWorkspaceHref,
   resolveDatabaseTab,
@@ -22,9 +23,11 @@ type DatabaseWorkspaceProps = Readonly<{
   showLegacyNotice?: boolean;
   initialCatalogData?: ListChannelsResponse;
   initialSavedSegments?: SegmentResponse[];
+  catalogCreatorFilterOptions?: CatalogCreatorFilterOptions;
 }>;
 
 export function DatabaseWorkspace({
+  catalogCreatorFilterOptions,
   forcedTab,
   showLegacyNotice = false,
   initialCatalogData,
@@ -86,6 +89,7 @@ export function DatabaseWorkspace({
       {activeTab === "catalog" ? (
         <section className="database-workspace__panel">
           <CatalogTableShell
+            {...(catalogCreatorFilterOptions ? { creatorFilterOptions: catalogCreatorFilterOptions } : {})}
             {...(initialCatalogData ? { initialData: initialCatalogData } : {})}
             {...(initialSavedSegments ? { initialSavedSegments } : {})}
           />
