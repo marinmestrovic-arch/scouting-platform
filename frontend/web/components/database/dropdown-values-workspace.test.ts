@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { DropdownValuesWorkspace } from "./dropdown-values-workspace";
 
 describe("dropdown values workspace", () => {
-  it("marks every dropdown group as HubSpot synced", () => {
+  it("shows hubspot-synced and platform-managed dropdown groups separately", () => {
     const html = renderToStaticMarkup(createElement(DropdownValuesWorkspace, { initialData: [] }));
 
     expect(html).toContain("Currency");
@@ -16,6 +16,7 @@ describe("dropdown values workspace", () => {
     expect(html).toContain("Country/Region");
     expect(html).toContain("Language");
     expect(html).not.toContain("Edit values");
-    expect(html.match(/Synced from HubSpot/gu)?.length).toBe(7);
+    expect(html.match(/Synced from HubSpot/gu)?.length).toBe(5);
+    expect(html.match(/Built into platform/gu)?.length).toBe(2);
   });
 });

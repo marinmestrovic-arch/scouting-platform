@@ -6,6 +6,7 @@ import React, { useMemo, useState } from "react";
 import {
   groupDropdownValuesByField,
   isHubspotSyncedDropdownField,
+  isPlatformManagedDropdownField,
   replaceDropdownValuesRequest,
   syncHubspotDropdownValuesRequest,
 } from "../../lib/dropdown-values-api";
@@ -89,8 +90,9 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
         <div>
           <h2>Dropdown Values</h2>
           <p className="workspace-copy">
-            Sync HubSpot dropdowns to refresh Currency, Deal Type, Activation Type, Influencer Type,
-            Influencer Vertical, Country/Region, and Language from HubSpot.
+            Sync HubSpot dropdowns to refresh Currency, Deal Type, Activation Type, Country/Region,
+            and Language from HubSpot. Influencer Type and Influencer Vertical are built into the
+            platform.
           </p>
         </div>
         <button
@@ -122,6 +124,8 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
                 <td>
                   {isHubspotSyncedDropdownField(fieldKey) ? (
                     <span className="workspace-copy">Synced from HubSpot</span>
+                  ) : isPlatformManagedDropdownField(fieldKey) ? (
+                    <span className="workspace-copy">Built into platform</span>
                   ) : (
                     <button
                       className="workspace-button workspace-button--secondary workspace-button--small"

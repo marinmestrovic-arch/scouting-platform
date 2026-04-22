@@ -4,10 +4,13 @@ import type {
   DropdownValueFieldKey,
   HubspotSyncedDropdownFieldKey,
   ListDropdownValuesResponse,
+  PlatformManagedDropdownFieldKey,
   UpdateDropdownValuesRequest,
 } from "@scouting-platform/contracts";
 import {
   HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
+  PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS,
+  PLATFORM_MANAGED_DROPDOWN_VALUES,
   updateDropdownValuesRequestSchema,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
@@ -16,12 +19,14 @@ import {
   fetchHubspotPropertyDefinition,
 } from "@scouting-platform/integrations";
 
+import { ServiceError } from "./errors";
+
 const DEFAULT_DROPDOWN_VALUES: Record<DropdownValueFieldKey, readonly string[]> = {
   currency: [],
   dealType: [],
   activationType: [],
-  influencerType: [],
-  influencerVertical: [],
+  influencerType: PLATFORM_MANAGED_DROPDOWN_VALUES.influencerType,
+  influencerVertical: PLATFORM_MANAGED_DROPDOWN_VALUES.influencerVertical,
   countryRegion: [],
   language: [],
 };
@@ -52,16 +57,6 @@ const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
     objectType: "2-200856187",
     propertyName: "activation_type",
   },
-  influencerType: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "influencer_type",
-  },
-  influencerVertical: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "influencer_vertical",
-  },
   countryRegion: {
     kind: "property",
     objectType: "contacts",
@@ -77,6 +72,10 @@ const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
   | { kind: "accountCurrencies" }
   | { kind: "property"; objectType: string; propertyName: string }
 >;
+
+const PLATFORM_MANAGED_DROPDOWN_FIELD_SET = new Set<DropdownValueFieldKey>(
+  PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS,
+);
 
 function fromPrismaFieldKey(fieldKey: PrismaDropdownValueFieldKey): DropdownValueFieldKey {
   switch (fieldKey) {
@@ -113,28 +112,70 @@ function toDropdownValue(record: {
   };
 }
 
+function normalizeDropdownValues(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+function extractHubspotOptionLabels(
+  definition: Awaited<ReturnType<typeof fetchHubspotPropertyDefinition>>,
+): string[] {
+  return normalizeDropdownValues(
+    definition.options.map((option) => option.label?.trim() || option.value?.trim() || ""),
+  );
+}
+
 export async function ensureDropdownValueDefaults(): Promise<void> {
-  const existingCount = await prisma.dropdownValue.count();
+  const existingManagedValues = await prisma.dropdownValue.findMany({
+    where: {
+      fieldKey: {
+        in: PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.map((fieldKey) => PRISMA_DROPDOWN_FIELD_KEYS[fieldKey]),
+      },
+    },
+    orderBy: [{ fieldKey: "asc" }, { value: "asc" }],
+    select: {
+      fieldKey: true,
+      value: true,
+    },
+  });
 
-  if (existingCount > 0) {
-    return;
+  const existingByField = Object.fromEntries(
+    PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.map((fieldKey) => [fieldKey, [] as string[]]),
+  ) as Record<PlatformManagedDropdownFieldKey, string[]>;
+
+  for (const item of existingManagedValues) {
+    const fieldKey = fromPrismaFieldKey(item.fieldKey) as PlatformManagedDropdownFieldKey;
+    existingByField[fieldKey].push(item.value);
   }
 
-  const defaultRows = (Object.entries(DEFAULT_DROPDOWN_VALUES) as Array<[DropdownValueFieldKey, readonly string[]]>)
-    .flatMap(([fieldKey, values]) =>
-      values.map((value) => ({
-        fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
-        value,
-      })),
+  const fieldsToRefresh = PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.filter((fieldKey) => {
+    const expectedValues = normalizeDropdownValues(DEFAULT_DROPDOWN_VALUES[fieldKey]);
+    const existingValues = normalizeDropdownValues(existingByField[fieldKey]);
+
+    return (
+      expectedValues.length !== existingValues.length
+      || expectedValues.some((value, index) => value !== existingValues[index])
     );
+  });
 
-  if (defaultRows.length === 0) {
+  if (fieldsToRefresh.length === 0) {
     return;
   }
 
-  await prisma.dropdownValue.createMany({
-    data: defaultRows,
-    skipDuplicates: true,
+  await withDbTransaction(async (tx) => {
+    for (const fieldKey of fieldsToRefresh) {
+      await tx.dropdownValue.deleteMany({
+        where: {
+          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
+        },
+      });
+
+      await tx.dropdownValue.createMany({
+        data: normalizeDropdownValues(DEFAULT_DROPDOWN_VALUES[fieldKey]).map((value) => ({
+          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
+          value,
+        })),
+      });
+    }
   });
 }
 
@@ -169,53 +210,19 @@ export async function listDropdownOptions(): Promise<Record<DropdownValueFieldKe
   return options;
 }
 
-function normalizeDropdownValues(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
-    left.localeCompare(right),
-  );
-}
-
-function extractHubspotOptionLabels(
-  definition: Awaited<ReturnType<typeof fetchHubspotPropertyDefinition>>,
-): string[] {
-  return normalizeDropdownValues(
-    definition.options.map((option) => option.label?.trim() || option.value?.trim() || ""),
-  );
-}
-
-async function fetchHubspotDropdownValues(input: {
-  fieldKey: HubspotSyncedDropdownFieldKey;
-  apiKey?: string;
-  fetchFn?: typeof fetch;
-}): Promise<string[]> {
-  const source = HUBSPOT_DROPDOWN_SOURCE_BY_FIELD[input.fieldKey];
-
-  if (source.kind === "accountCurrencies") {
-    const details = await fetchHubspotAccountDetails({
-      ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-      ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
-    });
-
-    return normalizeDropdownValues([
-      details.companyCurrency ?? "",
-      ...details.additionalCurrencies,
-    ]);
-  }
-
-  const definition = await fetchHubspotPropertyDefinition({
-    objectType: source.objectType,
-    propertyName: source.propertyName,
-    ...(input.apiKey ? { apiKey: input.apiKey } : {}),
-    ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
-  });
-
-  return extractHubspotOptionLabels(definition);
-}
-
 export async function replaceDropdownValues(input: UpdateDropdownValuesRequest & {
   actorUserId: string;
 }): Promise<ListDropdownValuesResponse> {
   const payload = updateDropdownValuesRequestSchema.parse(input);
+
+  if (PLATFORM_MANAGED_DROPDOWN_FIELD_SET.has(payload.fieldKey)) {
+    throw new ServiceError(
+      "DROPDOWN_VALUE_FIELD_PLATFORM_MANAGED",
+      400,
+      `${payload.fieldKey} is managed by the platform and cannot be edited here`,
+    );
+  }
+
   const values = normalizeDropdownValues(payload.values);
 
   await withDbTransaction(async (tx) => {
@@ -259,13 +266,28 @@ export async function syncHubspotDropdownValues(input: {
   const syncedValues = Object.fromEntries(
     await Promise.all(
       HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map(async (fieldKey) => {
-        const values = await fetchHubspotDropdownValues({
-          fieldKey,
+        const source = HUBSPOT_DROPDOWN_SOURCE_BY_FIELD[fieldKey];
+
+        if (source.kind === "accountCurrencies") {
+          const details = await fetchHubspotAccountDetails({
+            ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+            ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+          });
+
+          return [fieldKey, normalizeDropdownValues([
+            details.companyCurrency ?? "",
+            ...details.additionalCurrencies,
+          ])];
+        }
+
+        const definition = await fetchHubspotPropertyDefinition({
+          objectType: source.objectType,
+          propertyName: source.propertyName,
           ...(input.apiKey ? { apiKey: input.apiKey } : {}),
           ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
         });
 
-        return [fieldKey, values];
+        return [fieldKey, extractHubspotOptionLabels(definition)];
       }),
     ),
   ) as Record<HubspotSyncedDropdownFieldKey, string[]>;

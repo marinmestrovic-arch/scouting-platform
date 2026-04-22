@@ -398,6 +398,6 @@ describe("remove youtube average views migration", () => {
   it("drops the deprecated channel metrics average views column", () => {
     const migrationSql = readFileSync(removeYoutubeAverageViewsMigrationPath, "utf-8");
 
-    expect(migrationSql).toContain('DROP COLUMN IF EXISTS "youtube_average_views"');
+    expect(migrationSql).toContain('DROP COLUMN "youtube_average_views"');
   });
 });

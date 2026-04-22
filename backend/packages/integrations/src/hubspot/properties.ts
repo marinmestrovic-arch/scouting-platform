@@ -97,6 +97,40 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
+export async function fetchHubspotAccountDetails(
+  rawInput: FetchHubspotAccountDetailsInput,
+): Promise<HubspotAccountDetails> {
+  const input = fetchHubspotAccountDetailsInputSchema.parse(rawInput);
+  const apiKey = getApiKey(input.apiKey);
+  const fetchFn = getFetch(input.fetchFn);
+  const url = new URL("/account-info/v3/details", input.baseUrl);
+
+  const response = await fetchFn(url, {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw toProviderError(response);
+  }
+
+  const payload = await parseJsonResponse(response);
+  const parsed = hubspotAccountDetailsSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new HubspotError(
+      "HUBSPOT_INVALID_RESPONSE",
+      502,
+      "HubSpot returned an invalid account details response",
+    );
+  }
+
+  return parsed.data;
+}
+
 export async function fetchHubspotPropertyDefinition(
   rawInput: FetchHubspotPropertyDefinitionInput,
 ): Promise<HubspotPropertyDefinition> {
@@ -128,40 +162,6 @@ export async function fetchHubspotPropertyDefinition(
       "HUBSPOT_INVALID_RESPONSE",
       502,
       "HubSpot returned an invalid property definition response",
-    );
-  }
-
-  return parsed.data;
-}
-
-export async function fetchHubspotAccountDetails(
-  rawInput: FetchHubspotAccountDetailsInput = {},
-): Promise<HubspotAccountDetails> {
-  const input = fetchHubspotAccountDetailsInputSchema.parse(rawInput);
-  const apiKey = getApiKey(input.apiKey);
-  const fetchFn = getFetch(input.fetchFn);
-  const url = new URL("/account-info/v3/details", input.baseUrl);
-
-  const response = await fetchFn(url, {
-    method: "GET",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw toProviderError(response);
-  }
-
-  const payload = await parseJsonResponse(response);
-  const parsed = hubspotAccountDetailsSchema.safeParse(payload);
-
-  if (!parsed.success) {
-    throw new HubspotError(
-      "HUBSPOT_INVALID_RESPONSE",
-      502,
-      "HubSpot returned an invalid account details response",
     );
   }
 

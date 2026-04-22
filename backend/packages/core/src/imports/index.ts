@@ -22,13 +22,6 @@ import { listDropdownOptions } from "../dropdown-values";
 import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
 
-const CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS = [
-  "influencerType",
-  "influencerVertical",
-  "countryRegion",
-  "language",
-] as const;
-
 const csvImportBatchActorSelect = {
   id: true,
   email: true,
@@ -312,10 +305,12 @@ function validateConfiguredDropdownField(
   return value;
 }
 
+type CsvDropdownOptions = Record<"influencerType" | "influencerVertical" | "countryRegion" | "language", string[]>;
+
 function toParsedCsvImportRow(
   rowNumber: number,
   rawRow: string[],
-  hubspotDropdownOptions: Record<(typeof CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS)[number], string[]>,
+  hubspotDropdownOptions: CsvDropdownOptions,
 ): ParsedCsvImportRow {
   const errors: string[] = [];
   const youtubeChannelId = validateRequiredField(
@@ -425,9 +420,10 @@ function toParsedCsvImportRow(
 }
 
 function assertHubspotDropdownConfiguration(
-  dropdownOptions: Record<(typeof CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS)[number], string[]>,
+  dropdownOptions: CsvDropdownOptions,
 ): void {
-  const missingFields = CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS.filter(
+  const CSV_DROPDOWN_FIELD_KEYS = ["influencerType", "influencerVertical", "countryRegion", "language"] as const;
+  const missingFields = CSV_DROPDOWN_FIELD_KEYS.filter(
     (fieldKey) => dropdownOptions[fieldKey].length === 0,
   );
 

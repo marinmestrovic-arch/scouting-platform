@@ -283,6 +283,7 @@ export function buildHubspotContactProperties(channel: PushChannelRecord): Recor
       channel.metrics?.youtubeFollowers?.toString()
       ?? subscriberCount?.toString()
       ?? "",
+    youtube_video_average_views: "",
     youtube_engagement_rate: channel.metrics?.youtubeEngagementRate?.toString() ?? "",
     influencer_size: computeInfluencerSizeTier(subscriberCount),
     language: channel.contentLanguage ?? "",
