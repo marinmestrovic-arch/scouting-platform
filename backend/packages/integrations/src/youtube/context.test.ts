@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   YoutubeChannelContextProviderError,
+  fetchYoutubeChannelPageEmailSignal,
   fetchYoutubeChannelContext,
 } from "./context";
 
@@ -620,5 +621,35 @@ describe("fetchYoutubeChannelContext", () => {
         message: "YouTube channel context request failed",
       } satisfies Partial<YoutubeChannelContextProviderError>),
     );
+  });
+});
+
+describe("fetchYoutubeChannelPageEmailSignal", () => {
+  it("extracts explicit emails from a channel about page without browser APIs", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        `<html><body><main>Business inquiries: creator [at] example [dot] com for sponsorships.</main></body></html>`,
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/html",
+          },
+        },
+      ),
+    );
+
+    const signal = await fetchYoutubeChannelPageEmailSignal({
+      canonicalUrl: "https://www.youtube.com/@creator",
+      fetchImpl: fetchMock,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://www.youtube.com/@creator/about",
+      expect.objectContaining({
+        redirect: "follow",
+      }),
+    );
+    expect(signal.emails).toEqual(["creator@example.com"]);
+    expect(signal.snippet).toContain("Business inquiries");
   });
 });

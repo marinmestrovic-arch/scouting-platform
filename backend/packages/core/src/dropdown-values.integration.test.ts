@@ -67,6 +67,9 @@ integration("dropdown values core integration", () => {
   async function seedHubspotBackedFields(): Promise<void> {
     await prisma.dropdownValue.createMany({
       data: [
+        { fieldKey: "CURRENCY", value: "GBP" },
+        { fieldKey: "DEAL_TYPE", value: "Old deal type" },
+        { fieldKey: "ACTIVATION_TYPE", value: "Old activation type" },
         { fieldKey: "INFLUENCER_TYPE", value: "Male" },
         { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
         { fieldKey: "COUNTRY_REGION", value: "Croatia" },
@@ -75,7 +78,7 @@ integration("dropdown values core integration", () => {
     });
   }
 
-  it("does not restore deleted seeded currency values after replacing the field", async () => {
+  it("does not seed HubSpot-synced dropdown values before sync", async () => {
     const dropdownValues = await loadDropdownValues();
     const admin = await createAdminUser();
 
@@ -85,7 +88,7 @@ integration("dropdown values core integration", () => {
       .map((item) => item.value)
       .sort((left, right) => left.localeCompare(right));
 
-    expect(initialCurrencies).toEqual(["EUR", "GBP", "USD"]);
+    expect(initialCurrencies).toEqual([]);
 
     await dropdownValues.replaceDropdownValues({
       actorUserId: admin.id,
@@ -110,6 +113,37 @@ integration("dropdown values core integration", () => {
 
     const fetchFn = vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.includes("/account-info/v3/details")) {
+        return new Response(
+          JSON.stringify({
+            companyCurrency: "EUR",
+            additionalCurrencies: ["USD"],
+          }),
+        );
+      }
+
+      if (url.includes("/deals/dealtype")) {
+        return new Response(
+          JSON.stringify({
+            name: "dealtype",
+            label: "Deal Type",
+            type: "enumeration",
+            options: [{ label: "Flat Fee", value: "Influencer Collaboration" }],
+          }),
+        );
+      }
+
+      if (url.includes("/2-200856187/activation_type")) {
+        return new Response(
+          JSON.stringify({
+            name: "activation_type",
+            label: "Activation Type",
+            type: "enumeration",
+            options: [{ label: "Dedicated Video", value: "Dedicated Video" }],
+          }),
+        );
+      }
 
       if (url.includes("/influencer_type")) {
         return new Response(
@@ -160,6 +194,16 @@ integration("dropdown values core integration", () => {
       fetchFn,
     });
 
+    expect(updated.items.filter((item) => item.fieldKey === "currency").map((item) => item.value)).toEqual([
+      "EUR",
+      "USD",
+    ]);
+    expect(updated.items.filter((item) => item.fieldKey === "dealType").map((item) => item.value)).toEqual([
+      "Flat Fee",
+    ]);
+    expect(updated.items.filter((item) => item.fieldKey === "activationType").map((item) => item.value)).toEqual([
+      "Dedicated Video",
+    ]);
     expect(updated.items.filter((item) => item.fieldKey === "influencerType").map((item) => item.value)).toEqual([
       "Female",
     ]);
@@ -179,5 +223,16 @@ integration("dropdown values core integration", () => {
       },
     });
     expect(audit).not.toBeNull();
+    expect(audit?.metadata).toMatchObject({
+      syncedFields: expect.arrayContaining([
+        { fieldKey: "currency", valueCount: 2 },
+        { fieldKey: "dealType", valueCount: 1 },
+        { fieldKey: "activationType", valueCount: 1 },
+        { fieldKey: "influencerType", valueCount: 1 },
+        { fieldKey: "influencerVertical", valueCount: 1 },
+        { fieldKey: "countryRegion", valueCount: 1 },
+        { fieldKey: "language", valueCount: 1 },
+      ]),
+    });
   });
 });

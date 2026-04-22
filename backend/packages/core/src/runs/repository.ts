@@ -376,7 +376,7 @@ async function loadRunCreationMetadata(input: {
     dealStage: "Scouted",
     dealType: "",
     activationType: "",
-    hubspotInfluencerType: "YouTube Creator",
+    hubspotInfluencerType: "",
     hubspotInfluencerVertical: "",
     hubspotCountryRegion: "",
     hubspotLanguage: "",
@@ -543,13 +543,13 @@ async function getCatalogCandidatesForCriteria(
 
   if (viewsRange?.min !== undefined) {
     whereClauses.push(
-      Prisma.sql`COALESCE(cm.youtube_average_views, cm.view_count) >= ${viewsRange.min}`,
+      Prisma.sql`cm.view_count >= ${viewsRange.min}`,
     );
   }
 
   if (viewsRange?.max !== undefined) {
     whereClauses.push(
-      Prisma.sql`COALESCE(cm.youtube_average_views, cm.view_count) <= ${viewsRange.max}`,
+      Prisma.sql`cm.view_count <= ${viewsRange.max}`,
     );
   }
 

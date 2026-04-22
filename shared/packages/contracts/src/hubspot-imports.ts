@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const isoDatetimeSchema = z.string().datetime();
 
-export const HUBSPOT_IMPORT_SCHEMA_VERSION = "week7-hubspot-import-v1" as const;
+export const HUBSPOT_IMPORT_SCHEMA_VERSION = "week7-hubspot-import-v2" as const;
 export const HUBSPOT_IMPORT_HEADER = [
   "Contact Type",
   "Campaign Name",
@@ -19,6 +19,7 @@ export const HUBSPOT_IMPORT_HEADER = [
   "First Name",
   "Last Name",
   "Email",
+  "Phone Number",
   "Influencer Type",
   "Influencer Vertical",
   "Country/Region",

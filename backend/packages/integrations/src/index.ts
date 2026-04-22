@@ -6,3 +6,4 @@ export * from "./youtube/discovery";
 export * from "./youtube/context";
 export * from "./openai/campaign-fit-assessment";
 export * from "./openai/channel-enrichment";
+export * from "./openai/creator-profile-enrichment";

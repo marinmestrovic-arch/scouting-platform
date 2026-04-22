@@ -319,74 +319,193 @@ describe("enrichChannelWithOpenAi", () => {
     expect(result.rawPayload.id).toBe("resp-1");
   });
 
-  it("throws when the model returns output without structuredProfile", async () => {
-    await expect(
-      enrichChannelWithOpenAi({
-        ...TEST_INPUT,
-        client: {
-          chat: {
-            completions: {
-              create: async () => ({
-                choices: [
-                  {
-                    message: {
-                      content: JSON.stringify({
-                        summary: "Creator focused on gaming commentary.",
-                        topics: ["gaming"],
-                        brandFitNotes: "Strong fit for gaming peripherals.",
-                        confidence: 0.82,
-                      }),
-                    },
+  it("accepts model output without structuredProfile as a legacy profile", async () => {
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      summary: "Creator focused on gaming commentary.",
+                      topics: ["gaming"],
+                      brandFitNotes: "Strong fit for gaming peripherals.",
+                      confidence: 0.82,
+                    }),
                   },
-                ],
-              }),
-            },
+                },
+              ],
+            }),
           },
         },
-      }),
-    ).rejects.toEqual(
-      expect.objectContaining({
-        code: "OPENAI_INVALID_RESPONSE",
-        status: 502,
-        message: "OpenAI returned invalid enrichment output",
-      } satisfies Partial<OpenAiChannelEnrichmentError>),
+      },
+    });
+
+    expect(result.profile).toEqual({
+      summary: "Creator focused on gaming commentary.",
+      topics: ["gaming"],
+      brandFitNotes: "Strong fit for gaming peripherals.",
+      confidence: 0.82,
+      structuredProfile: null,
+    });
+  });
+
+  it("normalizes structuredProfile enum drift instead of failing enrichment", async () => {
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify(
+                      createStructuredResponse({
+                        structuredProfile: {
+                          ...STRUCTURED_PROFILE,
+                          primaryNiche: "unknown vertical",
+                          contentFormats: ["short form", "livestream"],
+                          brandFitTags: ["technology", "gaming"],
+                          brandSafety: {
+                            status: "safe",
+                            flags: ["political", "violence"],
+                            rationale: "",
+                          },
+                        },
+                      }),
+                    ),
+                  },
+                },
+              ],
+            }),
+          },
+        },
+      },
+    });
+
+    expect(result.profile.structuredProfile).toMatchObject({
+      primaryNiche: "other",
+      contentFormats: ["shorts", "live_stream"],
+      brandFitTags: ["consumer_tech", "gaming_hardware"],
+      brandSafety: {
+        status: "unknown",
+        flags: ["violence"],
+      },
+    });
+    expect(result.profile.structuredProfile?.brandSafety.rationale).toBe(
+      "Insufficient evidence for specific brand-safety concerns in the provided context.",
     );
   });
 
-  it("throws when structuredProfile contains invalid enum values", async () => {
-    await expect(
-      enrichChannelWithOpenAi({
-        ...TEST_INPUT,
-        client: {
-          chat: {
-            completions: {
-              create: async () => ({
-                choices: [
-                  {
-                    message: {
-                      content: JSON.stringify(
-                        createStructuredResponse({
-                          structuredProfile: {
-                            ...STRUCTURED_PROFILE,
-                            primaryNiche: "unknown_vertical",
-                          },
-                        }),
-                      ),
-                    },
+  it("normalizes weak but parseable enrichment output to safe defaults", async () => {
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      summary: "",
+                      topics: [],
+                      brandFitNotes: "",
+                      confidence: "not a number",
+                      structuredProfile: {
+                        primaryNiche: "",
+                        contentFormats: [],
+                        language: "e",
+                        geoHints: ["U", "Croatia"],
+                        brandSafety: {},
+                      },
+                    }),
                   },
-                ],
-              }),
-            },
+                },
+              ],
+            }),
           },
         },
-      }),
-    ).rejects.toEqual(
-      expect.objectContaining({
-        code: "OPENAI_INVALID_RESPONSE",
-        status: 502,
-        message: "OpenAI returned invalid enrichment output",
-      } satisfies Partial<OpenAiChannelEnrichmentError>),
-    );
+      },
+    });
+
+    expect(result.profile).toEqual({
+      summary: "Creator profile generated from the available YouTube channel context.",
+      topics: ["other"],
+      brandFitNotes: "No clear brand-fit constraints were identified from the available context.",
+      confidence: 0.5,
+      structuredProfile: {
+        primaryNiche: "other",
+        secondaryNiches: [],
+        contentFormats: ["mixed"],
+        brandFitTags: [],
+        language: null,
+        geoHints: ["Croatia"],
+        sponsorSignals: [],
+        brandSafety: {
+          status: "unknown",
+          flags: [],
+          rationale:
+            "Insufficient evidence for specific brand-safety concerns in the provided context.",
+        },
+      },
+    });
+  });
+
+  it("parses JSON object output wrapped in a markdown fence", async () => {
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: `\`\`\`json\n${JSON.stringify(createStructuredResponse())}\n\`\`\``,
+                  },
+                },
+              ],
+            }),
+          },
+        },
+      },
+    });
+
+    expect(result.profile).toEqual(createStructuredResponse());
+  });
+
+  it("falls back to safe defaults when model text is not JSON", async () => {
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: "This channel appears to cover gaming and commentary.",
+                  },
+                },
+              ],
+            }),
+          },
+        },
+      },
+    });
+
+    expect(result.profile).toEqual({
+      summary: "Creator profile generated from the available YouTube channel context.",
+      topics: ["other"],
+      brandFitNotes: "No clear brand-fit constraints were identified from the available context.",
+      confidence: 0.5,
+      structuredProfile: null,
+    });
   });
 
   it("parses legacy stored payloads and fills structuredProfile with null", () => {

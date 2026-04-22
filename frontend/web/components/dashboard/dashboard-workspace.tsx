@@ -287,7 +287,6 @@ export function DashboardWorkspace({
                     <th>Client</th>
                     <th>Market</th>
                     <th>Campaign Manager</th>
-                    <th>Brief Link</th>
                     <th>Influencer List</th>
                     <th>Coverage</th>
                     <th>Status</th>
@@ -302,20 +301,6 @@ export function DashboardWorkspace({
                         <td>{formatNullableMetadataValue(run.metadata.client)}</td>
                         <td>{formatNullableMetadataValue(run.metadata.market)}</td>
                         <td>{formatCampaignManagerLabel(run.metadata.campaignManager)}</td>
-                        <td>
-                          {run.metadata.briefLink ? (
-                            <a
-                              className="dashboard-workspace__list-link"
-                              href={run.metadata.briefLink}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Open brief
-                            </a>
-                          ) : (
-                            <span className="dashboard-workspace__planned-cell">—</span>
-                          )}
-                        </td>
                         <td>
                           <Link className="dashboard-workspace__list-link" href={`/runs/${encodeURIComponent(run.id)}`}>
                             {run.name}

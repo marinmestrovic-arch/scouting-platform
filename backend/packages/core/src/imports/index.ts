@@ -8,7 +8,6 @@ import {
   CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
   CSV_IMPORT_MAX_DATA_ROWS,
   CSV_IMPORT_TEMPLATE_VERSION,
-  HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
   type CsvImportBatchDetail,
   type CsvImportBatchStatus,
   type CsvImportBatchSummary,
@@ -22,6 +21,13 @@ import { ServiceError } from "../errors";
 import { listDropdownOptions } from "../dropdown-values";
 import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
+
+const CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS = [
+  "influencerType",
+  "influencerVertical",
+  "countryRegion",
+  "language",
+] as const;
 
 const csvImportBatchActorSelect = {
   id: true,
@@ -309,7 +315,7 @@ function validateConfiguredDropdownField(
 function toParsedCsvImportRow(
   rowNumber: number,
   rawRow: string[],
-  hubspotDropdownOptions: Record<(typeof HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS)[number], string[]>,
+  hubspotDropdownOptions: Record<(typeof CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS)[number], string[]>,
 ): ParsedCsvImportRow {
   const errors: string[] = [];
   const youtubeChannelId = validateRequiredField(
@@ -419,9 +425,9 @@ function toParsedCsvImportRow(
 }
 
 function assertHubspotDropdownConfiguration(
-  dropdownOptions: Record<(typeof HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS)[number], string[]>,
+  dropdownOptions: Record<(typeof CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS)[number], string[]>,
 ): void {
-  const missingFields = HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.filter(
+  const missingFields = CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS.filter(
     (fieldKey) => dropdownOptions[fieldKey].length === 0,
   );
 

@@ -7,7 +7,7 @@ describe("resolveHubspotInfluencerTypeFallback", () => {
     expect(
       resolveHubspotInfluencerTypeFallback({
         channelInfluencerType: "Streamer",
-        runHubspotInfluencerType: "YouTube Creator",
+        runHubspotInfluencerType: "Creator",
       }),
     ).toBe("Streamer");
   });

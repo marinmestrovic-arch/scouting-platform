@@ -36,7 +36,7 @@ function createPrivateKey(): string {
 
 integration("google sheets export API integration", () => {
   let prisma: PrismaClient;
-  let route: typeof import("./runs/[id]/google-sheets-export/route");
+  let exportRoute: typeof import("./runs/[id]/google-sheets-export/route");
   const originalFetch = global.fetch;
 
   beforeAll(async () => {
@@ -51,7 +51,7 @@ integration("google sheets export API integration", () => {
     prisma = db.createPrismaClient({ databaseUrl });
 
     await prisma.$connect();
-    route = await import("./runs/[id]/google-sheets-export/route");
+    exportRoute = await import("./runs/[id]/google-sheets-export/route");
   });
 
   beforeEach(async () => {
@@ -140,9 +140,103 @@ integration("google sheets export API integration", () => {
     await prisma.channelMetric.create({
       data: {
         channelId: channel.id,
-        youtubeAverageViews: 25_000n,
         youtubeEngagementRate: 3.8,
         youtubeFollowers: 120_000n,
+      },
+    });
+
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: channel.id,
+        context: {
+          youtubeChannelId: "UC-GOOGLE-SHEETS-1",
+          title: "Sheets Creator",
+          handle: "@sheetscreator",
+          description: "Gaming creator",
+          thumbnailUrl: null,
+          publishedAt: null,
+          defaultLanguage: "en",
+          subscriberCount: 120_000,
+          viewCount: 250_000,
+          videoCount: 10,
+          recentVideos: [
+            {
+              youtubeVideoId: "video-1",
+              title: "Long One",
+              description: null,
+              publishedAt: null,
+              durationSeconds: 600,
+              isShort: false,
+              viewCount: 100_000,
+              likeCount: 6_000,
+              commentCount: 2_000,
+              categoryId: null,
+              categoryName: null,
+              tags: [],
+            },
+            {
+              youtubeVideoId: "video-2",
+              title: "Long Two",
+              description: null,
+              publishedAt: null,
+              durationSeconds: 480,
+              isShort: false,
+              viewCount: 200_000,
+              likeCount: 10_000,
+              commentCount: 2_000,
+              categoryId: null,
+              categoryName: null,
+              tags: [],
+            },
+            {
+              youtubeVideoId: "video-3",
+              title: "Long Three",
+              description: null,
+              publishedAt: null,
+              durationSeconds: 420,
+              isShort: false,
+              viewCount: 300_000,
+              likeCount: 12_000,
+              commentCount: 3_000,
+              categoryId: null,
+              categoryName: null,
+              tags: [],
+            },
+            {
+              youtubeVideoId: "video-4",
+              title: "Short One",
+              description: null,
+              publishedAt: null,
+              durationSeconds: 30,
+              isShort: true,
+              viewCount: 50_000,
+              likeCount: 1_000,
+              commentCount: 200,
+              categoryId: null,
+              categoryName: null,
+              tags: [],
+            },
+            {
+              youtubeVideoId: "video-5",
+              title: "Short Two",
+              description: null,
+              publishedAt: null,
+              durationSeconds: 45,
+              isShort: true,
+              viewCount: 150_000,
+              likeCount: 2_000,
+              commentCount: 250,
+              categoryId: null,
+              categoryName: null,
+              tags: [],
+            },
+          ],
+          diagnostics: {
+            warnings: [],
+          },
+        },
+        fetchedAt: new Date(),
+        lastError: null,
       },
     });
 
@@ -185,7 +279,7 @@ integration("google sheets export API integration", () => {
         currency: "EUR",
         dealType: "Paid",
         activationType: "Integration",
-        hubspotInfluencerType: "YouTube Creator",
+        hubspotInfluencerType: "Creator",
         hubspotLanguage: "English",
         status: "COMPLETED",
         completedAt: new Date(),
@@ -226,6 +320,8 @@ integration("google sheets export API integration", () => {
       if (url.includes("/values/")) {
         if (init?.method === "PUT") {
           expect(decodedUrl).toContain("'Scouting Export'!A4:AD4");
+          expect(String(init.body)).toContain("200000");
+          expect(String(init.body)).toContain("100000");
 
           return new Response(
             JSON.stringify({
@@ -323,7 +419,7 @@ integration("google sheets export API integration", () => {
 
     global.fetch = fetchMock as typeof fetch;
 
-    const response = await route.POST(
+    const response = await exportRoute.POST(
       new Request(`http://localhost/api/runs/${run.id}/google-sheets-export`, {
         method: "POST",
         headers: {
@@ -349,7 +445,7 @@ integration("google sheets export API integration", () => {
   });
 
   it("returns normalized auth and validation errors", async () => {
-    const unauthenticatedResponse = await route.POST(
+    const unauthenticatedResponse = await exportRoute.POST(
       new Request("http://localhost/api/runs/not-a-uuid/google-sheets-export", {
         method: "POST",
         headers: {
@@ -367,7 +463,7 @@ integration("google sheets export API integration", () => {
     const manager = await createManager();
     currentSessionUser = { id: manager.id, role: "user" };
 
-    const invalidParamsResponse = await route.POST(
+    const invalidParamsResponse = await exportRoute.POST(
       new Request("http://localhost/api/runs/not-a-uuid/google-sheets-export", {
         method: "POST",
         headers: {
@@ -384,7 +480,7 @@ integration("google sheets export API integration", () => {
 
     const run = await createPreparedRun(manager.id);
 
-    const invalidBodyResponse = await route.POST(
+    const invalidBodyResponse = await exportRoute.POST(
       new Request(`http://localhost/api/runs/${run.id}/google-sheets-export`, {
         method: "POST",
         headers: {
@@ -398,4 +494,5 @@ integration("google sheets export API integration", () => {
     );
     expect(invalidBodyResponse.status).toBe(400);
   });
+
 });

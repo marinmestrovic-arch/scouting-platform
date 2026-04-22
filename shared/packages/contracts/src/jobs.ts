@@ -8,6 +8,7 @@ export const JOB_NAMES = [
   "channels.enrich.hypeauditor",
   "imports.csv.process",
   "exports.csv.generate",
+  "hubspot-preview.enrich",
   "hubspot.import.batch",
   "hubspot.push.batch",
   "maintenance.refresh-stale",
@@ -53,6 +54,11 @@ export const exportsCsvGeneratePayloadSchema = z.object({
   requestedByUserId: uuid,
 });
 
+export const hubspotPreviewEnrichPayloadSchema = z.object({
+  enrichmentJobId: uuid,
+  requestedByUserId: uuid,
+});
+
 export const hubspotPushBatchPayloadSchema = z.object({
   pushBatchId: uuid,
   requestedByUserId: uuid,
@@ -76,6 +82,7 @@ export const jobPayloadSchemas = {
   "channels.enrich.hypeauditor": channelsEnrichHypeAuditorPayloadSchema,
   "imports.csv.process": importsCsvProcessPayloadSchema,
   "exports.csv.generate": exportsCsvGeneratePayloadSchema,
+  "hubspot-preview.enrich": hubspotPreviewEnrichPayloadSchema,
   "hubspot.import.batch": hubspotImportBatchPayloadSchema,
   "hubspot.push.batch": hubspotPushBatchPayloadSchema,
   "maintenance.refresh-stale": maintenanceRefreshStalePayloadSchema,

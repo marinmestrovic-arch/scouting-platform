@@ -27,7 +27,7 @@ function getApiErrorMessage(response: Response, payload: unknown, fallback: stri
   }
 
   if (response.status === 401 || response.status === 403) {
-    return "You are not authorized to export this run to Google Sheets.";
+    return "You are not authorized to modify this run in Google Sheets.";
   }
 
   return fallback;

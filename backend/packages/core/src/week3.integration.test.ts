@@ -209,7 +209,6 @@ integration("week 3 core integration", () => {
           create: {
             subscriberCount: 150_000n,
             viewCount: 1_000_000n,
-            youtubeAverageViews: 90_000n,
             youtubeFollowers: 150_000n,
           },
         },

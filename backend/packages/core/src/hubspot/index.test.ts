@@ -42,7 +42,6 @@ function makeChannel(
       subscriberCount: 150_000n,
       viewCount: 1_200_000n,
       videoCount: 48n,
-      youtubeAverageViews: 25_000n,
       youtubeEngagementRate: 3.5,
       youtubeFollowers: 150_000n,
     },
@@ -71,7 +70,6 @@ describe("buildHubspotContactProperties", () => {
       youtube_handle: "@creator",
       influencer_url: "https://youtube.com/@creator",
       youtube_followers: "150000",
-      youtube_video_average_views: "25000",
       youtube_engagement_rate: "3.5",
       influencer_size: "Macro (100K - 500K)",
     });
@@ -93,7 +91,6 @@ describe("buildHubspotContactProperties", () => {
     }));
 
     expect(properties.youtube_followers).toBe("");
-    expect(properties.youtube_video_average_views).toBe("");
     expect(properties.youtube_engagement_rate).toBe("");
     expect(properties.influencer_size).toBe("");
   });
