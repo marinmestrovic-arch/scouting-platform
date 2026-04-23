@@ -111,8 +111,16 @@ function toTitleCase(value: string): string {
     .join(" ");
 }
 
-function formatNullableCell(value: string | null): string {
-  return value?.trim() || "Not provided";
+function formatRowContact(row: CsvImportBatchDetail["rows"][number]): string {
+  const segments = [
+    row.contactEmail ? `Email ${row.contactEmail}` : null,
+    row.phoneNumber ? `Phone ${row.phoneNumber}` : null,
+    row.firstName || row.lastName
+      ? `Name ${[row.firstName, row.lastName].filter(Boolean).join(" ")}`
+      : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  return segments.join(" · ") || "No contact values supplied";
 }
 
 function formatMetricSummary(batch: Pick<CsvImportBatchSummary, "importedRowCount" | "failedRowCount" | "totalRowCount">): string {
@@ -121,7 +129,30 @@ function formatMetricSummary(batch: Pick<CsvImportBatchSummary, "importedRowCoun
 
 function formatRowMetrics(row: CsvImportBatchDetail["rows"][number]): string {
   const segments = [
-    row.subscriberCount ? `Subs ${row.subscriberCount}` : null,
+    row.youtubeFollowers ? `Followers ${row.youtubeFollowers}` : null,
+    row.youtubeVideoMedianViews ? `Video median ${row.youtubeVideoMedianViews}` : null,
+    row.youtubeShortsMedianViews ? `Shorts median ${row.youtubeShortsMedianViews}` : null,
+    row.youtubeEngagementRate ? `Engagement ${row.youtubeEngagementRate}` : null,
+    row.instagramFollowers ? `IG followers ${row.instagramFollowers}` : null,
+    row.instagramPostAverageViews ? `IG post avg ${row.instagramPostAverageViews}` : null,
+    row.instagramReelAverageViews ? `IG reel avg ${row.instagramReelAverageViews}` : null,
+    row.instagramStory7DayAverageViews ? `IG story 7d ${row.instagramStory7DayAverageViews}` : null,
+    row.instagramStory30DayAverageViews
+      ? `IG story 30d ${row.instagramStory30DayAverageViews}`
+      : null,
+    row.instagramEngagementRate ? `IG engagement ${row.instagramEngagementRate}` : null,
+    row.tiktokFollowers ? `TikTok followers ${row.tiktokFollowers}` : null,
+    row.tiktokAverageViews ? `TikTok avg ${row.tiktokAverageViews}` : null,
+    row.tiktokEngagementRate ? `TikTok engagement ${row.tiktokEngagementRate}` : null,
+    row.twitchFollowers ? `Twitch followers ${row.twitchFollowers}` : null,
+    row.twitchAverageViews ? `Twitch avg ${row.twitchAverageViews}` : null,
+    row.twitchEngagementRate ? `Twitch engagement ${row.twitchEngagementRate}` : null,
+    row.kickFollowers ? `Kick followers ${row.kickFollowers}` : null,
+    row.kickAverageViews ? `Kick avg ${row.kickAverageViews}` : null,
+    row.kickEngagementRate ? `Kick engagement ${row.kickEngagementRate}` : null,
+    row.xFollowers ? `X followers ${row.xFollowers}` : null,
+    row.xAverageViews ? `X avg ${row.xAverageViews}` : null,
+    row.xEngagementRate ? `X engagement ${row.xEngagementRate}` : null,
     row.viewCount ? `Views ${row.viewCount}` : null,
     row.videoCount ? `Videos ${row.videoCount}` : null,
   ].filter((segment): segment is string => Boolean(segment));
@@ -135,9 +166,23 @@ function formatRowProfileFields(row: CsvImportBatchDetail["rows"][number]): stri
     row.influencerVertical ? `Vertical ${row.influencerVertical}` : null,
     row.countryRegion ? `Country ${row.countryRegion}` : null,
     row.language ? `Language ${row.language}` : null,
+    row.youtubeHandle ? `YouTube ${row.youtubeHandle}` : null,
+    row.instagramHandle ? `Instagram ${row.instagramHandle}` : null,
+    row.tiktokHandle ? `TikTok ${row.tiktokHandle}` : null,
+    row.twitchHandle ? `Twitch ${row.twitchHandle}` : null,
+    row.kickHandle ? `Kick ${row.kickHandle}` : null,
+    row.xHandle ? `X ${row.xHandle}` : null,
   ].filter((segment): segment is string => Boolean(segment));
 
   return segments.join(" · ") || "No profile values supplied";
+}
+
+function formatRowHandoffFields(row: CsvImportBatchDetail["rows"][number]): string {
+  const segments = [
+    row.channelUrl ? `Channel URL ${row.channelUrl}` : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  return segments.join(" · ") || "No import context supplied";
 }
 
 function getBatchPageSummary(batch: CsvImportBatchDetail): string {
@@ -381,6 +426,7 @@ function renderDetailState(props: AdminCsvImportManagerViewProps): ReactElement 
                 <th scope="col">Contact</th>
                 <th scope="col">Metrics</th>
                 <th scope="col">Profile fields</th>
+                <th scope="col">Import context</th>
                 <th scope="col">Result</th>
               </tr>
             </thead>
@@ -414,6 +460,9 @@ function renderDetailState(props: AdminCsvImportManagerViewProps): ReactElement 
                       <div className="admin-csv-imports__cell-copy">
                         <code>{row.youtubeChannelId}</code>
                       </div>
+                      {row.youtubeUrl ? (
+                        <div className="admin-csv-imports__cell-copy">{row.youtubeUrl}</div>
+                      ) : null}
                       {(row.notes || row.sourceLabel) ? (
                         <div className="admin-csv-imports__cell-copy">
                           {row.notes ? row.notes : "No notes"}
@@ -421,9 +470,10 @@ function renderDetailState(props: AdminCsvImportManagerViewProps): ReactElement 
                         </div>
                       ) : null}
                     </td>
-                    <td>{formatNullableCell(row.contactEmail)}</td>
+                    <td>{formatRowContact(row)}</td>
                     <td>{formatRowMetrics(row)}</td>
                     <td>{formatRowProfileFields(row)}</td>
+                    <td>{formatRowHandoffFields(row)}</td>
                     <td>{resultCopy}</td>
                   </tr>
                 );
@@ -475,7 +525,10 @@ export function AdminCsvImportManagerView(props: AdminCsvImportManagerViewProps)
           <section className="admin-csv-imports__panel" aria-labelledby="admin-csv-imports-upload-heading">
             <header className="admin-csv-imports__panel-header">
               <h2 id="admin-csv-imports-upload-heading">Upload CSV</h2>
-              <p>Use the strict template only. The backend remains the sole import mutation path.</p>
+              <p>
+                Use the Creator List / HubSpot export CSV format for YouTube, Instagram, TikTok,
+                Twitch, Kick, and X fields. The backend remains the sole import mutation path.
+              </p>
             </header>
 
             <div className="admin-csv-imports__template-copy">
@@ -553,7 +606,7 @@ export function AdminCsvImportManagerView(props: AdminCsvImportManagerViewProps)
             {props.listState.status === "ready" && props.listState.items.length === 0 ? (
               <div className="admin-csv-imports__empty-state">
                 <h3>No imports yet</h3>
-                <p>Upload the first strict-template CSV batch to start building import history.</p>
+                <p>Upload the first Creator List / HubSpot CSV batch to start building import history.</p>
               </div>
             ) : null}
 

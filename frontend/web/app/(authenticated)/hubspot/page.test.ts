@@ -21,7 +21,7 @@ describe("hubspot page", () => {
 
     expect(html).toContain("HubSpot");
     expect(html).toContain(
-      "Review Week 7 import-ready CSV batches, inspect missing-field failures, and keep legacy Week 6 push history readable without leaving the authenticated workspace.",
+      "Review legacy import-ready CSV batches, inspect missing-field failures, and keep older HubSpot push history readable while Google Sheets remains the primary handoff path.",
     );
     expect(hubspotPushManagerMock).toHaveBeenCalledTimes(1);
     expect(html).toContain("hubspot-push-manager");

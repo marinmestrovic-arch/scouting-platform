@@ -118,9 +118,9 @@ describe("admin dashboard shell view", () => {
     expect(html).toContain("Loading admin dashboard...");
     expect(html).toContain('href="/admin/imports"');
     expect(html).toContain('href="/admin/users"');
-    expect(html).not.toContain('href="/catalog"');
     expect(html).not.toContain('href="/exports"');
     expect(html).not.toContain('href="/hubspot"');
+    expect(html).not.toContain('href="/catalog"');
     expect(html).not.toContain('href="#admin-approval-queue"');
   });
 
@@ -141,11 +141,13 @@ describe("admin dashboard shell view", () => {
     expect(html).toContain("Refreshing overview...");
     expect(html).toContain("Queued 1, running 1, failed 1.");
     expect(html).toContain("3 active accounts, 1 admin, 4 total records.");
+    expect(html).not.toContain("CSV exports");
+    expect(html).not.toContain("HubSpot pushes");
+    expect(html).not.toContain('href="/exports"');
+    expect(html).not.toContain('href="/hubspot"');
     expect(html).not.toContain("Pending approvals");
     expect(html).not.toContain("HypeAuditor");
     expect(html).not.toContain("Pending Channel");
-    expect(html).not.toContain("CSV exports");
-    expect(html).not.toContain("HubSpot");
     expect(html).not.toContain('href="#admin-approval-queue"');
   });
 

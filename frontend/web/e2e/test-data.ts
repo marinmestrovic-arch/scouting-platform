@@ -43,14 +43,13 @@ export const E2E_CATALOG_CHANNEL = {
   description: "Primary channel used for authenticated Playwright launch-readiness coverage.",
   thumbnailUrl: "https://example.com/week8-e2e-main.png",
   contactEmail: "creator@week8-e2e.example.com",
-} as const;
-
-export const E2E_APPROVAL_CHANNEL = {
-  youtubeChannelId: "UCweek8e2eapproval00002",
-  title: "Week 8 E2E Approval Channel",
-  handle: "@week8e2eapproval",
-  description: "Pending approval channel used for admin workflow coverage.",
-  thumbnailUrl: "https://example.com/week8-e2e-approval.png",
+  countryRegion: "Croatia",
+  influencerVertical: "Gaming",
+  influencerType: "Male",
+  language: "Croatian",
+  youtubeVideoMedianViews: "550000",
+  youtubeShortsMedianViews: "180000",
+  youtubeFollowers: "120000",
 } as const;
 
 export const E2E_RUN = {
@@ -81,14 +80,18 @@ export type PlaywrightSeedData = {
     id: string;
     name: string;
   };
+  run: {
+    id: string;
+    name: string;
+  };
   channels: {
     catalog: {
       id: string;
       title: string;
-    };
-    approval: {
-      id: string;
-      title: string;
+      countryRegion: string;
+      influencerVertical: string;
+      influencerType: string;
+      youtubeVideoMedianViews: string;
     };
   };
   batches: {

@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from "@prisma/client";
+import { CSV_IMPORT_HEADER, CSV_IMPORT_LEGACY_V3_HEADER } from "@scouting-platform/contracts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -23,6 +24,7 @@ integration("week 5 csv import core integration", () => {
     process.env.DATABASE_URL = databaseUrl;
     vi.resetModules();
     vi.doUnmock("./imports/queue");
+    vi.doUnmock("@scouting-platform/integrations");
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -63,6 +65,7 @@ integration("week 5 csv import core integration", () => {
     await queue.stopCsvImportsQueue();
     vi.resetModules();
     vi.doUnmock("./imports/queue");
+    vi.doUnmock("@scouting-platform/integrations");
     const db = await import("@scouting-platform/db");
     await db.resetPrismaClientForTests();
   });
@@ -95,11 +98,57 @@ integration("week 5 csv import core integration", () => {
     });
   }
 
-  function makeCsv(rows: string[]): string {
+  function makeLegacyCsv(rows: string[]): string {
     return [
       "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
       ...rows,
     ].join("\n");
+  }
+
+  function creatorListRow(values: string[]): string {
+    if (values.length === CSV_IMPORT_HEADER.length) {
+      return values.join(",");
+    }
+
+    const valueByLegacyHeader = new Map<string, string>();
+    CSV_IMPORT_LEGACY_V3_HEADER.forEach((header, index) => {
+      valueByLegacyHeader.set(header, values[index] ?? "");
+    });
+
+    const row = CSV_IMPORT_HEADER.map((header) => valueByLegacyHeader.get(header) ?? "");
+
+    while (row.length < CSV_IMPORT_HEADER.length) {
+      row.push("");
+    }
+
+    return row
+      .map((value) => {
+        if (/[",\n\r]/.test(value)) {
+          return `"${value.replace(/"/g, "\"\"")}"`;
+        }
+
+        return value;
+      })
+      .join(",");
+  }
+
+  function makeCreatorListCsv(rows: string[]): string {
+    return [
+      CSV_IMPORT_HEADER.join(","),
+      ...rows,
+    ].join("\n");
+  }
+
+  function makeDeprecatedYoutubeAverageHeader(): string {
+    const header: string[] = [...CSV_IMPORT_HEADER];
+    const insertIndex = header.indexOf("YouTube Video Median Views");
+
+    if (insertIndex === -1) {
+      throw new Error("YouTube Video Median Views header is missing");
+    }
+
+    header.splice(insertIndex, 0, "YouTube Average Views");
+    return header.join(",");
   }
 
   async function seedSyncedDropdownValues(): Promise<void> {
@@ -123,13 +172,78 @@ integration("week 5 csv import core integration", () => {
       requestedByUserId: admin.id,
       fileName: "contacts.csv",
       fileSize: 512,
-      csvText: makeCsv([
-        "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
-        "UC-CSV-2,Creator Two,not-an-email,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
+      csvText: makeCreatorListCsv([
+        creatorListRow([
+          "Creator One",
+          "",
+          "",
+          "https://www.youtube.com/channel/UC-CSV-1",
+          "Spring Campaign",
+          "Owner",
+          "",
+          "creator@example.com",
+          "",
+          "EUR",
+          "Paid",
+          "Influencer",
+          "April",
+          "2026",
+          "Client A",
+          "Creator One - Spring Campaign",
+          "Creator One - Spring Campaign",
+          "Sales Pipeline",
+          "Scouted",
+          "",
+          "",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "@creatorone",
+          "https://www.youtube.com/@creatorone",
+          "22,000",
+          "11,000",
+          "2.10%",
+          "1,000",
+        ]),
+        creatorListRow([
+          "Creator Two",
+          "",
+          "",
+          "https://www.youtube.com/channel/UC-CSV-2",
+          "Spring Campaign",
+          "Owner",
+          "",
+          "not-an-email",
+          "",
+          "EUR",
+          "Paid",
+          "Influencer",
+          "April",
+          "2026",
+          "Client A",
+          "Creator Two - Spring Campaign",
+          "Creator Two - Spring Campaign",
+          "Sales Pipeline",
+          "Scouted",
+          "",
+          "",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "@creatortwo",
+          "https://www.youtube.com/@creatortwo",
+          "32000",
+          "18000",
+          "3.2",
+          "2000",
+        ]),
       ]),
     });
 
     expect(batch.status).toBe("queued");
+    expect(batch.templateVersion).toBe("v3");
     expect(batch.totalRowCount).toBe(2);
     expect(batch.failedRowCount).toBe(1);
 
@@ -154,7 +268,7 @@ integration("week 5 csv import core integration", () => {
     expect(detail.rows[0]?.status).toBe("pending");
     expect(detail.rows[1]?.rowNumber).toBe(3);
     expect(detail.rows[1]?.status).toBe("failed");
-    expect(detail.rows[1]?.errorMessage).toContain("contactEmail is invalid");
+    expect(detail.rows[1]?.errorMessage).toContain("Email is invalid");
 
     const requestedAudit = await prisma.auditEvent.findFirst({
       where: {
@@ -174,9 +288,73 @@ integration("week 5 csv import core integration", () => {
       requestedByUserId: admin.id,
       fileName: "invalid.csv",
       fileSize: 256,
-      csvText: makeCsv([
-        "UC-CSV-1,,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
-        ",Creator Two,creator-two@example.com,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
+      csvText: makeCreatorListCsv([
+        creatorListRow([
+          "",
+          "",
+          "",
+          "https://www.youtube.com/channel/UC-CSV-1",
+          "Spring Campaign",
+          "Owner",
+          "",
+          "creator@example.com",
+          "",
+          "EUR",
+          "Paid",
+          "Influencer",
+          "April",
+          "2026",
+          "Client A",
+          "Deal One",
+          "Deal One",
+          "Sales Pipeline",
+          "Scouted",
+          "",
+          "",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "1000",
+        ]),
+        creatorListRow([
+          "Creator Two",
+          "",
+          "",
+          "",
+          "Spring Campaign",
+          "Owner",
+          "",
+          "creator-two@example.com",
+          "",
+          "EUR",
+          "Paid",
+          "Influencer",
+          "April",
+          "2026",
+          "Client A",
+          "Deal Two",
+          "Deal Two",
+          "Sales Pipeline",
+          "Scouted",
+          "",
+          "",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "2000",
+        ]),
       ]),
     });
 
@@ -209,12 +387,13 @@ integration("week 5 csv import core integration", () => {
       requestedByUserId: admin.id,
       fileName: "dedupe.csv",
       fileSize: 1024,
-      csvText: makeCsv([
+      csvText: makeLegacyCsv([
         "UC-CSV-1,Creator One,FIRST@example.com,,,100,1000,10,first row,ops,Male,Gaming,Croatia,Croatian",
         "UC-CSV-1,Creator One,first@example.com,,,,2000,,duplicate email,ops,,,,",
         "UC-CSV-1,Creator One,second@example.com,,,,,11,second email,ops,,,,German",
       ]),
     });
+    expect(batch.templateVersion).toBe("v2");
 
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'imports.csv.process'
@@ -282,6 +461,199 @@ integration("week 5 csv import core integration", () => {
     expect(retriedContacts).toBe(2);
   });
 
+  it("resolves existing channels when stored handle omits @ but csv uses @handle youtube urls", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const existingChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-FRANK-SLOTTA",
+        title: "Frank Slotta",
+        handle: "frankslotta",
+        youtubeUrl: "https://www.youtube.com/channel/UC-FRANK-SLOTTA",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "handle-resolution.csv",
+      fileSize: 512,
+      csvText: makeCreatorListCsv([
+        creatorListRow([
+          "Frank Slotta",
+          "",
+          "",
+          "https://www.youtube.com/@FrankSlotta",
+          "",
+          "",
+          "",
+          "daantje@amillionfaces.nl",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Frank",
+          "Slotta",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "@FrankSlotta",
+          "https://www.youtube.com/@FrankSlotta",
+          "149,937",
+          "16,913",
+          "2.25%",
+          "434,000",
+        ]),
+      ]),
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'imports.csv.process'
+    `);
+
+    await imports.executeCsvImportBatch({
+      importBatchId: batch.id,
+      requestedByUserId: admin.id,
+    });
+
+    const updatedBatch = await prisma.csvImportBatch.findUniqueOrThrow({
+      where: {
+        id: batch.id,
+      },
+    });
+    expect(updatedBatch.status).toBe("COMPLETED");
+    expect(updatedBatch.importedRowCount).toBe(1);
+    expect(updatedBatch.failedRowCount).toBe(0);
+
+    const rows = await prisma.csvImportRow.findMany({
+      where: {
+        batchId: batch.id,
+      },
+      select: {
+        status: true,
+        channelId: true,
+        errorMessage: true,
+      },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe("IMPORTED");
+    expect(rows[0]?.channelId).toBe(existingChannel.id);
+    expect(rows[0]?.errorMessage).toBeNull();
+
+    const channelCount = await prisma.channel.count();
+    expect(channelCount).toBe(1);
+  });
+
+  it("resolves youtube channel id from @handle urls and creates channel when no existing match exists", async () => {
+    vi.resetModules();
+    vi.doUnmock("./imports/queue");
+    vi.doMock("@scouting-platform/integrations", async () => {
+      const actual = await vi.importActual<typeof import("@scouting-platform/integrations")>(
+        "@scouting-platform/integrations",
+      );
+
+      return {
+        ...actual,
+        resolveYoutubeChannelForEnrichment: vi.fn(async () => ({
+          channelId: "UCoVGcDm7a76Lvf26AB-olOA",
+          canonicalUrl: "https://www.youtube.com/channel/UCoVGcDm7a76Lvf26AB-olOA",
+        })),
+      };
+    });
+
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "url-resolution.csv",
+      fileSize: 512,
+      csvText: makeCreatorListCsv([
+        creatorListRow([
+          "Frank Slotta",
+          "",
+          "",
+          "https://www.youtube.com/@FrankSlotta",
+          "",
+          "",
+          "",
+          "daantje@amillionfaces.nl",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "Frank",
+          "Slotta",
+          "Male",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "@FrankSlotta",
+          "https://www.youtube.com/@FrankSlotta",
+          "149,937",
+          "16,913",
+          "2.25%",
+          "434,000",
+        ]),
+      ]),
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'imports.csv.process'
+    `);
+
+    await imports.executeCsvImportBatch({
+      importBatchId: batch.id,
+      requestedByUserId: admin.id,
+    });
+
+    const createdChannel = await prisma.channel.findUniqueOrThrow({
+      where: {
+        youtubeChannelId: "UCoVGcDm7a76Lvf26AB-olOA",
+      },
+      select: {
+        title: true,
+        handle: true,
+        youtubeUrl: true,
+      },
+    });
+    expect(createdChannel.title).toBe("Frank Slotta");
+    expect(createdChannel.handle).toBe("@frankslotta");
+    expect(createdChannel.youtubeUrl).toBe("https://www.youtube.com/@FrankSlotta");
+
+    const row = await prisma.csvImportRow.findFirstOrThrow({
+      where: {
+        batchId: batch.id,
+      },
+      select: {
+        status: true,
+        errorMessage: true,
+      },
+    });
+    expect(row.status).toBe("IMPORTED");
+    expect(row.errorMessage).toBeNull();
+  });
+
   it("persists lastError and a failed audit when enqueueing the batch fails", async () => {
     const admin = await createUser("admin@example.com");
     await seedSyncedDropdownValues();
@@ -299,7 +671,7 @@ integration("week 5 csv import core integration", () => {
       requestedByUserId: admin.id,
       fileName: "queue-failure.csv",
       fileSize: 512,
-      csvText: makeCsv([
+      csvText: makeLegacyCsv([
         "UC-CSV-9,Creator Nine,creator-nine@example.com,,,100,1000,10,,ops,Male,Gaming,Croatia,Croatian",
       ]),
     });
@@ -332,8 +704,40 @@ integration("week 5 csv import core integration", () => {
         requestedByUserId: admin.id,
         fileName: "missing-dropdowns.csv",
         fileSize: 256,
-        csvText: makeCsv([
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
+        csvText: makeCreatorListCsv([
+          creatorListRow([
+            "Creator One",
+            "",
+            "",
+            "https://www.youtube.com/channel/UC-CSV-1",
+            "Spring Campaign",
+            "Owner",
+            "",
+            "creator@example.com",
+            "",
+            "EUR",
+            "Paid",
+            "Influencer",
+            "April",
+            "2026",
+            "Client A",
+            "Deal One",
+            "Deal One",
+            "Sales Pipeline",
+            "Scouted",
+            "",
+            "",
+            "Male",
+            "Gaming",
+            "Croatia",
+            "Croatian",
+            "@creatorone",
+            "https://www.youtube.com/@creatorone",
+            "22000",
+            "11000",
+            "2.1",
+            "1000",
+          ]),
         ]),
       }),
     ).rejects.toMatchObject({
@@ -350,8 +754,40 @@ integration("week 5 csv import core integration", () => {
       requestedByUserId: admin.id,
       fileName: "invalid-dropdowns.csv",
       fileSize: 256,
-      csvText: makeCsv([
-        "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Unknown,Gaming,Croatia,Croatian",
+      csvText: makeCreatorListCsv([
+        creatorListRow([
+          "Creator One",
+          "",
+          "",
+          "https://www.youtube.com/channel/UC-CSV-1",
+          "Spring Campaign",
+          "Owner",
+          "",
+          "creator@example.com",
+          "",
+          "EUR",
+          "Paid",
+          "Influencer",
+          "April",
+          "2026",
+          "Client A",
+          "Deal One",
+          "Deal One",
+          "Sales Pipeline",
+          "Scouted",
+          "",
+          "",
+          "Unknown",
+          "Gaming",
+          "Croatia",
+          "Croatian",
+          "@creatorone",
+          "https://www.youtube.com/@creatorone",
+          "22000",
+          "11000",
+          "2.1",
+          "1000",
+        ]),
       ]),
     });
 
@@ -364,6 +800,30 @@ integration("week 5 csv import core integration", () => {
       pageSize: 100,
     });
 
-    expect(detail.rows[0]?.errorMessage).toContain("influencerType must use a saved HubSpot dropdown value");
+    expect(detail.rows[0]?.errorMessage).toContain(
+      "Influencer Type must use a saved HubSpot dropdown value",
+    );
+  });
+
+  it("rejects csv headers containing the deprecated youtube average views column", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    const deprecatedRow = Array.from({ length: CSV_IMPORT_HEADER.length + 1 }, (_, index) =>
+      index === 0 ? "Creator One" : "",
+    ).join(",");
+
+    await expect(
+      imports.createCsvImportBatch({
+        requestedByUserId: admin.id,
+        fileName: "legacy-youtube-average.csv",
+        fileSize: 256,
+        csvText: [
+          makeDeprecatedYoutubeAverageHeader(),
+          deprecatedRow,
+        ].join("\n"),
+      }),
+    ).rejects.toMatchObject({
+      message: "YouTube Average Views is no longer supported. Use YouTube Video Median Views.",
+    });
   });
 });

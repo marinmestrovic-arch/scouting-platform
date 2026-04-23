@@ -45,7 +45,7 @@ const ADMIN_DASHBOARD_SHORTCUTS: readonly AdminDashboardShortcut[] = [
     label: "Admin",
     title: "CSV imports",
     href: "/admin/imports",
-    copy: "Open strict-template import history, inspect exact row failures, and keep long-running batches in view.",
+    copy: "Open Creator List import history, inspect row-level outcomes, and keep long-running batches in view.",
   },
   {
     label: "Admin",

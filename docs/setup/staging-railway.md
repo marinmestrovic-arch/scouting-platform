@@ -73,11 +73,12 @@ Run this after every staging deploy that is a launch candidate:
 2. Confirm dashboard loads and recent runs render.
 3. Create a new scouting run and wait for persisted results.
 4. Open a channel detail page and request LLM enrichment.
-5. Request a HypeAuditor report, approve it as admin, and confirm status progression is visible.
-6. Run one CSV import and confirm row-level results are visible.
-7. Run one CSV export and confirm the artifact downloads.
-8. Run one HubSpot flow and confirm per-row saved results are visible.
-9. Exercise light queue concurrency by overlapping at least two background actions, preferably one run plus one channel enrichment, and confirm both progress without duplicate or stuck states.
+5. Open Dashboard and confirm each run row has the `Export` action to the handoff workspace.
+6. Open Catalog and verify Country/Region plus median-view filters behave correctly.
+7. Run one CSV import using the Creator List v3 header and confirm row-level results are visible.
+8. Confirm Admin shows only CSV Imports and Users tabs.
+9. Open Database and validate the HubSpot sync surface is visible for admins.
+10. Exercise light queue concurrency by overlapping at least two background actions, preferably one run plus one channel enrichment, and confirm both progress without duplicate or stuck states.
 
 Record all failures as bugs before promotion. Do not treat them as justification for unrelated feature work.
 

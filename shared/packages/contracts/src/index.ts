@@ -3,6 +3,7 @@ export * from "./admin";
 export * from "./auth";
 export * from "./campaigns";
 export * from "./channels";
+export * from "./creator-list";
 export * from "./csv-exports";
 export * from "./csv-imports";
 export * from "./dropdown-values";

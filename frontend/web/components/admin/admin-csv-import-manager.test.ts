@@ -2,6 +2,7 @@ import type {
   CsvImportBatchDetail,
   CsvImportBatchSummary,
 } from "@scouting-platform/contracts";
+import { CSV_IMPORT_HEADER } from "@scouting-platform/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -21,7 +22,7 @@ function buildSummary(overrides?: Partial<CsvImportBatchSummary>): CsvImportBatc
   return {
     id: "61fb5f09-0f45-4d1d-a87f-fb595b8d1d7d",
     fileName: "contacts.csv",
-    templateVersion: "v2",
+    templateVersion: "v3",
     status: "queued",
     totalRowCount: 2,
     importedRowCount: 0,
@@ -52,12 +53,63 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         status: "imported",
         youtubeChannelId: "UC-CSV-1",
         channelTitle: "Imported Creator",
+        hubspotRecordId: "111",
+        timestampImported: null,
+        channelUrl: "https://www.youtube.com/channel/UC-CSV-1",
+        campaignName: null,
+        dealOwner: null,
+        handoffStatus: null,
         contactEmail: "creator@example.com",
+        phoneNumber: "+385 111 222",
+        currency: "EUR",
+        dealType: "Paid",
+        contactType: null,
+        month: null,
+        year: null,
+        clientName: null,
+        dealName: null,
+        activationName: null,
+        pipeline: null,
+        dealStage: null,
         firstName: "Imported",
         lastName: "Creator",
+        youtubeHandle: "@imported",
+        youtubeUrl: "https://www.youtube.com/@imported",
         subscriberCount: "1000",
-        viewCount: "20000",
-        videoCount: "50",
+        viewCount: null,
+        videoCount: null,
+        youtubeVideoMedianViews: "20000",
+        youtubeShortsMedianViews: "14000",
+        youtubeEngagementRate: "3.5",
+        youtubeFollowers: "1000",
+        instagramHandle: "@imported_ig",
+        instagramUrl: "https://www.instagram.com/imported_ig",
+        instagramPostAverageViews: "18000",
+        instagramReelAverageViews: "22000",
+        instagramStory7DayAverageViews: "9500",
+        instagramStory30DayAverageViews: "8100",
+        instagramEngagementRate: "4.2",
+        instagramFollowers: "250000",
+        tiktokHandle: "@imported_tt",
+        tiktokUrl: "https://www.tiktok.com/@imported_tt",
+        tiktokAverageViews: "64000",
+        tiktokEngagementRate: "5.4",
+        tiktokFollowers: "310000",
+        twitchHandle: "imported_live",
+        twitchUrl: "https://www.twitch.tv/imported_live",
+        twitchAverageViews: "4300",
+        twitchEngagementRate: "2.8",
+        twitchFollowers: "98000",
+        kickHandle: "importedkick",
+        kickUrl: "https://kick.com/importedkick",
+        kickAverageViews: "3100",
+        kickEngagementRate: "2.2",
+        kickFollowers: "44000",
+        xHandle: "@importedx",
+        xUrl: "https://x.com/importedx",
+        xAverageViews: "56000",
+        xEngagementRate: "1.7",
+        xFollowers: "129000",
         notes: "Imported from ops sheet",
         sourceLabel: "ops",
         influencerType: "Male",
@@ -71,14 +123,65 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         id: "7e06890d-2642-4a00-8f2b-b48d8ea12f65",
         rowNumber: 3,
         status: "failed",
-        youtubeChannelId: "UC-CSV-2",
+        youtubeChannelId: "",
         channelTitle: "Failed Creator",
-        contactEmail: null,
+        hubspotRecordId: null,
+        timestampImported: null,
+        channelUrl: null,
+        campaignName: null,
+        dealOwner: null,
+        handoffStatus: null,
+        contactEmail: "invalid-email",
+        phoneNumber: null,
+        currency: null,
+        dealType: null,
+        contactType: null,
+        month: null,
+        year: null,
+        clientName: null,
+        dealName: null,
+        activationName: null,
+        pipeline: null,
+        dealStage: null,
         firstName: null,
         lastName: null,
+        youtubeHandle: null,
+        youtubeUrl: null,
         subscriberCount: null,
         viewCount: null,
         videoCount: null,
+        youtubeVideoMedianViews: null,
+        youtubeShortsMedianViews: null,
+        youtubeEngagementRate: null,
+        youtubeFollowers: null,
+        instagramHandle: null,
+        instagramUrl: null,
+        instagramPostAverageViews: null,
+        instagramReelAverageViews: null,
+        instagramStory7DayAverageViews: null,
+        instagramStory30DayAverageViews: null,
+        instagramEngagementRate: null,
+        instagramFollowers: null,
+        tiktokHandle: null,
+        tiktokUrl: null,
+        tiktokAverageViews: null,
+        tiktokEngagementRate: null,
+        tiktokFollowers: null,
+        twitchHandle: null,
+        twitchUrl: null,
+        twitchAverageViews: null,
+        twitchEngagementRate: null,
+        twitchFollowers: null,
+        kickHandle: null,
+        kickUrl: null,
+        kickAverageViews: null,
+        kickEngagementRate: null,
+        kickFollowers: null,
+        xHandle: null,
+        xUrl: null,
+        xAverageViews: null,
+        xEngagementRate: null,
+        xFollowers: null,
         notes: null,
         sourceLabel: "ops",
         influencerType: null,
@@ -86,7 +189,7 @@ function buildDetail(overrides?: Partial<CsvImportBatchDetail>): CsvImportBatchD
         countryRegion: null,
         language: null,
         channelId: null,
-        errorMessage: "contactEmail is invalid",
+        errorMessage: "Email is invalid",
       },
     ],
     ...overrides,
@@ -117,7 +220,8 @@ describe("admin csv import manager view", () => {
     );
 
     expect(html).toContain("Upload CSV");
-    expect(html).toContain("youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language");
+    expect(html).toContain(CSV_IMPORT_HEADER.join(","));
+    expect(html).toContain("Creator List / HubSpot export CSV format");
     expect(html).toContain("must match the saved creator profile values");
     expect(html).toContain("Maximum file size 5 MiB. Up to 10000 data rows per batch.");
     expect(html).toContain("Loading CSV import batches...");
@@ -148,7 +252,10 @@ describe("admin csv import manager view", () => {
         onUpload: vi.fn(),
         selectedBatchId: detail.id,
         selectedFileName: "contacts.csv",
-        uploadState: { type: "success", message: "CSV import queued. Row results refresh automatically while processing continues." },
+        uploadState: {
+          type: "success",
+          message: "CSV import queued. Row results refresh automatically while processing continues.",
+        },
       }),
     );
 
@@ -157,9 +264,10 @@ describe("admin csv import manager view", () => {
     expect(html).toContain("Refreshing selected batch...");
     expect(html).toContain("Imported Creator");
     expect(html).toContain("Failed Creator");
-    expect(html).toContain("contactEmail is invalid");
+    expect(html).toContain("Email is invalid");
     expect(html).toContain("Type Male");
-    expect(html).toContain("Country Croatia");
+    expect(html).toContain("Followers 1000");
+    expect(html).toContain("Channel URL https://www.youtube.com/channel/UC-CSV-1");
     expect(html).toContain("Page 1 of 1. Showing rows 1-2 of 2.");
     expect(html).toContain("Previous page");
     expect(html).toContain("Next page");
@@ -189,7 +297,9 @@ describe("admin csv import manager view", () => {
     );
 
     expect(html).toContain("No imports yet");
-    expect(html).toContain("Upload the first strict-template CSV batch to start building import history.");
+    expect(html).toContain(
+      "Upload the first Creator List / HubSpot CSV batch to start building import history.",
+    );
   });
 });
 

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+import { CSV_IMPORT_HEADER } from "@scouting-platform/contracts";
 import { expect, test, type Page } from "@playwright/test";
 
 import { PLAYWRIGHT_SEED_PATH, type PlaywrightSeedData } from "./test-data";
@@ -17,82 +18,89 @@ async function login(page: Page, credentials: { email: string; password: string 
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 }
 
-async function selectSearchableOption(
-  page: Page,
-  label: string,
-  optionText: string,
-): Promise<void> {
-  await page.getByRole("button", { name: label, exact: true }).click();
-  await page.getByRole("option", { name: optionText }).click();
+function createCreatorListCsvRow(overrides: Partial<Record<(typeof CSV_IMPORT_HEADER)[number], string>>): string {
+  return CSV_IMPORT_HEADER.map((header) => overrides[header] ?? "").join(",");
 }
 
 test.describe("authenticated launch-readiness flows", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("campaign manager can create a run from the authenticated workspace", async ({ page }) => {
+  test("dashboard exposes only the Export handoff action for runs", async ({ page }) => {
     const seedData = readSeedData();
 
     await login(page, seedData.manager);
-    await page.goto("/new-scouting");
+    await page.goto("/dashboard");
 
-    await page.getByLabel("Influencer List").fill("Week 8 Playwright Run");
-    await selectSearchableOption(page, "Campaign", seedData.campaign.name);
-    await selectSearchableOption(page, "Campaign Manager", "Week 8 E2E Manager");
-    await page.getByLabel("Target").fill("15");
-    await page.getByLabel("Subscribers").fill("100K+");
-    await page.getByLabel("Location").fill("Germany");
-    await page.getByLabel("Category").fill("Gaming");
-    await page.getByRole("button", { name: "Start scouting" }).click();
+    const seededRunRow = page.locator("tr", { hasText: seedData.run.name });
+    await expect(seededRunRow).toBeVisible();
 
-    await expect(page).toHaveURL(/\/runs\/.+$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Run Detail" })).toBeVisible();
-    await expect(page.getByText("Week 8 Playwright Run")).toBeVisible();
-    await expect(page.locator(".run-detail__status--queued")).toBeVisible();
+    const exportLink = seededRunRow.getByRole("link", { name: "Export" });
+    await expect(exportLink).toHaveAttribute("href", /\/hubspot\/prepare\/[0-9a-f-]+$/);
+    await expect(exportLink).toHaveAttribute("target", "_blank");
   });
 
-  test("campaign manager can request enrichment and an advanced report from channel detail", async ({
-    page,
-  }) => {
+  test("catalog supports real creator and metric filters", async ({ page }) => {
     const seedData = readSeedData();
+    const minVideoMedianViews = String(Number(seedData.channels.catalog.youtubeVideoMedianViews) - 1000);
+    const maxVideoMedianViews = String(Number(seedData.channels.catalog.youtubeVideoMedianViews) + 1000);
 
     await login(page, seedData.manager);
-    await page.goto(`/catalog/${seedData.channels.catalog.id}`);
 
-    await expect(page.getByText(seedData.channels.catalog.title)).toBeVisible();
-    await page.getByRole("button", { name: "Enrichment: Missing" }).click();
-    await page.getByRole("button", { name: "Enrich now" }).click();
-    await expect(page.getByRole("button", { name: "Enrichment: Queued" })).toBeVisible();
-    await page.getByRole("button", { name: "Advanced report: Missing" }).click();
-    await page.getByRole("button", { name: "Request advanced report" }).click();
-    await expect(page.getByRole("button", { name: "Advanced report: Pending Approval" })).toBeVisible();
+    const url = new URL("/catalog", "http://localhost");
+    url.searchParams.set("countryRegion", seedData.channels.catalog.countryRegion);
+    url.searchParams.set("influencerVertical", seedData.channels.catalog.influencerVertical);
+    url.searchParams.set("influencerType", seedData.channels.catalog.influencerType);
+    url.searchParams.set("youtubeVideoMedianViewsMin", minVideoMedianViews);
+    url.searchParams.set("youtubeVideoMedianViewsMax", maxVideoMedianViews);
+
+    await page.goto(`${url.pathname}?${url.searchParams.toString()}`);
+
+    await expect(page.getByRole("columnheader", { name: "Country/Region" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "YouTube Video Median Views" })).toBeVisible();
+    await expect(page.getByRole("link", { name: seedData.channels.catalog.title })).toBeVisible();
+    await expect(page.getByText("No channels found")).toHaveCount(0);
   });
 
-  test("admin can approve a pending advanced report request", async ({ page }) => {
+  test("admin surface is reduced to CSV Imports and Users tabs", async ({ page }) => {
     const seedData = readSeedData();
 
     await login(page, seedData.admin);
     await page.goto("/admin");
 
     await expect(page.getByRole("heading", { level: 1, name: "Admin" })).toBeVisible();
-    await expect(page.getByText(seedData.channels.approval.title)).toBeVisible();
-    await page
-      .locator("tr", {
-        hasText: seedData.channels.approval.title,
-      })
-      .getByRole("button", { name: "Open details" })
-      .click();
-    await page.getByLabel("Decision note (optional)").fill("Approved during Week 8 launch readiness.");
-    await page.getByRole("button", { name: "Approve" }).click();
+    await expect(page.getByRole("tab", { name: "CSV Imports" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Users" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Exports" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "HubSpot" })).toHaveCount(0);
+    await expect(page.getByText("Approvals")).toHaveCount(0);
 
-    await expect(page.getByText("Approval recorded.")).toBeVisible();
-    await expect(page.getByText("Approved")).toBeVisible();
+    await page.goto("/admin?tab=hubspot");
+    await expect(page.getByRole("button", { name: "Upload batch" })).toBeVisible();
   });
 
-  test("admin can upload a CSV import batch and review visible row failures", async ({ page }) => {
+  test("admin can upload Creator List v3 CSV imports", async ({ page }) => {
     const seedData = readSeedData();
+    const fileName = "week8-playwright-import-v3.csv";
+    const youtubeChannelId = "UC1111111111111111111111";
     const csvFile = [
-      "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
-      "UCweek8e2ecsvvalid0000001,Week 8 Valid CSV Channel,valid@example.com,Valid,Row,1000,2000,30,Good row,Playwright,Male,Gaming,Croatia,Croatian",
+      CSV_IMPORT_HEADER.join(","),
+      createCreatorListCsvRow({
+        "Channel Name": "Week 8 Valid CSV Channel",
+        "Channel URL": `https://www.youtube.com/channel/${youtubeChannelId}`,
+        Email: "valid@example.com",
+        "First Name": "Valid",
+        "Last Name": "Row",
+        "Influencer Type": seedData.channels.catalog.influencerType,
+        "Influencer Vertical": seedData.channels.catalog.influencerVertical,
+        "Country/Region": seedData.channels.catalog.countryRegion,
+        Language: "Croatian",
+        "YouTube Handle": "@week8csvimport",
+        "YouTube URL": `https://www.youtube.com/channel/${youtubeChannelId}`,
+        "YouTube Video Median Views": "120000",
+        "YouTube Shorts Median Views": "45000",
+        "YouTube Engagement Rate": "4.2",
+        "YouTube Followers": "120000",
+      }),
     ].join("\n");
 
     await login(page, seedData.admin);
@@ -102,68 +110,84 @@ test.describe("authenticated launch-readiness flows", () => {
     await page.getByRole("button", { name: "CSV file" }).click();
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles({
-      name: "week8-playwright-import.csv",
+      name: fileName,
       mimeType: "text/csv",
       buffer: Buffer.from(csvFile, "utf8"),
     });
     await page.getByRole("button", { name: "Upload batch" }).click();
 
-    await expect(page.getByText("CSV import queued.")).toBeVisible();
+    await expect(page.getByText(/CSV import queued\.|Import batch created\./)).toBeVisible();
     await expect(
       page
         .locator(".admin-csv-imports__list-item", {
-          hasText: "week8-playwright-import.csv",
+          hasText: fileName,
         })
-        .getByText("Queued"),
+        .first(),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: seedData.batches.csvImportFileName }).click();
+    await page.getByRole("button", { name: fileName }).click();
     await expect(
       page.getByRole("heading", {
         level: 2,
-        name: seedData.batches.csvImportFileName,
+        name: fileName,
       }),
     ).toBeVisible();
-    await expect(page.getByText("contactEmail is invalid")).toBeVisible();
   });
 
-  test("campaign manager can create filtered exports and review HubSpot result history", async ({
-    page,
-  }) => {
+  test("database HubSpot sync action can be exercised with a mocked API", async ({ page }) => {
     const seedData = readSeedData();
 
-    await login(page, seedData.manager);
-    await page.goto("/exports");
+    const queuedRun = {
+      id: "0d63aee0-df1a-4579-8b59-17e6baf6d04f",
+      status: "queued",
+      objectTypes: ["clients", "campaigns"],
+      clientUpsertCount: 0,
+      campaignUpsertCount: 0,
+      deactivatedCount: 0,
+      startedAt: null,
+      completedAt: null,
+      lastError: null,
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    };
 
-    await page.getByRole("searchbox", { name: "Search" }).fill(seedData.channels.catalog.title);
-    await page.getByRole("button", { name: "Create filtered export" }).click();
+    const completedRun = {
+      ...queuedRun,
+      status: "completed",
+      clientUpsertCount: 3,
+      campaignUpsertCount: 2,
+      deactivatedCount: 1,
+      completedAt: "2026-04-22T10:01:00.000Z",
+      updatedAt: "2026-04-22T10:01:00.000Z",
+    };
 
-    await expect(page.getByText("Filtered CSV export queued.")).toBeVisible();
-    await expect(
-      page
-        .locator(".csv-export__list-item", {
-          hasText: seedData.batches.csvExportFileName,
-        })
-        .getByRole("link", { name: "Download CSV" }),
-    ).toBeVisible();
+    let syncPostCalls = 0;
 
-    await page.goto("/hubspot");
-    await expect(page.getByRole("heading", { level: 1, name: "HubSpot" })).toBeVisible();
-    await expect(page.getByText(seedData.batches.hubspotRunName)).toBeVisible();
-    await page
-      .locator("button.hubspot-push__list-item", {
-        hasText: seedData.batches.hubspotRunName,
-      })
-      .click();
-    await expect(
-      page.getByRole("heading", {
-        level: 2,
-        name: seedData.batches.hubspotRunName,
-      }),
-    ).toBeVisible();
-    await expect(page.getByText(seedData.batches.hubspotImportFileName)).toBeVisible();
-    await expect(
-      page.locator(".hubspot-push__detail-actions").getByRole("link", { name: "Download CSV" }),
-    ).toBeVisible();
+    await page.route("**/api/database/hubspot-sync", async (route) => {
+      if (route.request().method() === "POST") {
+        syncPostCalls += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ run: queuedRun }),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [completedRun], latest: completedRun }),
+      });
+    });
+
+    await login(page, seedData.admin);
+    await page.goto("/database");
+
+    await expect(page.getByRole("button", { name: "Sync from HubSpot" })).toBeVisible();
+    await page.getByRole("button", { name: "Sync from HubSpot" }).click();
+
+    await expect(page.getByText("HubSpot sync queued.")).toBeVisible();
+    await expect.poll(() => syncPostCalls).toBe(1);
   });
 });

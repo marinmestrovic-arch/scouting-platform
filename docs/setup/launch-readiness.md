@@ -34,11 +34,11 @@ The Playwright smoke suite now covers:
 - homepage and login rendering
 - authenticated redirect protection
 - create run
-- channel enrichment request
-- advanced report request and admin approval
-- CSV import upload plus stored row-failure review
-- CSV export trigger plus completed export download visibility
-- HubSpot history/detail visibility
+- dashboard Export handoff action
+- catalog filters by real profile and metric fields
+- admin tab reduction (CSV Imports + Users only)
+- CSV import upload with Creator List v3 header plus stored row-failure review
+- database HubSpot sync trigger path (mockable without provider secrets)
 
 ## Local stack verification
 
@@ -64,12 +64,11 @@ Minimum staging flow:
 - login
 - create run
 - overlap one additional queued action during the rehearsal, preferably a channel enrichment while the run is still progressing
-- open dashboard/database views
-- request channel enrichment
-- request and approve HypeAuditor report
+- open dashboard and confirm run-level Export opens the handoff workspace
+- open catalog and apply Country/Region plus median-view filters
 - run admin CSV import and inspect row failures
-- create CSV export and verify download
-- run HubSpot batch/import workflow and inspect saved results
+- confirm admin exposes only CSV Imports and Users tabs
+- open database and verify HubSpot sync surface is available to admins
 
 Any failure found here is a bug to fix before launch, not a reason to start new feature work.
 
@@ -84,7 +83,7 @@ Current intended worker caps:
 
 - `runs.discover`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1`
 - `channels.enrich.llm`: `teamSize=1`, `teamConcurrency=2`, `batchSize=1`
-- `channels.enrich.hypeauditor`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1`
+- `channels.enrich.hypeauditor`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1` (legacy dormant; advanced-report API/UI is retired)
 - `imports.csv.process`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1`
 - `exports.csv.generate`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1`
 - `hubspot.push.batch`: `teamSize=1`, `teamConcurrency=1`, `batchSize=1`

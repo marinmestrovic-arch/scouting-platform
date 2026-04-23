@@ -1,5 +1,9 @@
 import { PrismaClient, Role } from "@prisma/client";
-import { CSV_IMPORT_FILE_SIZE_LIMIT_BYTES } from "@scouting-platform/contracts";
+import {
+  CSV_IMPORT_FILE_SIZE_LIMIT_BYTES,
+  CSV_IMPORT_HEADER,
+  CSV_IMPORT_LEGACY_V3_HEADER,
+} from "@scouting-platform/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -101,6 +105,48 @@ integration("week 5 csv import API integration", () => {
     return formData;
   }
 
+  function creatorListRow(values: string[]): string {
+    if (values.length === CSV_IMPORT_HEADER.length) {
+      return values.join(",");
+    }
+
+    const valueByLegacyHeader = new Map<string, string>();
+    CSV_IMPORT_LEGACY_V3_HEADER.forEach((header, index) => {
+      valueByLegacyHeader.set(header, values[index] ?? "");
+    });
+
+    const row = CSV_IMPORT_HEADER.map((header) => valueByLegacyHeader.get(header) ?? "");
+
+    return row
+      .map((value) => {
+        if (/[",\n\r]/.test(value)) {
+          return `"${value.replace(/"/g, "\"\"")}"`;
+        }
+
+        return value;
+      })
+      .join(",");
+  }
+
+  function makeCreatorListCsv(rows: string[]): string {
+    return [
+      CSV_IMPORT_HEADER.join(","),
+      ...rows,
+    ].join("\n");
+  }
+
+  function makeDeprecatedYoutubeAverageHeader(): string {
+    const header: string[] = [...CSV_IMPORT_HEADER];
+    const insertIndex = header.indexOf("YouTube Video Median Views");
+
+    if (insertIndex === -1) {
+      throw new Error("YouTube Video Median Views header is missing");
+    }
+
+    header.splice(insertIndex, 0, "YouTube Average Views");
+    return header.join(",");
+  }
+
   async function seedSyncedDropdownValues(): Promise<void> {
     await prisma.dropdownValue.createMany({
       data: [
@@ -120,17 +166,85 @@ integration("week 5 csv import API integration", () => {
     const uploadResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
-        body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
-          "UC-CSV-2,Creator Two,invalid-email,,,2000,30000,60,,ops,Male,Gaming,Croatia,Croatian",
-        ].join("\n"))),
+        body: makeFormData(
+          makeCsvFile(
+            makeCreatorListCsv([
+              creatorListRow([
+                "Creator One",
+                "",
+                "",
+                "https://www.youtube.com/channel/UC-CSV-1",
+                "Spring Campaign",
+                "Owner",
+                "",
+                "creator@example.com",
+                "",
+                "EUR",
+                "Paid",
+                "Influencer",
+                "April",
+                "2026",
+                "Client A",
+                "Deal One",
+                "Deal One",
+                "Sales Pipeline",
+                "Scouted",
+                "",
+                "",
+                "Male",
+                "Gaming",
+                "Croatia",
+                "Croatian",
+                "@creatorone",
+                "https://www.youtube.com/@creatorone",
+                "22,000",
+                "11,000",
+                "2.10%",
+                "1,000",
+              ]),
+              creatorListRow([
+                "Creator Two",
+                "",
+                "",
+                "https://www.youtube.com/channel/UC-CSV-2",
+                "Spring Campaign",
+                "Owner",
+                "",
+                "invalid-email",
+                "",
+                "EUR",
+                "Paid",
+                "Influencer",
+                "April",
+                "2026",
+                "Client A",
+                "Deal Two",
+                "Deal Two",
+                "Sales Pipeline",
+                "Scouted",
+                "",
+                "",
+                "Male",
+                "Gaming",
+                "Croatia",
+                "Croatian",
+                "@creatortwo",
+                "https://www.youtube.com/@creatortwo",
+                "31000",
+                "16000",
+                "3.0",
+                "2000",
+              ]),
+            ]),
+          ),
+        ),
       }),
     );
 
     expect(uploadResponse.status).toBe(202);
     const uploadPayload = await uploadResponse.json();
     expect(uploadPayload.status).toBe("queued");
+    expect(uploadPayload.templateVersion).toBe("v3");
     expect(uploadPayload.totalRowCount).toBe(2);
     expect(uploadPayload.failedRowCount).toBe(1);
 
@@ -158,11 +272,78 @@ integration("week 5 csv import API integration", () => {
     const uploadResponse = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
-        body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,Top creator,ops,Male,Gaming,Croatia,Croatian",
-          "UC-CSV-2,,invalid-email,,,20x,30000,60,,ops,Unknown,Gaming,Croatia,Croatian",
-        ].join("\n"))),
+        body: makeFormData(
+          makeCsvFile(
+            makeCreatorListCsv([
+              creatorListRow([
+                "Creator One",
+                "",
+                "",
+                "https://www.youtube.com/channel/UC-CSV-1",
+                "Spring Campaign",
+                "Owner",
+                "",
+                "creator@example.com",
+                "",
+                "EUR",
+                "Paid",
+                "Influencer",
+                "April",
+                "2026",
+                "Client A",
+                "Deal One",
+                "Deal One",
+                "Sales Pipeline",
+                "Scouted",
+                "",
+                "",
+                "Male",
+                "Gaming",
+                "Croatia",
+                "Croatian",
+                "@creatorone",
+                "https://www.youtube.com/@creatorone",
+                "22000",
+                "11000",
+                "2.1",
+                "1000",
+              ]),
+              creatorListRow([
+                "",
+                "",
+                "",
+                "https://www.youtube.com/channel/UC-CSV-2",
+                "Spring Campaign",
+                "Owner",
+                "",
+                "invalid-email",
+                "",
+                "EUR",
+                "Paid",
+                "Influencer",
+                "April",
+                "2026",
+                "Client A",
+                "Deal Two",
+                "Deal Two",
+                "Sales Pipeline",
+                "Scouted",
+                "",
+                "",
+                "Unknown",
+                "Gaming",
+                "Croatia",
+                "Croatian",
+                "@creatortwo",
+                "https://www.youtube.com/@creatortwo",
+                "not-a-number",
+                "9000",
+                "2.0",
+                "20x",
+              ]),
+            ]),
+          ),
+        ),
       }),
     );
 
@@ -180,12 +361,15 @@ integration("week 5 csv import API integration", () => {
     expect(detailPayload.rows[1]?.status).toBe("failed");
     expect(detailPayload.rows[1]?.channelTitle).toBe("");
     expect(detailPayload.rows[1]?.contactEmail).toBe("invalid-email");
-    expect(detailPayload.rows[1]?.subscriberCount).toBe("20x");
+    expect(detailPayload.rows[1]?.youtubeFollowers).toBe("20x");
     expect(detailPayload.rows[1]?.influencerType).toBe("Unknown");
-    expect(detailPayload.rows[1]?.errorMessage).toContain("channelTitle is required");
-    expect(detailPayload.rows[1]?.errorMessage).toContain("contactEmail is invalid");
-    expect(detailPayload.rows[1]?.errorMessage).toContain("subscriberCount is invalid");
-    expect(detailPayload.rows[1]?.errorMessage).toContain("influencerType must use a saved HubSpot dropdown value");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("Channel Name is required");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("Email is invalid");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("YouTube Video Median Views is invalid");
+    expect(detailPayload.rows[1]?.errorMessage).toContain("YouTube Followers is invalid");
+    expect(detailPayload.rows[1]?.errorMessage).toContain(
+      "Influencer Type must use a saved HubSpot dropdown value",
+    );
   });
 
   it("enforces admin-only access on csv import routes", async () => {
@@ -227,6 +411,25 @@ integration("week 5 csv import API integration", () => {
       }),
     );
     expect(invalidHeaderResponse.status).toBe(400);
+
+    const deprecatedHeaderResponse = await batchesRoute.POST(
+      new Request("http://localhost/api/admin/csv-import-batches", {
+        method: "POST",
+        body: makeFormData(
+          makeCsvFile(
+            [
+              makeDeprecatedYoutubeAverageHeader(),
+              Array.from({ length: CSV_IMPORT_HEADER.length + 1 }, (_, index) => (index === 0 ? "Creator One" : "")).join(","),
+            ].join("\n"),
+            { name: "deprecated-average.csv" },
+          ),
+        ),
+      }),
+    );
+    expect(deprecatedHeaderResponse.status).toBe(400);
+    expect(await deprecatedHeaderResponse.json()).toEqual({
+      error: "YouTube Average Views is no longer supported. Use YouTube Video Median Views.",
+    });
   });
 
   it("returns 400 for non-file multipart values and invalid file metadata", async () => {
@@ -304,10 +507,45 @@ integration("week 5 csv import API integration", () => {
     const response = await batchesRoute.POST(
       new Request("http://localhost/api/admin/csv-import-batches", {
         method: "POST",
-        body: makeFormData(makeCsvFile([
-          "youtubeChannelId,channelTitle,contactEmail,firstName,lastName,subscriberCount,viewCount,videoCount,notes,sourceLabel,influencerType,influencerVertical,countryRegion,language",
-          "UC-CSV-1,Creator One,creator@example.com,,,1000,20000,50,,ops,Male,Gaming,Croatia,Croatian",
-        ].join("\n"))),
+        body: makeFormData(
+          makeCsvFile(
+            makeCreatorListCsv([
+              creatorListRow([
+                "Creator One",
+                "",
+                "",
+                "https://www.youtube.com/channel/UC-CSV-1",
+                "Spring Campaign",
+                "Owner",
+                "",
+                "creator@example.com",
+                "",
+                "EUR",
+                "Paid",
+                "Influencer",
+                "April",
+                "2026",
+                "Client A",
+                "Deal One",
+                "Deal One",
+                "Sales Pipeline",
+                "Scouted",
+                "",
+                "",
+                "Male",
+                "Gaming",
+                "Croatia",
+                "Croatian",
+                "@creatorone",
+                "https://www.youtube.com/@creatorone",
+                "22000",
+                "11000",
+                "2.1",
+                "1000",
+              ]),
+            ]),
+          ),
+        ),
       }),
     );
 

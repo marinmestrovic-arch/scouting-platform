@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
@@ -11,7 +12,7 @@ const AdminUsersManager = dynamic(
   () => import("./admin-users-manager").then((mod) => mod.AdminUsersManager),
 );
 
-type AdminWorkspaceTab = "imports" | "users";
+type AdminWorkspaceTab = "imports" | "users" | "exports" | "hubspot";
 
 const ADMIN_TABS: ReadonlyArray<{
   value: AdminWorkspaceTab;
@@ -19,13 +20,17 @@ const ADMIN_TABS: ReadonlyArray<{
 }> = [
   { value: "imports", label: "CSV Imports" },
   { value: "users", label: "Users" },
+  { value: "exports", label: "Exports" },
+  { value: "hubspot", label: "HubSpot" },
 ];
 
 function resolveAdminTab(value: string | null): AdminWorkspaceTab {
   switch (value) {
     case "users":
-      return value;
     case "imports":
+    case "exports":
+    case "hubspot":
+      return value;
     default:
       return "imports";
   }
@@ -115,6 +120,34 @@ export function AdminWorkspace() {
           role="tabpanel"
         >
           <AdminUsersManager />
+        </div>
+      ) : null}
+
+      {activeTab === "exports" ? (
+        <div
+          aria-labelledby="admin-workspace-tab-exports"
+          className="admin-workspace__panel"
+          id={activePanelId}
+          key={`exports-${refreshKey}`}
+          role="tabpanel"
+        >
+          <h3>Exports workspace</h3>
+          <p>Export operations are available in the dedicated workspace.</p>
+          <Link href="/exports">Open /exports</Link>
+        </div>
+      ) : null}
+
+      {activeTab === "hubspot" ? (
+        <div
+          aria-labelledby="admin-workspace-tab-hubspot"
+          className="admin-workspace__panel"
+          id={activePanelId}
+          key={`hubspot-${refreshKey}`}
+          role="tabpanel"
+        >
+          <h3>HubSpot workspace</h3>
+          <p>HubSpot sync operations are available in the dedicated workspace.</p>
+          <Link href="/hubspot">Open /hubspot</Link>
         </div>
       ) : null}
     </div>

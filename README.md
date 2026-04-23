@@ -22,12 +22,12 @@ The authenticated workspace is centered on five top-level surfaces:
 Supporting workflow pages handle:
 - run detail review
 - CSV preparation and export batch history
-- HubSpot preparation, import-ready CSV history, and legacy push history
+- Google Sheets/HubSpot handoff preparation and import-ready CSV history
 
 Current user-facing capabilities include:
 - campaign-linked scouting runs
 - creator catalog browse/detail and saved segments
-- LLM enrichment and approval-gated HypeAuditor requests
+- LLM enrichment
 - client/campaign/dropdown reference data management
 - CSV export
 - HubSpot push
@@ -148,7 +148,6 @@ Current UI-facing route families:
 - `GET /api/channels`
 - `GET /api/channels/:id`
 - `POST /api/channels/:id/enrich`
-- `POST /api/channels/:id/advanced-report-requests`
 - `GET /api/segments`
 - `POST /api/segments`
 - `PUT /api/segments/:id`
@@ -178,14 +177,17 @@ Current UI-facing route families:
 - `PATCH /api/admin/users/:id`
 - `PUT /api/admin/users/:id/password`
 - `PUT /api/admin/users/:id/youtube-key`
-- `GET /api/admin/advanced-report-requests`
-- `GET /api/admin/advanced-report-requests/:id`
-- `POST /api/admin/advanced-report-requests/:id/approve`
-- `POST /api/admin/advanced-report-requests/:id/reject`
 - `PATCH /api/admin/channels/:id/manual-overrides`
 - `GET /api/admin/csv-import-batches`
 - `POST /api/admin/csv-import-batches`
 - `GET /api/admin/csv-import-batches/:id`
+
+### Retired advanced-report endpoints (return HTTP 410)
+- `POST /api/channels/:id/advanced-report-requests`
+- `GET /api/admin/advanced-report-requests`
+- `GET /api/admin/advanced-report-requests/:id`
+- `POST /api/admin/advanced-report-requests/:id/approve`
+- `POST /api/admin/advanced-report-requests/:id/reject`
 
 ### Batch history, detail, and downloads
 - `GET /api/csv-export-batches`

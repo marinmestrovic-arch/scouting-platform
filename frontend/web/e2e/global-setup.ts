@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
-  AdvancedReportRequestStatus,
   CsvExportBatchStatus,
   CsvExportScopeType,
   HubspotImportBatchRowStatus,
@@ -26,7 +25,6 @@ import { disconnectPrisma, prisma, withDbTransaction } from "@scouting-platform/
 import { hashPassword } from "../../../backend/packages/core/src/auth/password";
 import {
   E2E_ADMIN,
-  E2E_APPROVAL_CHANNEL,
   E2E_CAMPAIGN,
   E2E_CATALOG_CHANNEL,
   E2E_CLIENT,
@@ -170,11 +168,6 @@ export default async function globalSetup(): Promise<void> {
         requestedByUserId: admin.id,
       },
     });
-    await tx.advancedReportRequest.deleteMany({
-      where: {
-        requestedByUserId: manager.id,
-      },
-    });
     await tx.channelEnrichment.deleteMany({
       where: {
         requestedByUserId: manager.id,
@@ -267,35 +260,20 @@ export default async function globalSetup(): Promise<void> {
         handle: E2E_CATALOG_CHANNEL.handle,
         description: E2E_CATALOG_CHANNEL.description,
         thumbnailUrl: E2E_CATALOG_CHANNEL.thumbnailUrl,
+        countryRegion: E2E_CATALOG_CHANNEL.countryRegion,
+        influencerVertical: E2E_CATALOG_CHANNEL.influencerVertical,
+        influencerType: E2E_CATALOG_CHANNEL.influencerType,
+        contentLanguage: E2E_CATALOG_CHANNEL.language,
       },
       update: {
         title: E2E_CATALOG_CHANNEL.title,
         handle: E2E_CATALOG_CHANNEL.handle,
         description: E2E_CATALOG_CHANNEL.description,
         thumbnailUrl: E2E_CATALOG_CHANNEL.thumbnailUrl,
-      },
-      select: {
-        id: true,
-        title: true,
-      },
-    });
-
-    const approvalChannel = await tx.channel.upsert({
-      where: {
-        youtubeChannelId: E2E_APPROVAL_CHANNEL.youtubeChannelId,
-      },
-      create: {
-        youtubeChannelId: E2E_APPROVAL_CHANNEL.youtubeChannelId,
-        title: E2E_APPROVAL_CHANNEL.title,
-        handle: E2E_APPROVAL_CHANNEL.handle,
-        description: E2E_APPROVAL_CHANNEL.description,
-        thumbnailUrl: E2E_APPROVAL_CHANNEL.thumbnailUrl,
-      },
-      update: {
-        title: E2E_APPROVAL_CHANNEL.title,
-        handle: E2E_APPROVAL_CHANNEL.handle,
-        description: E2E_APPROVAL_CHANNEL.description,
-        thumbnailUrl: E2E_APPROVAL_CHANNEL.thumbnailUrl,
+        countryRegion: E2E_CATALOG_CHANNEL.countryRegion,
+        influencerVertical: E2E_CATALOG_CHANNEL.influencerVertical,
+        influencerType: E2E_CATALOG_CHANNEL.influencerType,
+        contentLanguage: E2E_CATALOG_CHANNEL.language,
       },
       select: {
         id: true,
@@ -328,18 +306,22 @@ export default async function globalSetup(): Promise<void> {
       },
       create: {
         channelId: catalogChannel.id,
-        subscriberCount: BigInt(120_000),
+        subscriberCount: BigInt(E2E_CATALOG_CHANNEL.youtubeFollowers),
         viewCount: BigInt(7_800_000),
         videoCount: BigInt(215),
         youtubeEngagementRate: 0.041,
-        youtubeFollowers: BigInt(120_000),
+        youtubeFollowers: BigInt(E2E_CATALOG_CHANNEL.youtubeFollowers),
+        youtubeVideoMedianViews: BigInt(E2E_CATALOG_CHANNEL.youtubeVideoMedianViews),
+        youtubeShortsMedianViews: BigInt(E2E_CATALOG_CHANNEL.youtubeShortsMedianViews),
       },
       update: {
-        subscriberCount: BigInt(120_000),
+        subscriberCount: BigInt(E2E_CATALOG_CHANNEL.youtubeFollowers),
         viewCount: BigInt(7_800_000),
         videoCount: BigInt(215),
         youtubeEngagementRate: 0.041,
-        youtubeFollowers: BigInt(120_000),
+        youtubeFollowers: BigInt(E2E_CATALOG_CHANNEL.youtubeFollowers),
+        youtubeVideoMedianViews: BigInt(E2E_CATALOG_CHANNEL.youtubeVideoMedianViews),
+        youtubeShortsMedianViews: BigInt(E2E_CATALOG_CHANNEL.youtubeShortsMedianViews),
       },
     });
 
@@ -381,15 +363,6 @@ export default async function globalSetup(): Promise<void> {
         source: RunResultSource.CATALOG,
       },
     });
-
-    await tx.advancedReportRequest.create({
-      data: {
-        channelId: approvalChannel.id,
-        requestedByUserId: manager.id,
-        status: AdvancedReportRequestStatus.PENDING_APPROVAL,
-      },
-    });
-
     const seededCsvImportBatch = await tx.csvImportBatch.create({
       data: {
         requestedByUserId: admin.id,
@@ -535,14 +508,18 @@ export default async function globalSetup(): Promise<void> {
         id: campaign.id,
         name: campaign.name,
       },
+      run: {
+        id: seededRun.id,
+        name: E2E_RUN.name,
+      },
       channels: {
         catalog: {
           id: catalogChannel.id,
           title: catalogChannel.title,
-        },
-        approval: {
-          id: approvalChannel.id,
-          title: approvalChannel.title,
+          countryRegion: E2E_CATALOG_CHANNEL.countryRegion,
+          influencerVertical: E2E_CATALOG_CHANNEL.influencerVertical,
+          influencerType: E2E_CATALOG_CHANNEL.influencerType,
+          youtubeVideoMedianViews: E2E_CATALOG_CHANNEL.youtubeVideoMedianViews,
         },
       },
       batches: {

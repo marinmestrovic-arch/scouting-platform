@@ -1,10 +1,17 @@
 import { z } from "zod";
 
+import {
+  CREATOR_LIST_HUBSPOT_HANDOFF_HEADER,
+  CREATOR_LIST_HUBSPOT_IMPORT_HEADER,
+} from "./creator-list";
+
 const isoDatetimeSchema = z.string().datetime();
 
-export const CSV_IMPORT_TEMPLATE_VERSION = "v2" as const;
+export const CSV_IMPORT_TEMPLATE_VERSION = "v3" as const;
 export const CSV_IMPORT_MAX_DATA_ROWS = 10_000;
-export const CSV_IMPORT_HEADER = [
+export const CSV_IMPORT_HEADER = CREATOR_LIST_HUBSPOT_IMPORT_HEADER;
+export const CSV_IMPORT_LEGACY_V3_HEADER = CREATOR_LIST_HUBSPOT_HANDOFF_HEADER;
+export const CSV_IMPORT_LEGACY_V2_HEADER = [
   "youtubeChannelId",
   "channelTitle",
   "contactEmail",
@@ -93,12 +100,63 @@ export const csvImportRowSchema = z.object({
   // Row detail preserves the stored import attempt, including invalid values for failed rows.
   youtubeChannelId: z.string(),
   channelTitle: z.string(),
+  hubspotRecordId: z.string().nullable(),
+  timestampImported: z.string().nullable(),
+  channelUrl: z.string().nullable(),
+  campaignName: z.string().nullable(),
+  dealOwner: z.string().nullable(),
+  handoffStatus: z.string().nullable(),
   contactEmail: z.string().nullable(),
+  phoneNumber: z.string().nullable(),
+  currency: z.string().nullable(),
+  dealType: z.string().nullable(),
+  contactType: z.string().nullable(),
+  month: z.string().nullable(),
+  year: z.string().nullable(),
+  clientName: z.string().nullable(),
+  dealName: z.string().nullable(),
+  activationName: z.string().nullable(),
+  pipeline: z.string().nullable(),
+  dealStage: z.string().nullable(),
   firstName: z.string().nullable(),
   lastName: z.string().nullable(),
+  youtubeHandle: z.string().nullable(),
+  youtubeUrl: z.string().nullable(),
   subscriberCount: z.string().nullable(),
   viewCount: z.string().nullable(),
   videoCount: z.string().nullable(),
+  youtubeVideoMedianViews: z.string().nullable(),
+  youtubeShortsMedianViews: z.string().nullable(),
+  youtubeEngagementRate: z.string().nullable(),
+  youtubeFollowers: z.string().nullable(),
+  instagramHandle: z.string().nullable(),
+  instagramUrl: z.string().nullable(),
+  instagramPostAverageViews: z.string().nullable(),
+  instagramReelAverageViews: z.string().nullable(),
+  instagramStory7DayAverageViews: z.string().nullable(),
+  instagramStory30DayAverageViews: z.string().nullable(),
+  instagramEngagementRate: z.string().nullable(),
+  instagramFollowers: z.string().nullable(),
+  tiktokHandle: z.string().nullable(),
+  tiktokUrl: z.string().nullable(),
+  tiktokAverageViews: z.string().nullable(),
+  tiktokEngagementRate: z.string().nullable(),
+  tiktokFollowers: z.string().nullable(),
+  twitchHandle: z.string().nullable(),
+  twitchUrl: z.string().nullable(),
+  twitchAverageViews: z.string().nullable(),
+  twitchEngagementRate: z.string().nullable(),
+  twitchFollowers: z.string().nullable(),
+  kickHandle: z.string().nullable(),
+  kickUrl: z.string().nullable(),
+  kickAverageViews: z.string().nullable(),
+  kickEngagementRate: z.string().nullable(),
+  kickFollowers: z.string().nullable(),
+  xHandle: z.string().nullable(),
+  xUrl: z.string().nullable(),
+  xAverageViews: z.string().nullable(),
+  xEngagementRate: z.string().nullable(),
+  xFollowers: z.string().nullable(),
   notes: z.string().nullable(),
   sourceLabel: z.string().nullable(),
   influencerType: z.string().nullable(),
