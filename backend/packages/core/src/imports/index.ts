@@ -30,6 +30,7 @@ import { listDropdownOptions } from "../dropdown-values";
 import { enqueueCsvImportJob } from "./queue";
 export { stopCsvImportsQueue } from "./queue";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CSV_IMPORT_PROFILE_DROPDOWN_FIELD_KEYS = [
   "influencerType",
   "influencerVertical",
