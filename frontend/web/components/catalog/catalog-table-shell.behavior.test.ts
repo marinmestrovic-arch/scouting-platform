@@ -2,7 +2,6 @@ import type { ListChannelsResponse, SegmentResponse } from "@scouting-platform/c
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CatalogFiltersState,
   CatalogMultiValueFilterKey,
   CatalogNumericFilterKey,
 } from "../../lib/catalog-filters";
@@ -93,7 +92,6 @@ import {
 } from "./catalog-table-shell";
 
 type CatalogShellElement = ReactElement<{
-  onApplyFilters: () => void;
   onClearSelection: () => void;
   onCreateSegment: () => Promise<void> | void;
   onDeleteSegment: (segment: SegmentResponse) => Promise<void> | void;
@@ -106,17 +104,15 @@ type CatalogShellElement = ReactElement<{
   onResetFilters: () => void;
   onRetry: () => void;
   onRetrySavedSegments: () => void;
-  onDraftQueryChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
   onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => void;
   onToggleChannelSelection: (channelId: string) => void;
   onToggleMultiValueFilter: (key: CatalogMultiValueFilterKey, value: string) => void;
   onTogglePageSelection: () => void;
-  draftFilters: CatalogFiltersState;
   requestState: {
     status: "loading" | "error" | "ready";
   };
   savedSegmentName: string;
-  hasPendingFilterChanges: boolean;
   selectedChannelIds: string[];
 }>;
 
@@ -197,22 +193,6 @@ function createSearchParams(
   }
 
   return searchParams;
-}
-
-function buildCatalogFilters(overrides?: Partial<CatalogFiltersState>): CatalogFiltersState {
-  return {
-    query: "",
-    countryRegion: [],
-    influencerVertical: [],
-    influencerType: [],
-    youtubeVideoMedianViewsMin: "",
-    youtubeVideoMedianViewsMax: "",
-    youtubeShortsMedianViewsMin: "",
-    youtubeShortsMedianViewsMax: "",
-    youtubeFollowersMin: "",
-    youtubeFollowersMax: "",
-    ...overrides,
-  };
 }
 
 function createSavedSegment(overrides?: Partial<SegmentResponse>): SegmentResponse {
@@ -351,7 +331,6 @@ function renderShell(options?: {
     error: string;
   };
   searchParams?: URLSearchParams;
-  draftFilters?: CatalogFiltersState;
   reloadToken?: number;
   savedSegments?: SegmentResponse[];
   savedSegmentsRequestState?: SavedSegmentsRequestState;
@@ -365,9 +344,7 @@ function renderShell(options?: {
   latestCsvExportBatchReloadToken?: number;
   latestHubspotPushBatch?: CatalogHubspotPushBatchState;
   latestHubspotPushBatchReloadToken?: number;
-  isDocumentVisible?: boolean;
 }) {
-  const setDraftFilters = vi.fn();
   const setRequestState = vi.fn();
   const setReloadToken = vi.fn();
   const setSavedSegments = vi.fn();
@@ -382,7 +359,6 @@ function renderShell(options?: {
   const setLatestCsvExportBatchReloadToken = vi.fn();
   const setLatestHubspotPushBatch = vi.fn();
   const setLatestHubspotPushBatchReloadToken = vi.fn();
-  const setIsDocumentVisible = vi.fn();
   const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
@@ -403,15 +379,6 @@ function renderShell(options?: {
   );
 
   useStateMock
-    .mockReturnValueOnce([
-      options?.draftFilters ??
-        buildCatalogFilters({
-          query: "space",
-          countryRegion: ["Croatia"],
-          youtubeVideoMedianViewsMin: "100000",
-        }),
-      setDraftFilters,
-    ])
     .mockReturnValueOnce([
       options?.requestState ??
         createReadyState({
@@ -475,10 +442,6 @@ function renderShell(options?: {
     .mockReturnValueOnce([
       options?.latestHubspotPushBatchReloadToken ?? 0,
       setLatestHubspotPushBatchReloadToken,
-    ])
-    .mockReturnValueOnce([
-      options?.isDocumentVisible ?? true,
-      setIsDocumentVisible,
     ]);
 
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
@@ -494,7 +457,6 @@ function renderShell(options?: {
   return {
     cleanups,
     element,
-    setDraftFilters,
     setPendingSegmentAction,
     setReloadToken,
     setRequestState,
@@ -544,25 +506,10 @@ describe("catalog table shell behavior", () => {
 
     const {
       cleanups,
-      setDraftFilters,
       setRequestState,
       setSavedSegments,
       setSavedSegmentsRequestState,
     } = renderShell();
-
-    const setDraftFiltersUpdater = setDraftFilters.mock.calls[0]?.[0] as
-      | ((current: CatalogFiltersState) => CatalogFiltersState)
-      | undefined;
-
-    expect(
-      setDraftFiltersUpdater?.(buildCatalogFilters()),
-    ).toEqual(
-      buildCatalogFilters({
-        query: "space",
-        countryRegion: ["Croatia"],
-        youtubeVideoMedianViewsMin: "100000",
-      }),
-    );
     expect(fetchChannelsMock).toHaveBeenCalledWith(
       {
         page: 2,
@@ -764,14 +711,15 @@ describe("catalog table shell behavior", () => {
 
   it("applies draft filters by replacing the URL and resetting to page 1", () => {
     const { element } = renderShell({
-      draftFilters: buildCatalogFilters({
+      searchParams: createSearchParams({
+        page: "2",
         query: "mars",
         countryRegion: ["Croatia"],
         influencerVertical: ["Gaming"],
       }),
     });
 
-    element.props.onApplyFilters();
+    element.props.onQueryChange("mars");
 
     expect(replaceMock).toHaveBeenCalledWith(
       "/catalog?page=1&query=mars&countryRegion=Croatia&influencerVertical=Gaming",
@@ -779,7 +727,7 @@ describe("catalog table shell behavior", () => {
   });
 
   it("loads a saved segment back into draft filters and URL state", () => {
-    const { element, setDraftFilters, setSavedSegmentName, setSavedSegmentOperationStatus } =
+    const { element, setSavedSegmentName, setSavedSegmentOperationStatus } =
       renderShell();
     const segment = createSavedSegment({
       name: "Launch channels",
@@ -789,18 +737,11 @@ describe("catalog table shell behavior", () => {
       },
     });
 
-    setDraftFilters.mockClear();
     setSavedSegmentName.mockClear();
     setSavedSegmentOperationStatus.mockClear();
 
     element.props.onLoadSegment(segment);
 
-    expect(setDraftFilters).toHaveBeenCalledWith(
-      buildCatalogFilters({
-        query: "launch",
-        countryRegion: ["Croatia"],
-      }),
-    );
     expect(setSavedSegmentName).toHaveBeenCalledWith("Launch channels");
     expect(setSavedSegmentOperationStatus).toHaveBeenCalledWith({
       type: "success",
@@ -822,10 +763,6 @@ describe("catalog table shell behavior", () => {
       setSavedSegmentOperationStatus,
       setSavedSegments,
     } = renderShell({
-      draftFilters: buildCatalogFilters({
-        query: "space",
-        countryRegion: ["Croatia"],
-      }),
       savedSegmentName: "  Space creators  ",
     });
 
@@ -844,6 +781,7 @@ describe("catalog table shell behavior", () => {
       filters: {
         query: "space",
         countryRegion: ["Croatia"],
+        youtubeVideoMedianViewsMin: 100000,
       },
     });
     expect(setPendingSegmentAction).toHaveBeenNthCalledWith(1, "create");
