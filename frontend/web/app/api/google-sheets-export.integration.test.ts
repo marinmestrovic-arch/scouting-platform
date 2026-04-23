@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 
 import { PrismaClient, Role, RunMonth, RunResultSource } from "@prisma/client";
+import { CREATOR_LIST_HUBSPOT_HANDOFF_HEADER } from "@scouting-platform/contracts";
 import {
   afterAll,
   afterEach,
@@ -32,6 +33,19 @@ function createPrivateKey(): string {
     type: "pkcs8",
     format: "pem",
   }) as string;
+}
+
+function getGoogleSheetsColumnName(columnNumber: number): string {
+  let remaining = columnNumber;
+  let columnName = "";
+
+  while (remaining > 0) {
+    const modulo = (remaining - 1) % 26;
+    columnName = String.fromCharCode(65 + modulo) + columnName;
+    remaining = Math.floor((remaining - modulo) / 26);
+  }
+
+  return columnName;
 }
 
 integration("google sheets export API integration", () => {
@@ -305,6 +319,10 @@ integration("google sheets export API integration", () => {
     const manager = await createManager();
     const run = await createPreparedRun(manager.id);
     currentSessionUser = { id: manager.id, role: "user" };
+    const headerRow = [...CREATOR_LIST_HUBSPOT_HANDOFF_HEADER];
+    const lastColumn = getGoogleSheetsColumnName(headerRow.length);
+    const expectedReadRange = `'Scouting Export'!A3:${lastColumn}`;
+    const expectedWriteRange = `'Scouting Export'!A4:${lastColumn}4`;
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -319,14 +337,10 @@ integration("google sheets export API integration", () => {
 
       if (url.includes("/values/")) {
         if (init?.method === "PUT") {
-          expect(decodedUrl).toContain("'Scouting Export'!A4:AD4");
-          expect(String(init.body)).toContain("200000");
-          expect(String(init.body)).toContain("100000");
-
           return new Response(
             JSON.stringify({
               updates: {
-                updatedRange: "'Scouting Export'!A4:AD4",
+                updatedRange: expectedWriteRange,
                 updatedRows: 1,
               },
             }),
@@ -337,7 +351,7 @@ integration("google sheets export API integration", () => {
           );
         }
 
-        if (decodedUrl.includes("'Scouting Export'!A3:AD")) {
+        if (decodedUrl.includes(expectedReadRange)) {
           return new Response(
             JSON.stringify({
               values: [["Contacting"]],
@@ -351,38 +365,7 @@ integration("google sheets export API integration", () => {
 
         return new Response(
           JSON.stringify({
-            values: [[
-              "Channel Name",
-              "HubSpot Record ID",
-              "Timestamp Imported",
-              "Channel URL",
-              "Campaign Name",
-              "Deal owner",
-              "Status",
-              "Email",
-              "Phone Number",
-              "Currency",
-              "Deal Type",
-              "Contact Type",
-              "Month",
-              "Year",
-              "Client name",
-              "Deal name",
-              "Pipeline",
-              "Deal stage",
-              "First Name",
-              "Last Name",
-              "Influencer Type",
-              "Influencer Vertical",
-              "Country/Region",
-              "Language",
-              "YouTube Handle",
-              "YouTube URL",
-              "YouTube Video Median Views",
-              "YouTube Shorts Median Views",
-              "YouTube Engagement Rate",
-              "YouTube Followers",
-            ]],
+            values: [headerRow],
           }),
           {
             status: 200,
@@ -401,7 +384,7 @@ integration("google sheets export API integration", () => {
                   title: "Scouting Export",
                   gridProperties: {
                     rowCount: 1000,
-                    columnCount: 30,
+                    columnCount: headerRow.length,
                   },
                 },
               },
@@ -439,9 +422,16 @@ integration("google sheets export API integration", () => {
       spreadsheetId: "spreadsheet-1",
       sheetName: "Scouting Export",
       appendedRowCount: 1,
-      matchedHeaderCount: 30,
+      matchedHeaderCount: headerRow.length,
     });
     expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    const writeCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(writeCall).toBeDefined();
+    const [writeUrl, writeInit] = writeCall as [RequestInfo | URL, RequestInit | undefined];
+    expect(decodeURIComponent(String(writeUrl))).toContain(expectedWriteRange);
+    expect(String(writeInit?.body ?? "")).toContain("Sheets Creator");
+    expect(String(writeInit?.body ?? "")).toContain("Spring Campaign");
   });
 
   it("returns normalized auth and validation errors", async () => {
