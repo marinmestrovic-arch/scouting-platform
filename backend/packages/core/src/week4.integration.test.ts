@@ -240,6 +240,7 @@ integration("week 4 core integration", () => {
 
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        dropdown_values,
         channel_enrichments,
         channel_youtube_contexts,
         channel_manual_overrides,
@@ -318,6 +319,20 @@ integration("week 4 core integration", () => {
       userId,
       rawKey: "yt-key-1",
       actorUserId: userId,
+    });
+  }
+
+  async function seedProfileDropdownValues(): Promise<void> {
+    await prisma.dropdownValue.createMany({
+      data: [
+        { fieldKey: "INFLUENCER_TYPE", value: "Creator" },
+        { fieldKey: "INFLUENCER_TYPE", value: "Streamer" },
+        { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
+        { fieldKey: "INFLUENCER_VERTICAL", value: "Tech" },
+        { fieldKey: "COUNTRY_REGION", value: "United States" },
+        { fieldKey: "COUNTRY_REGION", value: "Croatia" },
+        { fieldKey: "LANGUAGE", value: "English" },
+      ],
     });
   }
 
@@ -557,6 +572,97 @@ integration("week 4 core integration", () => {
     });
   });
 
+  it("populates CRM profile fields from exact HubSpot dropdown options during channel enrichment", async () => {
+    const user = await createUser("profile-fields@example.com");
+    const channel = await createChannel("UC-PROFILE-FIELDS", "Profile Fields Channel");
+    await assignYoutubeKey(user.id);
+    await seedProfileDropdownValues();
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValue({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-PROFILE-FIELDS",
+      description: "Gaming hardware reviews. Contact collabs@example.com for campaigns.",
+      defaultLanguage: "en-US",
+      recentVideos: CACHED_CONTEXT.recentVideos.map((video) => ({
+        ...video,
+        categoryName: "Gaming",
+        tags: ["gaming", "hardware"],
+      })),
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValue({
+      ...ENRICHMENT_RESULT,
+      profile: {
+        ...ENRICHMENT_RESULT.profile,
+        topics: ["gaming hardware", "pc builds"],
+        structuredProfile: {
+          ...ENRICHMENT_RESULT.profile.structuredProfile,
+          geoHints: ["US"],
+        },
+      },
+    });
+    enrichCreatorProfilesWithOpenAiMock.mockResolvedValueOnce([
+      {
+        rowKey: channel.id,
+        values: {
+          Email: "",
+          "Influencer Type": "Creator",
+          "Influencer Vertical": "Gaming; Tech",
+          "Country/Region": "United States",
+          Language: "English",
+        },
+      },
+    ]);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    const persistedChannel = await prisma.channel.findUniqueOrThrow({
+      where: {
+        id: channel.id,
+      },
+      select: {
+        influencerType: true,
+        influencerVertical: true,
+        countryRegion: true,
+        contentLanguage: true,
+        contacts: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
+
+    expect(enrichCreatorProfilesWithOpenAiMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dropdownOptions: {
+          "Influencer Type": ["Creator", "Streamer"],
+          "Influencer Vertical": ["Gaming", "Tech"],
+          "Country/Region": ["Croatia", "United States"],
+          Language: ["English"],
+        },
+      }),
+    );
+    expect(persistedChannel.influencerType).toBe("Creator");
+    expect(persistedChannel.influencerVertical).toBe("Gaming");
+    expect(persistedChannel.countryRegion).toBe("United States");
+    expect(persistedChannel.contentLanguage).toBe("English");
+    expect(persistedChannel.contacts.map((contact) => contact.email)).toEqual([
+      "collabs@example.com",
+    ]);
+  });
+
   it("persists YouTube medians when Creator List preview refresh writes metrics", async () => {
     const user = await createUser("preview-refresh@example.com");
     const channel = await createChannel("UC-PREVIEW-MEDIANS", "Preview Median Channel");
@@ -618,6 +724,91 @@ integration("week 4 core integration", () => {
       },
     });
     expect(completedJob.status).toBe(PrismaHubspotPreviewEnrichmentJobStatus.COMPLETED);
+  });
+
+  it("normalizes Creator List batch enrichment to saved HubSpot dropdown values", async () => {
+    const user = await createUser("preview-profile-fields@example.com");
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-PREVIEW-PROFILE",
+        title: "Preview Profile Channel",
+        influencerVertical: "Strategy",
+        countryRegion: "US",
+      },
+      select: {
+        id: true,
+      },
+    });
+    await assignYoutubeKey(user.id);
+    await seedProfileDropdownValues();
+
+    const run = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Preview profile run",
+        query: "gaming creators",
+        target: 1,
+        status: RunRequestStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+    const runResult = await prisma.runResult.create({
+      data: {
+        runRequestId: run.id,
+        channelId: channel.id,
+        rank: 1,
+        source: RunResultSource.DISCOVERY,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const job = await prisma.hubspotPreviewEnrichmentJob.create({
+      data: {
+        runRequestId: run.id,
+        requestedByUserId: user.id,
+        progressMessage: "Creator List enrichment queued.",
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...buildFreshMetricContext(),
+      youtubeChannelId: "UC-PREVIEW-PROFILE",
+      description: "Gaming creator. Business: batch@example.com",
+    });
+    enrichCreatorProfilesWithOpenAiMock.mockResolvedValueOnce([
+      {
+        rowKey: `${runResult.id}:0`,
+        values: {
+          "First Name": "Alex",
+          "Last Name": "Creator",
+          Email: "",
+          "Influencer Type": "Creator",
+          "Influencer Vertical": "Gaming",
+          "Country/Region": "United States",
+          Language: "English",
+        },
+      },
+    ]);
+
+    await getCore().executeHubspotPreviewEnrichmentJob({
+      enrichmentJobId: job.id,
+      requestedByUserId: user.id,
+    });
+
+    const preview = await getCore().getHubspotExportPreview({
+      runId: run.id,
+      userId: user.id,
+      role: "admin",
+    });
+    const [row] = preview.rows;
+
+    expect(row?.values.email).toBe("batch@example.com");
+    expect(row?.values.firstName).toBe("Alex");
+    expect(row?.values.lastName).toBe("Creator");
+    expect(row?.values.influencerType).toBe("Creator");
+    expect(row?.values.influencerVertical).toBe("Gaming");
+    expect(row?.values.countryRegion).toBe("United States");
   });
 
   it("keeps enrichment successful when recent video stats are incomplete and persists diagnostics", async () => {

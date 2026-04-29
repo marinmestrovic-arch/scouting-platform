@@ -38,6 +38,7 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
               row_key: "row-1",
               "First Name": "Alex",
               "Last Name": "Creator",
+              Email: "alex@example.com",
               "Influencer Type": "",
               "Influencer Vertical": [],
               "Country/Region": "",
@@ -84,6 +85,7 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
           requestedFields: [
             "First Name",
             "Last Name",
+            "Email",
             "Influencer Type",
             "Influencer Vertical",
             "Country/Region",
@@ -98,10 +100,11 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
     expect(chatCreate).not.toHaveBeenCalled();
     expect(responsesCreate).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).not.toContain("Phone Number");
-    expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).not.toContain("\"Email\"");
+    expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).toContain("\"Email\"");
     expect(results[0]?.values).toMatchObject({
       "First Name": "Alex",
       "Last Name": "Creator",
+      Email: "alex@example.com",
       "Influencer Type": "Creator",
       "Influencer Vertical": "Gaming; Tech",
       "Country/Region": "United States",
@@ -118,6 +121,7 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
             row_key: "row-1",
             "First Name": "Ana",
             "Last Name": "Creator",
+            Email: "",
             "Influencer Type": "Creator",
             "Influencer Vertical": ["Beauty"],
             "Country/Region": "Croatia",
@@ -155,6 +159,7 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
     expect(responsesCreate).toHaveBeenCalledTimes(1);
     expect(chatCreate).toHaveBeenCalledTimes(1);
     expect(results[0]?.values).not.toHaveProperty("Phone Number");
+    expect(results[0]?.values.Email).toBe("");
     expect(results[0]?.values["Influencer Vertical"]).toBe("Beauty");
   });
 });

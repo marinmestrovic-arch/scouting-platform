@@ -8,18 +8,23 @@ import { prisma, withDbTransaction } from "@scouting-platform/db";
 import {
   extractStoredOpenAiChannelEnrichmentProfileFromRawPayload,
   enrichChannelWithOpenAi,
+  enrichCreatorProfilesWithOpenAi,
   fetchYoutubeChannelContext,
+  fetchYoutubeChannelPageEmailSignal,
   isOpenAiChannelEnrichmentError,
   type StoredOpenAiChannelEnrichment,
   type YoutubeChannelContext,
+  type YoutubeChannelPageEmailSignal,
   isYoutubeChannelContextProviderError,
   youtubeChannelContextSchema,
 } from "@scouting-platform/integrations";
 
 import { getUserYoutubeApiKey } from "../auth";
 import { getChannelById } from "../channels";
+import { listDropdownOptions } from "../dropdown-values";
 import { ServiceError } from "../errors";
 import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
+import { inferVerticalsForHubspot } from "../hubspot/vertical-inference";
 import { enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
@@ -55,6 +60,446 @@ function toNullableBigInt(value: number | null): bigint | null {
   }
 
   return BigInt(Math.round(value));
+}
+
+const CHANNEL_PROFILE_RESULT_FIELD_BY_KEY = {
+  email: "Email",
+  influencerType: "Influencer Type",
+  influencerVertical: "Influencer Vertical",
+  countryRegion: "Country/Region",
+  language: "Language",
+} as const;
+
+type ChannelProfileFieldKey = keyof typeof CHANNEL_PROFILE_RESULT_FIELD_BY_KEY;
+type DropdownOptions = Awaited<ReturnType<typeof listDropdownOptions>>;
+type DropdownUpdate =
+  | { op: "set"; value: string }
+  | { op: "clear" };
+
+function normalizeExtractedEmailCandidate(value: string): string {
+  return value
+    .replace(/^mailto:/iu, "")
+    .replace(/^[<("'`[]+/, "")
+    .replace(/[>"')\],;:!?]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function extractExplicitEmailsFromText(value: string): string[] {
+  const raw = value.trim();
+
+  if (!raw) {
+    return [];
+  }
+
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  function collectFromText(text: string): void {
+    const pattern =
+      /(?:mailto:)?([A-Z0-9.!#$%&'*+=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,63})/giu;
+
+    for (const match of text.matchAll(pattern)) {
+      const email = normalizeExtractedEmailCandidate(match[1] ?? match[0] ?? "");
+
+      if (!email || seen.has(email)) {
+        continue;
+      }
+
+      seen.add(email);
+      results.push(email);
+    }
+  }
+
+  const decodedHtml = raw
+    .replace(/&commat;|&#64;|&#x40;/giu, "@")
+    .replace(/&period;|&#46;|&#x2e;/giu, ".");
+
+  collectFromText(decodedHtml);
+
+  const deobfuscated = decodedHtml
+    .replace(/\s*\[\s*at\s*\]\s*/giu, "@")
+    .replace(/\s*\(\s*at\s*\)\s*/giu, "@")
+    .replace(/\s+\bat\b\s+/giu, "@")
+    .replace(/\s*\[\s*dot\s*\]\s*/giu, ".")
+    .replace(/\s*\(\s*dot\s*\)\s*/giu, ".")
+    .replace(/\s+\bdot\b\s+/giu, ".");
+
+  if (deobfuscated !== decodedHtml) {
+    collectFromText(deobfuscated);
+  }
+
+  return results;
+}
+
+function extractExplicitEmailsFromTextList(values: readonly string[]): string[] {
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    for (const email of extractExplicitEmailsFromText(value)) {
+      if (seen.has(email)) {
+        continue;
+      }
+
+      seen.add(email);
+      results.push(email);
+    }
+  }
+
+  return results;
+}
+
+function getPageSignalTextValues(
+  pageSignal: YoutubeChannelPageEmailSignal | null | undefined,
+): string[] {
+  if (!pageSignal) {
+    return [];
+  }
+
+  return [
+    ...pageSignal.emails,
+    pageSignal.snippet ?? "",
+  ].filter((value) => value.trim().length > 0);
+}
+
+function getPreferredCreatorEmail(
+  context: YoutubeChannelContext,
+  pageSignal: YoutubeChannelPageEmailSignal | null,
+): string {
+  const bioEmail = extractExplicitEmailsFromText(context.description ?? "")[0] ?? "";
+
+  if (bioEmail) {
+    return bioEmail;
+  }
+
+  const pageEmail = extractExplicitEmailsFromTextList(getPageSignalTextValues(pageSignal))[0] ?? "";
+
+  if (pageEmail) {
+    return pageEmail;
+  }
+
+  return extractExplicitEmailsFromTextList(
+    context.recentVideos.map((video) => video.description ?? ""),
+  )[0] ?? "";
+}
+
+function getCountryNameFromRegionCode(value: string): string | null {
+  const code = value.trim();
+
+  if (!/^[a-z]{2}$/iu.test(code)) {
+    return null;
+  }
+
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDropdownComparable(value: string): string {
+  const countryName = getCountryNameFromRegionCode(value);
+  const normalizedValue = countryName ?? value;
+
+  return normalizedValue
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/&/gu, " and ")
+    .replace(/\busa\b/giu, "united states")
+    .replace(/\bu\.s\.a\.\b/giu, "united states")
+    .replace(/\buk\b/giu, "united kingdom")
+    .replace(/\bu\.k\.\b/giu, "united kingdom")
+    .replace(/\buae\b/giu, "united arab emirates")
+    .replace(/[^a-z0-9]+/giu, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/gu, " ");
+}
+
+function normalizeDropdownTokenSet(value: string): string {
+  return normalizeDropdownComparable(value)
+    .split(" ")
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right))
+    .join(" ");
+}
+
+function coerceDropdownOption(options: readonly string[], value: string): string {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  const exact = options.find((option) => option === normalizedValue);
+
+  if (exact) {
+    return exact;
+  }
+
+  const caseInsensitive = options.find(
+    (option) => option.trim().toLowerCase() === normalizedValue.toLowerCase(),
+  );
+
+  if (caseInsensitive) {
+    return caseInsensitive;
+  }
+
+  if (normalizedValue === "English (US)" || normalizedValue === "English (UK)") {
+    return coerceDropdownOption(options, "English");
+  }
+
+  const comparableValue = normalizeDropdownComparable(normalizedValue);
+  const normalized = options.find(
+    (option) => normalizeDropdownComparable(option) === comparableValue,
+  );
+
+  if (normalized) {
+    return normalized;
+  }
+
+  const tokenSetValue = normalizeDropdownTokenSet(normalizedValue);
+  const tokenSet = options.find(
+    (option) => normalizeDropdownTokenSet(option) === tokenSetValue,
+  );
+
+  if (tokenSet) {
+    return tokenSet;
+  }
+
+  const partialMatches = options.filter((option) => {
+    const comparableOption = normalizeDropdownComparable(option);
+
+    return (
+      comparableValue.length >= 3
+      && (comparableOption.includes(comparableValue) || comparableValue.includes(comparableOption))
+    );
+  });
+
+  return partialMatches.length === 1 ? partialMatches[0] ?? "" : "";
+}
+
+function coerceFirstDropdownOption(options: readonly string[], value: string): string {
+  for (const item of value.split(/[;,|]/u)) {
+    const coerced = coerceDropdownOption(options, item);
+
+    if (coerced) {
+      return coerced;
+    }
+  }
+
+  return "";
+}
+
+function getProfileResultValue(
+  result: Record<string, string> | undefined,
+  field: ChannelProfileFieldKey,
+): string {
+  return result?.[CHANNEL_PROFILE_RESULT_FIELD_BY_KEY[field]]?.trim() ?? "";
+}
+
+function resolveDropdownUpdate(input: {
+  currentValue: string | null | undefined;
+  options: readonly string[];
+  candidates: readonly string[];
+}): DropdownUpdate | null {
+  if (input.options.length === 0) {
+    return null;
+  }
+
+  const currentValue = input.currentValue?.trim() ?? "";
+  const normalizedCurrent = coerceFirstDropdownOption(input.options, currentValue);
+
+  if (currentValue && normalizedCurrent === currentValue) {
+    return null;
+  }
+
+  if (normalizedCurrent) {
+    return { op: "set", value: normalizedCurrent };
+  }
+
+  for (const candidate of input.candidates) {
+    const coerced = coerceFirstDropdownOption(input.options, candidate);
+
+    if (coerced) {
+      return { op: "set", value: coerced };
+    }
+  }
+
+  return currentValue ? { op: "clear" } : null;
+}
+
+function applyDropdownUpdate(
+  update: DropdownUpdate | null,
+): string | null | undefined {
+  if (!update) {
+    return undefined;
+  }
+
+  return update.op === "set" ? update.value : null;
+}
+
+function buildChannelCreatorProfileContextText(input: {
+  channel: {
+    title: string;
+    youtubeChannelId: string;
+    handle: string | null;
+    youtubeUrl: string | null;
+    description: string | null;
+  };
+  youtubeContext: YoutubeChannelContext;
+  pageSignal: YoutubeChannelPageEmailSignal | null;
+}): string {
+  const contextFields: Array<[string, string]> = [
+    ["Channel Name", input.channel.title],
+    ["YouTube Handle", input.youtubeContext.handle ?? input.channel.handle ?? ""],
+    [
+      "YouTube URL",
+      input.channel.youtubeUrl
+        ?? (input.youtubeContext.handle
+          ? `https://www.youtube.com/${input.youtubeContext.handle.startsWith("@") ? input.youtubeContext.handle : `@${input.youtubeContext.handle}`}`
+          : `https://www.youtube.com/channel/${input.channel.youtubeChannelId}`),
+    ],
+    ["Channel Description", input.channel.description ?? input.youtubeContext.description ?? ""],
+    ["Resolved YouTube Language", input.youtubeContext.defaultLanguage ?? ""],
+  ];
+  const lines = contextFields.flatMap(([label, value]) =>
+    value.trim() ? [`${label}: ${value.trim()}`] : []);
+
+  const pageEmails = extractExplicitEmailsFromTextList(getPageSignalTextValues(input.pageSignal));
+
+  if (pageEmails.length > 0) {
+    lines.push(`Explicit Emails From Channel Page: ${pageEmails.join(" | ")}`);
+  }
+
+  if (input.pageSignal?.snippet) {
+    lines.push(`Channel Page/About Snippet: ${input.pageSignal.snippet}`);
+  }
+
+  const categoryNames = Array.from(
+    new Set(
+      input.youtubeContext.recentVideos
+        .map((video) => video.categoryName ?? "")
+        .filter((categoryName) => categoryName.trim().length > 0),
+    ),
+  );
+
+  if (categoryNames.length > 0) {
+    lines.push(`Resolved YouTube Categories: ${categoryNames.slice(0, 5).join(" | ")}`);
+  }
+
+  const sampledTitles = input.youtubeContext.recentVideos
+    .map((video) => video.title)
+    .filter((title) => title.trim().length > 0)
+    .slice(0, 10);
+
+  if (sampledTitles.length > 0) {
+    lines.push(`Sampled Video Titles: ${sampledTitles.join(" | ")}`);
+  }
+
+  const sampledDescriptions = input.youtubeContext.recentVideos
+    .map((video) => video.description ?? "")
+    .filter((description) => description.trim().length > 0)
+    .slice(0, 3)
+    .map((description) => description.slice(0, 280));
+
+  if (sampledDescriptions.length > 0) {
+    lines.push(`Sampled Video Descriptions: ${sampledDescriptions.join(" || ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function fetchChannelPageSignalBestEffort(
+  canonicalUrl: string,
+): Promise<YoutubeChannelPageEmailSignal | null> {
+  try {
+    const signal = await fetchYoutubeChannelPageEmailSignal({
+      canonicalUrl,
+    });
+
+    return signal.emails.length > 0 || signal.snippet ? signal : null;
+  } catch {
+    return null;
+  }
+}
+
+async function enrichChannelCreatorProfileFieldsBestEffort(input: {
+  channel: {
+    id: string;
+    title: string;
+    youtubeChannelId: string;
+    handle: string | null;
+    youtubeUrl: string | null;
+    description: string | null;
+    influencerType: string | null;
+    influencerVertical: string | null;
+    countryRegion: string | null;
+    contentLanguage: string | null;
+    contacts: Array<{ email: string }>;
+  };
+  youtubeContext: YoutubeChannelContext;
+  pageSignal: YoutubeChannelPageEmailSignal | null;
+  dropdownOptions: DropdownOptions;
+}): Promise<Record<string, string>> {
+  const requestedFields = (
+    [
+      "email",
+      "influencerType",
+      "influencerVertical",
+      "countryRegion",
+      "language",
+    ] as const
+  ).filter((field) => {
+    if (field === "email") {
+      return input.channel.contacts.length === 0;
+    }
+
+    const options = input.dropdownOptions[field];
+    const currentValue = field === "language"
+      ? input.channel.contentLanguage
+      : input.channel[field];
+
+    return Boolean(resolveDropdownUpdate({
+      currentValue,
+      options,
+      candidates: [],
+    }));
+  }).map((field) => CHANNEL_PROFILE_RESULT_FIELD_BY_KEY[field]);
+
+  if (requestedFields.length === 0) {
+    return {};
+  }
+
+  try {
+    const [result] = await enrichCreatorProfilesWithOpenAi({
+      requests: [
+        {
+          rowKey: input.channel.id,
+          channelName: input.channel.title,
+          channelUrl: input.channel.youtubeUrl ?? "",
+          campaignName: "",
+          requestedFields,
+          contextText: buildChannelCreatorProfileContextText({
+            channel: input.channel,
+            youtubeContext: input.youtubeContext,
+            pageSignal: input.pageSignal,
+          }),
+        },
+      ],
+      dropdownOptions: {
+        "Influencer Type": input.dropdownOptions.influencerType,
+        "Influencer Vertical": input.dropdownOptions.influencerVertical,
+        "Country/Region": input.dropdownOptions.countryRegion,
+        Language: input.dropdownOptions.language,
+      },
+    });
+
+    return result?.values ?? {};
+  } catch {
+    return {};
+  }
 }
 
 function getCachedYoutubeContext(row: ChannelYoutubeContextCacheRow | null) {
@@ -371,7 +816,20 @@ export async function executeChannelLlmEnrichment(input: {
             youtubeChannelId: true,
             title: true,
             handle: true,
+            youtubeUrl: true,
             description: true,
+            influencerType: true,
+            influencerVertical: true,
+            countryRegion: true,
+            contentLanguage: true,
+            contacts: {
+              orderBy: {
+                email: "asc",
+              },
+              select: {
+                email: true,
+              },
+            },
             youtubeContext: {
               select: {
                 context: true,
@@ -570,6 +1028,64 @@ export async function executeChannelLlmEnrichment(input: {
 
     youtubeMetrics ??= deriveYoutubeMetrics(youtubeContext);
     const creatorListYoutubeMetrics = deriveCreatorListYoutubeMetrics(youtubeMetrics.context);
+    const canonicalUrl = youtubeMetrics.canonicalUrl
+      || executionState.channel.youtubeUrl
+      || `https://www.youtube.com/channel/${executionState.channel.youtubeChannelId}`;
+    const [dropdownOptions, pageSignal] = await Promise.all([
+      listDropdownOptions(),
+      fetchChannelPageSignalBestEffort(canonicalUrl),
+    ]);
+    const profileValues = await enrichChannelCreatorProfileFieldsBestEffort({
+      channel: executionState.channel,
+      youtubeContext: youtubeMetrics.context,
+      pageSignal,
+      dropdownOptions,
+    });
+    const inferredVerticals = inferVerticalsForHubspot({
+      structuredProfile: enrichmentResult.profile.structuredProfile,
+      topics: enrichmentResult.profile.topics,
+      audienceInterests: null,
+    });
+    const influencerTypeUpdate = resolveDropdownUpdate({
+      currentValue: executionState.channel.influencerType,
+      options: dropdownOptions.influencerType,
+      candidates: [getProfileResultValue(profileValues, "influencerType")],
+    });
+    const influencerVerticalUpdate = resolveDropdownUpdate({
+      currentValue: executionState.channel.influencerVertical,
+      options: dropdownOptions.influencerVertical,
+      candidates: [
+        getProfileResultValue(profileValues, "influencerVertical"),
+        ...inferredVerticals,
+        ...enrichmentResult.profile.topics,
+      ],
+    });
+    const countryRegionUpdate = resolveDropdownUpdate({
+      currentValue: executionState.channel.countryRegion,
+      options: dropdownOptions.countryRegion,
+      candidates: [
+        getProfileResultValue(profileValues, "countryRegion"),
+        ...(enrichmentResult.profile.structuredProfile?.geoHints ?? []),
+      ],
+    });
+    const languageUpdate = resolveDropdownUpdate({
+      currentValue: executionState.channel.contentLanguage,
+      options: dropdownOptions.language,
+      candidates: [
+        getProfileResultValue(profileValues, "language"),
+        mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage ?? ""),
+        enrichmentResult.profile.structuredProfile?.language ?? "",
+      ],
+    });
+    const preferredEmail = executionState.channel.contacts.length === 0
+      ? getPreferredCreatorEmail(youtubeMetrics.context, pageSignal)
+        || extractExplicitEmailsFromText(getProfileResultValue(profileValues, "email"))[0]
+        || ""
+      : "";
+    const influencerTypeValue = applyDropdownUpdate(influencerTypeUpdate);
+    const influencerVerticalValue = applyDropdownUpdate(influencerVerticalUpdate);
+    const countryRegionValue = applyDropdownUpdate(countryRegionUpdate);
+    const languageValue = applyDropdownUpdate(languageUpdate);
 
     await prisma.$transaction(async (tx) => {
       await tx.channelYoutubeContext.update({
@@ -591,9 +1107,28 @@ export async function executeChannelLlmEnrichment(input: {
           youtubeUrl: youtubeMetrics.canonicalUrl,
           description: executionState.channel.description ?? youtubeMetrics.context.description,
           thumbnailUrl: youtubeMetrics.context.thumbnailUrl,
-          contentLanguage: mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage) || null,
+          contentLanguage: languageValue
+            ?? (mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage) || null),
+          ...(influencerTypeValue !== undefined
+            ? { influencerType: influencerTypeValue }
+            : {}),
+          ...(influencerVerticalValue !== undefined
+            ? { influencerVertical: influencerVerticalValue }
+            : {}),
+          ...(countryRegionValue !== undefined
+            ? { countryRegion: countryRegionValue }
+            : {}),
         },
       });
+
+      if (preferredEmail) {
+        await tx.channelContact.create({
+          data: {
+            channelId: executionState.channel.id,
+            email: preferredEmail,
+          },
+        });
+      }
 
       await tx.channelMetric.upsert({
         where: {

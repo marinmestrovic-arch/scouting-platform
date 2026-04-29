@@ -4,13 +4,10 @@ import type {
   DropdownValueFieldKey,
   HubspotSyncedDropdownFieldKey,
   ListDropdownValuesResponse,
-  PlatformManagedDropdownFieldKey,
   UpdateDropdownValuesRequest,
 } from "@scouting-platform/contracts";
 import {
   HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
-  PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS,
-  PLATFORM_MANAGED_DROPDOWN_VALUES,
   updateDropdownValuesRequestSchema,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
@@ -25,8 +22,8 @@ const DEFAULT_DROPDOWN_VALUES: Record<DropdownValueFieldKey, readonly string[]> 
   currency: [],
   dealType: [],
   activationType: [],
-  influencerType: PLATFORM_MANAGED_DROPDOWN_VALUES.influencerType,
-  influencerVertical: PLATFORM_MANAGED_DROPDOWN_VALUES.influencerVertical,
+  influencerType: [],
+  influencerVertical: [],
   countryRegion: [],
   language: [],
 };
@@ -57,6 +54,16 @@ const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
     objectType: "2-200856187",
     propertyName: "activation_type",
   },
+  influencerType: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "influencer_type",
+  },
+  influencerVertical: {
+    kind: "property",
+    objectType: "contacts",
+    propertyName: "influencer_vertical",
+  },
   countryRegion: {
     kind: "property",
     objectType: "contacts",
@@ -73,8 +80,8 @@ const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
   | { kind: "property"; objectType: string; propertyName: string }
 >;
 
-const PLATFORM_MANAGED_DROPDOWN_FIELD_SET = new Set<DropdownValueFieldKey>(
-  PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS,
+const HUBSPOT_SYNCED_DROPDOWN_FIELD_SET = new Set<DropdownValueFieldKey>(
+  HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
 );
 
 function fromPrismaFieldKey(fieldKey: PrismaDropdownValueFieldKey): DropdownValueFieldKey {
@@ -125,58 +132,7 @@ function extractHubspotOptionLabels(
 }
 
 export async function ensureDropdownValueDefaults(): Promise<void> {
-  const existingManagedValues = await prisma.dropdownValue.findMany({
-    where: {
-      fieldKey: {
-        in: PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.map((fieldKey) => PRISMA_DROPDOWN_FIELD_KEYS[fieldKey]),
-      },
-    },
-    orderBy: [{ fieldKey: "asc" }, { value: "asc" }],
-    select: {
-      fieldKey: true,
-      value: true,
-    },
-  });
-
-  const existingByField = Object.fromEntries(
-    PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.map((fieldKey) => [fieldKey, [] as string[]]),
-  ) as Record<PlatformManagedDropdownFieldKey, string[]>;
-
-  for (const item of existingManagedValues) {
-    const fieldKey = fromPrismaFieldKey(item.fieldKey) as PlatformManagedDropdownFieldKey;
-    existingByField[fieldKey].push(item.value);
-  }
-
-  const fieldsToRefresh = PLATFORM_MANAGED_DROPDOWN_FIELD_KEYS.filter((fieldKey) => {
-    const expectedValues = normalizeDropdownValues(DEFAULT_DROPDOWN_VALUES[fieldKey]);
-    const existingValues = normalizeDropdownValues(existingByField[fieldKey]);
-
-    return (
-      expectedValues.length !== existingValues.length
-      || expectedValues.some((value, index) => value !== existingValues[index])
-    );
-  });
-
-  if (fieldsToRefresh.length === 0) {
-    return;
-  }
-
-  await withDbTransaction(async (tx) => {
-    for (const fieldKey of fieldsToRefresh) {
-      await tx.dropdownValue.deleteMany({
-        where: {
-          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
-        },
-      });
-
-      await tx.dropdownValue.createMany({
-        data: normalizeDropdownValues(DEFAULT_DROPDOWN_VALUES[fieldKey]).map((value) => ({
-          fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
-          value,
-        })),
-      });
-    }
-  });
+  void DEFAULT_DROPDOWN_VALUES;
 }
 
 export async function listDropdownValues(): Promise<ListDropdownValuesResponse> {
@@ -215,11 +171,11 @@ export async function replaceDropdownValues(input: UpdateDropdownValuesRequest &
 }): Promise<ListDropdownValuesResponse> {
   const payload = updateDropdownValuesRequestSchema.parse(input);
 
-  if (PLATFORM_MANAGED_DROPDOWN_FIELD_SET.has(payload.fieldKey)) {
+  if (HUBSPOT_SYNCED_DROPDOWN_FIELD_SET.has(payload.fieldKey)) {
     throw new ServiceError(
-      "DROPDOWN_VALUE_FIELD_PLATFORM_MANAGED",
+      "DROPDOWN_VALUE_FIELD_HUBSPOT_SYNCED",
       400,
-      `${payload.fieldKey} is managed by the platform and cannot be edited here`,
+      `${payload.fieldKey} is synced from HubSpot and cannot be edited here`,
     );
   }
 

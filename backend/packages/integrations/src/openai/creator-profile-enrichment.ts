@@ -8,6 +8,7 @@ const OPENAI_MODEL_FALLBACK = "gpt-5-nano";
 const profileFieldSchema = z.enum([
   "First Name",
   "Last Name",
+  "Email",
   "Influencer Type",
   "Influencer Vertical",
   "Country/Region",
@@ -47,6 +48,7 @@ const responseRowSchema = z.object({
   row_key: z.string(),
   "First Name": z.string().optional().default(""),
   "Last Name": z.string().optional().default(""),
+  Email: z.string().optional().default(""),
   "Influencer Type": z.string().optional().default(""),
   "Influencer Vertical": z.union([z.array(z.string()), z.string()]).optional().default([]),
   "Country/Region": z.string().optional().default(""),
@@ -225,6 +227,9 @@ function buildPrimaryPrompt(input: z.output<typeof inputSchema>): string {
     "Return exactly one result object for each provided row_key.",
     "Fill only requested fields. Use an empty string or empty array when uncertain.",
     "Only include First Name and Last Name when the creator is clearly an individual person and the split is unambiguous.",
+    "Only include Email when an explicit email address appears in the provided evidence.",
+    "If multiple explicit emails appear, prefer channel bio evidence, then channel page/about evidence, then video descriptions.",
+    "Return Email as a plain email address only.",
     "For Influencer Type, Country/Region, and Language, use exact values from the allowed lists.",
     "For Influencer Vertical, return 1 to 3 exact allowed values as an array.",
     "",
@@ -255,7 +260,45 @@ function buildClassificationPrompt(input: z.output<typeof inputSchema>): string 
   ].join("\n");
 }
 
-function buildStrictJsonSchema() {
+function uniqueValues(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function buildScalarDropdownSchema(options: readonly string[]) {
+  const values = uniqueValues(["", ...options]);
+
+  if (values.length <= 1) {
+    return { type: "string" };
+  }
+
+  return {
+    type: "string",
+    enum: values,
+  };
+}
+
+function buildVerticalDropdownSchema(options: readonly string[]) {
+  const values = uniqueValues(options);
+
+  if (values.length === 0) {
+    return {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 3,
+    };
+  }
+
+  return {
+    type: "array",
+    items: {
+      type: "string",
+      enum: values,
+    },
+    maxItems: 3,
+  };
+}
+
+function buildStrictJsonSchema(dropdownOptions: z.output<typeof inputSchema>["dropdownOptions"]) {
   const stringField = { type: "string" };
 
   return {
@@ -272,6 +315,7 @@ function buildStrictJsonSchema() {
             "row_key",
             "First Name",
             "Last Name",
+            "Email",
             "Influencer Type",
             "Influencer Vertical",
             "Country/Region",
@@ -281,13 +325,11 @@ function buildStrictJsonSchema() {
             row_key: stringField,
             "First Name": stringField,
             "Last Name": stringField,
-            "Influencer Type": stringField,
-            "Influencer Vertical": {
-              type: "array",
-              items: stringField,
-            },
-            "Country/Region": stringField,
-            Language: stringField,
+            Email: stringField,
+            "Influencer Type": buildScalarDropdownSchema(dropdownOptions["Influencer Type"]),
+            "Influencer Vertical": buildVerticalDropdownSchema(dropdownOptions["Influencer Vertical"]),
+            "Country/Region": buildScalarDropdownSchema(dropdownOptions["Country/Region"]),
+            Language: buildScalarDropdownSchema(dropdownOptions.Language),
           },
         },
       },
@@ -332,8 +374,9 @@ async function createStrictJsonCompletion(input: {
   model: string;
   systemPrompt: string;
   userPrompt: string;
+  dropdownOptions: z.output<typeof inputSchema>["dropdownOptions"];
 }): Promise<string> {
-  const jsonSchema = buildStrictJsonSchema();
+  const jsonSchema = buildStrictJsonSchema(input.dropdownOptions);
   let responsesError: unknown = null;
 
   if (input.client.responses?.create) {
@@ -426,6 +469,7 @@ async function requestCreatorProfileRows(input: {
     userPrompt: input.classificationOnly
       ? buildClassificationPrompt(input.requestInput)
       : buildPrimaryPrompt(input.requestInput),
+    dropdownOptions: input.requestInput.dropdownOptions,
   });
   const parsed = responseSchema.safeParse(parseJsonContent(content));
 
@@ -444,6 +488,7 @@ function rowToValues(row: ParsedResponseRow): Record<string, string> {
   return {
     "First Name": row["First Name"],
     "Last Name": row["Last Name"],
+    Email: row.Email,
     "Influencer Type": row["Influencer Type"],
     "Influencer Vertical": Array.isArray(row["Influencer Vertical"])
       ? row["Influencer Vertical"].join("; ")
