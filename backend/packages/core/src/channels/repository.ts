@@ -588,15 +588,6 @@ function toChannelSummary(channel: {
   } | null;
   advancedReportRequests: LatestAdvancedReportRow[];
 }): ChannelSummary {
-  const audienceCountries = toAudienceCountries(channel.insights?.audienceCountries ?? null);
-  const primaryCountry =
-    audienceCountries.slice().sort((left, right) => right.percentage - left.percentage)[0]?.countryName ?? null;
-  const topics = Array.isArray(channel.enrichment?.topics)
-    ? channel.enrichment.topics.filter(
-        (value): value is string => typeof value === "string" && value.trim().length > 0,
-      )
-    : [];
-
   return {
     id: channel.id,
     youtubeChannelId: channel.youtubeChannelId,
@@ -605,9 +596,9 @@ function toChannelSummary(channel: {
     youtubeUrl: channel.youtubeUrl,
     socialMediaLink: resolveSocialMediaLink(channel),
     platforms: ["YouTube"],
-    countryRegion: channel.countryRegion ?? primaryCountry,
+    countryRegion: channel.countryRegion,
     email: channel.contacts[0]?.email ?? null,
-    influencerVertical: channel.influencerVertical ?? topics[0] ?? null,
+    influencerVertical: channel.influencerVertical,
     influencerType: channel.influencerType,
     contentLanguage: channel.contentLanguage,
     youtubeEngagementRate: channel.metrics?.youtubeEngagementRate ?? null,

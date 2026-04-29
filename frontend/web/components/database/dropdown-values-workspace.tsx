@@ -6,7 +6,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   groupDropdownValuesByField,
   isHubspotSyncedDropdownField,
-  isPlatformManagedDropdownField,
   replaceDropdownValuesRequest,
 } from "../../lib/dropdown-values-api";
 
@@ -99,8 +98,6 @@ export function DropdownValuesWorkspace({ initialData }: DropdownValuesWorkspace
                 <td>
                   {isHubspotSyncedDropdownField(fieldKey) ? (
                     <span className="workspace-copy">Synced from HubSpot</span>
-                  ) : isPlatformManagedDropdownField(fieldKey) ? (
-                    <span className="workspace-copy">Built into platform</span>
                   ) : (
                     <button
                       className="workspace-button workspace-button--secondary workspace-button--small"

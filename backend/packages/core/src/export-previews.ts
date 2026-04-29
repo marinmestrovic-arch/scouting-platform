@@ -434,12 +434,6 @@ function getPreferredCreatorLabel(channel: RunPreviewRecord["results"][number]["
 }
 
 function getHubspotInfluencerVertical(channel: RunPreviewRecord["results"][number]["channel"]): string {
-  const topTopic = getTopTopic(channel.enrichment?.topics ?? null);
-
-  if (topTopic) {
-    return topTopic;
-  }
-
   return (
     inferVerticalsForHubspot({
       structuredProfile: channel.enrichment?.structuredProfile ?? null,
@@ -696,20 +690,21 @@ function getPreferredCreatorEmail(
   pageSignal?: YoutubeChannelPageEmailSignal | null,
 ): string {
   const context = getParsedYoutubeContext(channel.youtubeContext?.context ?? null);
-  const pageSignalEmail = extractExplicitEmailsFromTextList(getPageSignalTextValues(pageSignal))[0] ?? "";
-
-  if (pageSignalEmail) {
-    return pageSignalEmail;
-  }
 
   if (!context) {
-    return "";
+    return extractExplicitEmailsFromTextList(getPageSignalTextValues(pageSignal))[0] ?? "";
   }
 
   const bioEmails = extractExplicitEmailsFromText(context.description ?? "");
 
   if (bioEmails.length > 0) {
     return bioEmails[0] ?? "";
+  }
+
+  const pageSignalEmail = extractExplicitEmailsFromTextList(getPageSignalTextValues(pageSignal))[0] ?? "";
+
+  if (pageSignalEmail) {
+    return pageSignalEmail;
   }
 
   return (
@@ -752,6 +747,7 @@ function getPreferredCreatorPhoneNumber(
 const PROFILE_RESULT_FIELD_BY_ROW_FIELD = {
   firstName: "First Name",
   lastName: "Last Name",
+  email: "Email",
   influencerType: "Influencer Type",
   influencerVertical: "Influencer Vertical",
   countryRegion: "Country/Region",
@@ -890,6 +886,7 @@ async function enrichCreatorProfileRowsBestEffort(input: {
       const requestedFields = ([
         "firstName",
         "lastName",
+        "email",
         "influencerType",
         "influencerVertical",
         "countryRegion",
@@ -1022,7 +1019,10 @@ function normalizeProfileNameCandidate(value: string): string {
 }
 
 function normalizeDropdownComparable(value: string): string {
-  return value
+  const countryName = getCountryNameFromRegionCode(value);
+  const normalizedValue = countryName ?? value;
+
+  return normalizedValue
     .normalize("NFKD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/&/gu, " and ")
@@ -1035,6 +1035,20 @@ function normalizeDropdownComparable(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/gu, " ");
+}
+
+function getCountryNameFromRegionCode(value: string): string | null {
+  const code = value.trim();
+
+  if (!/^[a-z]{2}$/iu.test(code)) {
+    return null;
+  }
+
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase()) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeDropdownTokenSet(value: string): string {
@@ -1109,6 +1123,16 @@ type HubspotFallbackRow = {
   channel: RunPreviewRecord["results"][number]["channel"];
   fallbackValues: Record<string, string>;
 };
+
+const HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS = [
+  "influencerType",
+  "influencerVertical",
+  "countryRegion",
+  "language",
+] as const;
+
+type HubspotDirectEnrichmentDropdownField =
+  (typeof HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS)[number];
 
 async function getRunPreview(input: {
   runId: string;
@@ -1226,10 +1250,48 @@ function buildHubspotFallbackRows(run: RunPreviewRecord): HubspotFallbackRow[] {
   return fallbackRows;
 }
 
-function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
+function sanitizeHubspotDropdownRowValue(
+  field: HubspotDirectEnrichmentDropdownField | "currency" | "dealType" | "activationType",
+  value: string,
+  dropdownOptions: Awaited<ReturnType<typeof listDropdownOptions>>,
+): string {
+  if (field === "influencerVertical") {
+    return coerceDropdownMultiselectOption(dropdownOptions[field], value);
+  }
+
+  return coerceDropdownOption(dropdownOptions[field], value);
+}
+
+function sanitizeHubspotRows(
+  rows: ExportPreviewRow[],
+  dropdownOptions: Awaited<ReturnType<typeof listDropdownOptions>>,
+): ExportPreviewRow[] {
+  const dropdownFields = [
+    "currency",
+    "dealType",
+    "activationType",
+    ...HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS,
+  ] as const;
+
+  return rows.map((row) => ({
+    ...row,
+    values: {
+      ...row.values,
+      ...Object.fromEntries(dropdownFields.map((field) => [
+        field,
+        sanitizeHubspotDropdownRowValue(field, row.values[field] ?? "", dropdownOptions),
+      ])),
+    },
+  }));
+}
+
+function buildHubspotRows(
+  run: RunPreviewRecord,
+  dropdownOptions?: Awaited<ReturnType<typeof listDropdownOptions>>,
+): ExportPreviewRow[] {
   const fallbackRows = buildHubspotFallbackRows(run);
 
-  return applyHubspotPreparationRows({
+  const rows = applyHubspotPreparationRows({
     run: {
       currency: run.currency,
       dealType: run.dealType,
@@ -1245,6 +1307,8 @@ function buildHubspotRows(run: RunPreviewRecord): ExportPreviewRow[] {
       fallbackValues: row.fallbackValues,
     })),
   });
+
+  return dropdownOptions ? sanitizeHubspotRows(rows, dropdownOptions) : rows;
 }
 
 function buildValidationIssues(rows: ExportPreviewRow[]): ExportPreviewValidationIssue[] {
@@ -1266,16 +1330,6 @@ function buildValidationIssues(rows: ExportPreviewRow[]): ExportPreviewValidatio
 
   return issues;
 }
-
-const HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS = [
-  "influencerType",
-  "influencerVertical",
-  "countryRegion",
-  "language",
-] as const;
-
-type HubspotDirectEnrichmentDropdownField =
-  (typeof HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS)[number];
 
 function buildHubspotRowOverridePatches(input: {
   run: RunPreviewRecord;
@@ -1334,9 +1388,13 @@ function buildHubspotRowOverridePatches(input: {
     const currentPhoneNumber = row.values.phoneNumber ?? "";
     const profileResult = input.profileResultsByRowKey?.get(fallbackRow.rowKey);
     const pageSignal = input.pageSignalsByChannelId?.get(fallbackRow.channel.id) ?? null;
+    const profileEmail = extractExplicitEmailsFromText(
+      getProfileResultValue(profileResult, "email"),
+    )[0] ?? "";
     const preferredEmail =
       currentEmail.trim()
-      || getPreferredCreatorEmail(fallbackRow.channel, pageSignal);
+      || getPreferredCreatorEmail(fallbackRow.channel, pageSignal)
+      || profileEmail;
     const preferredPhoneNumber = getPreferredCreatorPhoneNumber(fallbackRow.channel, pageSignal);
 
     if (
@@ -1397,29 +1455,27 @@ function buildHubspotRowOverridePatches(input: {
     for (const field of HUBSPOT_DIRECT_ENRICHMENT_DROPDOWN_FIELDS) {
       const currentOverrideValue = currentOverride?.[field]?.trim() ?? "";
       const rowValue = row.values[field]?.trim() ?? "";
+      const options = input.dropdownOptions[field];
 
       if (currentOverrideValue) {
         continue;
       }
 
-      if (rowValue) {
+      const normalizedRowValue = field === "influencerVertical"
+        ? coerceDropdownMultiselectOption(options, rowValue)
+        : coerceDropdownOption(options, rowValue);
+
+      if (rowValue && normalizedRowValue === rowValue) {
         continue;
       }
 
-      const suggestedValue = coerceDropdownOption(
-        input.dropdownOptions[field],
-        fallbackRow.fallbackValues[field] ?? "",
-      ) || (
-        field === "influencerVertical"
-          ? coerceDropdownMultiselectOption(
-              input.dropdownOptions[field],
-              getProfileResultValue(profileResult, field),
-            )
-          : coerceDropdownOption(
-              input.dropdownOptions[field],
-              getProfileResultValue(profileResult, field),
-            )
-      );
+      const fallbackValue = field === "influencerVertical"
+        ? coerceDropdownMultiselectOption(options, fallbackRow.fallbackValues[field] ?? "")
+        : coerceDropdownOption(options, fallbackRow.fallbackValues[field] ?? "");
+      const profileValue = field === "influencerVertical"
+        ? coerceDropdownMultiselectOption(options, getProfileResultValue(profileResult, field))
+        : coerceDropdownOption(options, getProfileResultValue(profileResult, field));
+      const suggestedValue = normalizedRowValue || fallbackValue || profileValue;
 
       if (!suggestedValue || row.values[field]?.trim() === suggestedValue) {
         continue;
@@ -1940,7 +1996,7 @@ export async function executeHubspotPreviewEnrichmentJob(input: {
       }),
       listDropdownOptions(),
     ]);
-    const previewAfterRefreshRows = buildHubspotRows(runAfterRefresh);
+    const previewAfterRefreshRows = buildHubspotRows(runAfterRefresh, dropdownOptions);
     const pageSignalsByChannelId = await fetchCreatorPageSignals(runAfterRefresh);
     const profileResultsByRowKey = await enrichCreatorProfileRowsBestEffort({
       run: runAfterRefresh,
@@ -2042,7 +2098,7 @@ export async function getHubspotExportPreview(input: {
   role: "admin" | "user";
 }): Promise<HubspotExportPreview> {
   const [run, dropdownOptions] = await Promise.all([getRunPreview(input), listDropdownOptions()]);
-  const rows = buildHubspotRows(run);
+  const rows = buildHubspotRows(run, dropdownOptions);
 
   return {
     run: {

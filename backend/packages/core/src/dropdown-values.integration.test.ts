@@ -1,5 +1,4 @@
 import { PrismaClient, Role } from "@prisma/client";
-import { PLATFORM_MANAGED_DROPDOWN_VALUES } from "@scouting-platform/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -79,55 +78,26 @@ integration("dropdown values core integration", () => {
     });
   }
 
-  it("seeds platform-managed dropdown values before sync", async () => {
+  it("starts with no built-in dropdown values before HubSpot sync", async () => {
     const dropdownValues = await loadDropdownValues();
-    const admin = await createAdminUser();
 
     const initial = await dropdownValues.listDropdownValues();
-    const initialCurrencies = initial.items
-      .filter((item) => item.fieldKey === "currency")
-      .map((item) => item.value)
-      .sort();
 
-    expect(initialCurrencies).toEqual([]);
-    expect(initial.items.filter((item) => item.fieldKey === "influencerType").map((item) => item.value)).toEqual(
-      [...PLATFORM_MANAGED_DROPDOWN_VALUES.influencerType].sort(),
-    );
-    expect(
-      initial.items
-        .filter((item) => item.fieldKey === "influencerVertical")
-        .map((item) => item.value),
-    ).toEqual(
-      [...PLATFORM_MANAGED_DROPDOWN_VALUES.influencerVertical].sort(),
-    );
-
-    await dropdownValues.replaceDropdownValues({
-      actorUserId: admin.id,
-      fieldKey: "currency",
-      values: ["EUR", "USD"],
-    });
-
-    const updated = await dropdownValues.listDropdownValues();
-    const updatedCurrencies = updated.items
-      .filter((item) => item.fieldKey === "currency")
-      .map((item) => item.value)
-      .sort();
-
-    expect(updatedCurrencies).toEqual(["EUR", "USD"]);
+    expect(initial.items).toEqual([]);
   });
 
-  it("rejects manual edits for platform-managed dropdown fields", async () => {
+  it("rejects manual edits for HubSpot-synced dropdown fields", async () => {
     const dropdownValues = await loadDropdownValues();
     const admin = await createAdminUser();
 
     await expect(
       dropdownValues.replaceDropdownValues({
         actorUserId: admin.id,
-        fieldKey: "influencerType",
+        fieldKey: "currency",
         values: ["Custom"],
       }),
     ).rejects.toMatchObject({
-      message: "influencerType is managed by the platform and cannot be edited here",
+      message: "currency is synced from HubSpot and cannot be edited here",
     });
   });
 
@@ -230,16 +200,12 @@ integration("dropdown values core integration", () => {
     expect(updated.items.filter((item) => item.fieldKey === "activationType").map((item) => item.value)).toEqual([
       "Dedicated Video",
     ]);
-    expect(updated.items.filter((item) => item.fieldKey === "influencerType").map((item) => item.value)).toEqual(
-      [...PLATFORM_MANAGED_DROPDOWN_VALUES.influencerType].sort(),
-    );
-    expect(
-      updated.items
-        .filter((item) => item.fieldKey === "influencerVertical")
-        .map((item) => item.value),
-    ).toEqual(
-      [...PLATFORM_MANAGED_DROPDOWN_VALUES.influencerVertical].sort(),
-    );
+    expect(updated.items.filter((item) => item.fieldKey === "influencerType").map((item) => item.value)).toEqual([
+      "Female",
+    ]);
+    expect(updated.items.filter((item) => item.fieldKey === "influencerVertical").map((item) => item.value)).toEqual([
+      "Tech",
+    ]);
     expect(updated.items.filter((item) => item.fieldKey === "countryRegion").map((item) => item.value)).toEqual([
       "Germany",
     ]);
@@ -258,6 +224,8 @@ integration("dropdown values core integration", () => {
         { fieldKey: "currency", valueCount: 2 },
         { fieldKey: "dealType", valueCount: 1 },
         { fieldKey: "activationType", valueCount: 1 },
+        { fieldKey: "influencerType", valueCount: 1 },
+        { fieldKey: "influencerVertical", valueCount: 1 },
         { fieldKey: "countryRegion", valueCount: 1 },
         { fieldKey: "language", valueCount: 1 },
       ]),

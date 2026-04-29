@@ -330,6 +330,93 @@ integration("HubSpot object sync core service", () => {
     });
   });
 
+  it("updates existing HubSpot campaigns to null optional metadata when HubSpot clears values", async () => {
+    const objectSync = await loadObjectSync();
+    const admin = await createAdmin();
+    const run = await createSyncRun(admin.id);
+    const client = await prisma.client.create({
+      data: {
+        name: "Client A",
+        isActive: true,
+        hubspotObjectId: "client-101",
+        hubspotObjectType: "2-CLIENT",
+      },
+    });
+    const market = await prisma.market.create({ data: { name: "Croatia" } });
+    await prisma.campaign.create({
+      data: {
+        name: "Existing Campaign",
+        clientId: client.id,
+        marketId: market.id,
+        month: RunMonth.APRIL,
+        year: 2026,
+        isActive: true,
+        hubspotObjectId: "campaign-201",
+        hubspotObjectType: "2-CAMPAIGN",
+      },
+    });
+
+    fetchHubspotCustomObjectsMock.mockImplementation(async (input: { objectType: string; archived: boolean }) => {
+      if (input.objectType === "2-CLIENT" && !input.archived) {
+        return {
+          nextAfter: null,
+          results: [
+            {
+              id: "client-101",
+              archived: false,
+              properties: {
+                client_name: "Client A",
+                active: "true",
+              },
+            },
+          ],
+        };
+      }
+
+      if (input.objectType === "2-CAMPAIGN" && !input.archived) {
+        return {
+          nextAfter: null,
+          results: [
+            {
+              id: "campaign-201",
+              archived: false,
+              properties: {
+                campaign_name: "Existing Campaign",
+                client_object_id: null,
+                market: null,
+                month: null,
+                year: null,
+                active: "true",
+              },
+            },
+          ],
+        };
+      }
+
+      return { nextAfter: null, results: [] };
+    });
+
+    const result = await objectSync.executeHubspotObjectSyncRun({
+      syncRunId: run.id,
+      requestedByUserId: admin.id,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.campaignUpsertCount).toBe(1);
+    expect(result.lastError).toBeNull();
+
+    await expect(
+      prisma.campaign.findFirstOrThrow({ where: { hubspotObjectId: "campaign-201" } }),
+    ).resolves.toMatchObject({
+      name: "Existing Campaign",
+      clientId: null,
+      marketId: null,
+      month: null,
+      year: null,
+      isActive: true,
+    });
+  });
+
   it("fails durably when required HubSpot mapping env vars are missing", async () => {
     const objectSync = await loadObjectSync();
     const admin = await createAdmin();

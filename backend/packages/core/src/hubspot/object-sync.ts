@@ -109,6 +109,21 @@ type SkippedHubspotRecord = Readonly<{
   reason: string;
 }>;
 
+type CampaignSyncData = Readonly<{
+  name: string;
+  clientId: string | null;
+  marketId: string | null;
+  briefLink: string | null;
+  month: RunMonth | null;
+  year: number | null;
+  isActive: boolean;
+  hubspotObjectId: string;
+  hubspotObjectType: string;
+  hubspotArchived: boolean;
+  hubspotSyncedAt: Date;
+  hubspotRawPayload: Prisma.InputJsonValue;
+}>;
+
 function hubspotObjectIdRetentionFilter(
   activeHubspotObjectIds: string[],
 ): Prisma.StringNullableFilter {
@@ -166,10 +181,45 @@ function isSkippableCampaignRecordError(error: unknown): boolean {
     "HUBSPOT_OBJECT_SYNC_ACTIVE_FLAG_INVALID",
     "HUBSPOT_OBJECT_SYNC_CAMPAIGN_CLIENT_AMBIGUOUS",
     "HUBSPOT_OBJECT_SYNC_CAMPAIGN_CLIENT_NOT_FOUND",
+    "HUBSPOT_OBJECT_SYNC_CAMPAIGN_SCHEMA_INCOMPATIBLE",
     "HUBSPOT_OBJECT_SYNC_MONTH_INVALID",
     "HUBSPOT_OBJECT_SYNC_PROPERTY_MISSING",
     "HUBSPOT_OBJECT_SYNC_YEAR_INVALID",
   ].includes(error.code);
+}
+
+function hasPrismaErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+function hasLegacyRequiredCampaignNulls(data: CampaignSyncData): boolean {
+  return data.clientId === null || data.marketId === null || data.month === null || data.year === null;
+}
+
+function toLegacyCompatibleCampaignUpdateData(data: CampaignSyncData): Prisma.CampaignUncheckedUpdateInput {
+  return {
+    name: data.name,
+    ...(data.clientId === null ? {} : { clientId: data.clientId }),
+    ...(data.marketId === null ? {} : { marketId: data.marketId }),
+    briefLink: data.briefLink,
+    ...(data.month === null ? {} : { month: data.month }),
+    ...(data.year === null ? {} : { year: data.year }),
+    isActive: data.isActive,
+    hubspotObjectId: data.hubspotObjectId,
+    hubspotObjectType: data.hubspotObjectType,
+    hubspotArchived: data.hubspotArchived,
+    hubspotSyncedAt: data.hubspotSyncedAt,
+    hubspotRawPayload: data.hubspotRawPayload,
+  };
+}
+
+function isCampaignNullConstraintError(error: unknown, data: CampaignSyncData): boolean {
+  return hasPrismaErrorCode(error, "P2011") && hasLegacyRequiredCampaignNulls(data);
 }
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
@@ -837,7 +887,7 @@ async function syncCampaigns(input: {
           isActive: true,
         },
       });
-      const data = {
+      const data: CampaignSyncData = {
         name,
         clientId,
         marketId: market?.id ?? null,
@@ -855,16 +905,41 @@ async function syncCampaigns(input: {
       };
 
       if (existing) {
-        await prisma.campaign.update({
-          where: {
-            id: existing.id,
-          },
-          data,
-        });
+        try {
+          await prisma.campaign.update({
+            where: {
+              id: existing.id,
+            },
+            data,
+          });
+        } catch (error) {
+          if (!isCampaignNullConstraintError(error, data)) {
+            throw error;
+          }
+
+          await prisma.campaign.update({
+            where: {
+              id: existing.id,
+            },
+            data: toLegacyCompatibleCampaignUpdateData(data),
+          });
+        }
       } else {
-        await prisma.campaign.create({
-          data,
-        });
+        try {
+          await prisma.campaign.create({
+            data,
+          });
+        } catch (error) {
+          if (!isCampaignNullConstraintError(error, data)) {
+            throw error;
+          }
+
+          throw new ServiceError(
+            "HUBSPOT_OBJECT_SYNC_CAMPAIGN_SCHEMA_INCOMPATIBLE",
+            500,
+            `HubSpot campaign object ${record.id} omitted client, market, month, or year values that are still required by the local campaigns table`,
+          );
+        }
       }
 
       upsertCount += 1;
