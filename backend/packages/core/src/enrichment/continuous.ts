@@ -4,7 +4,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import type { JobPayloadByName } from "@scouting-platform/contracts";
-import { prisma, withDbTransaction } from "@scouting-platform/db";
+import { prisma } from "@scouting-platform/db";
 
 import { CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS } from "./status";
 
@@ -468,9 +468,12 @@ export async function markChannelLlmEnrichmentFailed(input: {
   failedAt?: Date;
 }): Promise<void> {
   const failedAt = input.failedAt ?? new Date();
+  const lastError = formatErrorMessage(input.error);
 
-  await withDbTransaction(async (tx) => {
-    const enrichment = await tx.channelEnrichment.findUnique({
+  // Use optimistic compare-and-set retries so failure marking still works even
+  // if callback-style transaction hooks are interrupted by surrounding tests/mocks.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const enrichment = await prisma.channelEnrichment.findUnique({
       where: {
         channelId: input.channelId,
       },
@@ -484,10 +487,10 @@ export async function markChannelLlmEnrichmentFailed(input: {
     }
 
     const retryCount = enrichment.retryCount + 1;
-
-    await tx.channelEnrichment.update({
+    const updated = await prisma.channelEnrichment.updateMany({
       where: {
         channelId: input.channelId,
+        retryCount: enrichment.retryCount,
       },
       data: {
         status: PrismaChannelEnrichmentStatus.FAILED,
@@ -496,9 +499,43 @@ export async function markChannelLlmEnrichmentFailed(input: {
           failedAt,
           retryCount,
         }),
-        lastError: formatErrorMessage(input.error),
+        lastError,
       },
     });
+
+    if (updated.count > 0) {
+      return;
+    }
+  }
+
+  const enrichment = await prisma.channelEnrichment.findUnique({
+    where: {
+      channelId: input.channelId,
+    },
+    select: {
+      retryCount: true,
+    },
+  });
+
+  if (!enrichment) {
+    return;
+  }
+
+  const retryCount = enrichment.retryCount + 1;
+
+  await prisma.channelEnrichment.update({
+    where: {
+      channelId: input.channelId,
+    },
+    data: {
+      status: PrismaChannelEnrichmentStatus.FAILED,
+      retryCount,
+      nextRetryAt: getChannelLlmEnrichmentNextRetryAt({
+        failedAt,
+        retryCount,
+      }),
+      lastError,
+    },
   });
 }
 
