@@ -101,6 +101,7 @@ const exportChannelSelect = {
     select: {
       status: true,
       completedAt: true,
+      lastEnrichedAt: true,
       summary: true,
       topics: true,
       brandFitNotes: true,
@@ -359,6 +360,7 @@ function resolveStatuses(channel: ExportChannelRecord): {
         ? {
             status: channel.enrichment.status as PrismaChannelEnrichmentStatus,
             completedAt: channel.enrichment.completedAt,
+            lastEnrichedAt: channel.enrichment.lastEnrichedAt,
           }
         : null,
     }),

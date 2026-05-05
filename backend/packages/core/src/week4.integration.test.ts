@@ -1,5 +1,7 @@
 import {
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  CsvImportBatchStatus as PrismaCsvImportBatchStatus,
+  CsvImportRowStatus as PrismaCsvImportRowStatus,
   HubspotPreviewEnrichmentJobStatus as PrismaHubspotPreviewEnrichmentJobStatus,
   PrismaClient,
   Role,
@@ -244,6 +246,8 @@ integration("week 4 core integration", () => {
         channel_enrichments,
         channel_youtube_contexts,
         channel_manual_overrides,
+        csv_import_rows,
+        csv_import_batches,
         hubspot_preview_enrichment_jobs,
         run_hubspot_row_overrides,
         saved_segments,
@@ -319,6 +323,71 @@ integration("week 4 core integration", () => {
       userId,
       rawKey: "yt-key-1",
       actorUserId: userId,
+    });
+  }
+
+  async function createImportedChannelProvenance(input: {
+    channelId: string;
+    requestedByUserId: string;
+    youtubeChannelId: string;
+    title: string;
+    createdAt?: Date;
+  }): Promise<void> {
+    const batch = await prisma.csvImportBatch.create({
+      data: {
+        requestedByUserId: input.requestedByUserId,
+        fileName: "catalog.csv",
+        templateVersion: "v3",
+        status: PrismaCsvImportBatchStatus.COMPLETED,
+        totalRowCount: 1,
+        importedRowCount: 1,
+        ...(input.createdAt ? { completedAt: input.createdAt } : {}),
+        ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await prisma.csvImportRow.create({
+      data: {
+        batchId: batch.id,
+        rowNumber: 1,
+        status: PrismaCsvImportRowStatus.IMPORTED,
+        youtubeChannelId: input.youtubeChannelId,
+        channelTitle: input.title,
+        channelId: input.channelId,
+      },
+    });
+  }
+
+  async function createRunChannelProvenance(input: {
+    channelId: string;
+    requestedByUserId: string;
+    createdAt?: Date;
+  }): Promise<void> {
+    const run = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: input.requestedByUserId,
+        name: "Discovery provenance run",
+        query: "gaming creators",
+        target: 1,
+        status: RunRequestStatus.COMPLETED,
+        ...(input.createdAt ? { completedAt: input.createdAt } : {}),
+        ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await prisma.runResult.create({
+      data: {
+        runRequestId: run.id,
+        channelId: input.channelId,
+        rank: 1,
+        source: RunResultSource.DISCOVERY,
+      },
     });
   }
 
@@ -421,6 +490,335 @@ integration("week 4 core integration", () => {
       WHERE name = 'channels.enrich.llm'
     `;
     expect(jobs[0]?.count).toBe(0);
+  });
+
+  it("queues never-enriched and 30-day stale catalog enrichments for the continuous worker", async () => {
+    const now = new Date("2026-05-04T10:00:00.000Z");
+    const oldCompletedAt = new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000);
+    const freshCompletedAt = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+    const user = await createUser();
+    const neverEnriched = await createChannel("UCaaaaaaaaaaaaaaaaaaaaaa", "Never Enriched");
+    const discoveryOnly = await createChannel("UCeeeeeeeeeeeeeeeeeeeeee", "Discovery Only");
+    const oldEnrichment = await createChannel("UCbbbbbbbbbbbbbbbbbbbbbb", "Old Enrichment");
+    const freshEnrichment = await createChannel("UCcccccccccccccccccccccc", "Fresh Enrichment");
+    const runningEnrichment = await createChannel("UCdddddddddddddddddddddd", "Running Enrichment");
+    const invalidYoutubeId = await createChannel("not-a-canonical-youtube-channel-id", "Invalid ID");
+    await assignYoutubeKey(user.id);
+    await createImportedChannelProvenance({
+      channelId: neverEnriched.id,
+      requestedByUserId: user.id,
+      youtubeChannelId: "UCaaaaaaaaaaaaaaaaaaaaaa",
+      title: "Never Enriched",
+      createdAt: new Date(now.getTime() - 2 * 60 * 1000),
+    });
+    await createRunChannelProvenance({
+      channelId: discoveryOnly.id,
+      requestedByUserId: user.id,
+      createdAt: new Date(now.getTime() - 90 * 1000),
+    });
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: oldEnrichment.id,
+        status: PrismaChannelEnrichmentStatus.COMPLETED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(now.getTime() - 32 * 24 * 60 * 60 * 1000),
+        completedAt: oldCompletedAt,
+        lastEnrichedAt: oldCompletedAt,
+        summary: "Old summary",
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: freshEnrichment.id,
+        status: PrismaChannelEnrichmentStatus.COMPLETED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000),
+        completedAt: freshCompletedAt,
+        lastEnrichedAt: freshCompletedAt,
+        summary: "Fresh summary",
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: runningEnrichment.id,
+        status: PrismaChannelEnrichmentStatus.RUNNING,
+        requestedByUserId: user.id,
+        requestedAt: now,
+        startedAt: now,
+      },
+    });
+    await prisma.$executeRaw`
+      UPDATE channels
+      SET updated_at = ${new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000)}
+      WHERE id = ${freshEnrichment.id}::uuid
+    `;
+
+    const enqueuedPayloads: Array<{
+      channelId: string;
+      requestedByUserId: string;
+    }> = [];
+    const result = await getCore().queueDueChannelLlmEnrichments({
+      batchSize: 10,
+      now,
+      enqueue: async (payload) => {
+        enqueuedPayloads.push(payload);
+      },
+    });
+
+    expect(result.missingYoutubeCredential).toBe(false);
+    expect(result.queued).toBe(3);
+    expect(result.queuedChannelIds).toEqual([
+      neverEnriched.id,
+      discoveryOnly.id,
+      oldEnrichment.id,
+    ]);
+    expect(enqueuedPayloads).toEqual([
+      {
+        channelId: neverEnriched.id,
+        requestedByUserId: user.id,
+      },
+      {
+        channelId: discoveryOnly.id,
+        requestedByUserId: user.id,
+      },
+      {
+        channelId: oldEnrichment.id,
+        requestedByUserId: user.id,
+      },
+    ]);
+
+    const enrichments = await prisma.channelEnrichment.findMany({
+      where: {
+        channelId: {
+          in: [
+            neverEnriched.id,
+            discoveryOnly.id,
+            oldEnrichment.id,
+            freshEnrichment.id,
+            runningEnrichment.id,
+            invalidYoutubeId.id,
+          ],
+        },
+      },
+    });
+    const statusByChannelId = new Map(
+      enrichments.map((enrichment) => [enrichment.channelId, enrichment.status]),
+    );
+
+    expect(statusByChannelId.get(neverEnriched.id)).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+    expect(statusByChannelId.get(discoveryOnly.id)).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+    expect(statusByChannelId.get(oldEnrichment.id)).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+    expect(statusByChannelId.get(freshEnrichment.id)).toBe(
+      PrismaChannelEnrichmentStatus.COMPLETED,
+    );
+    expect(statusByChannelId.get(runningEnrichment.id)).toBe(
+      PrismaChannelEnrichmentStatus.RUNNING,
+    );
+    expect(statusByChannelId.has(invalidYoutubeId.id)).toBe(false);
+  });
+
+  it("does not queue continuous enrichment with an unrelated fallback credential", async () => {
+    const unrelatedUser = await createUser("unrelated@example.com");
+    const channel = await createChannel("UCeeeeeeeeeeeeeeeeeeeeee", "No Provenance");
+    await assignYoutubeKey(unrelatedUser.id);
+
+    const result = await getCore().queueDueChannelLlmEnrichments({
+      batchSize: 10,
+      now: new Date("2026-05-04T10:00:00.000Z"),
+      enqueue: async () => {
+        throw new Error("Should not enqueue without channel-related provenance");
+      },
+    });
+
+    expect(result).toMatchObject({
+      queued: 0,
+      skipped: 0,
+      failed: 0,
+      missingYoutubeCredential: false,
+    });
+
+    await expect(
+      prisma.channelEnrichment.findUnique({
+        where: {
+          channelId: channel.id,
+        },
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("uses import provenance instead of a previous untrusted continuous requester", async () => {
+    const now = new Date("2026-05-04T10:00:00.000Z");
+    const wrongUser = await createUser("wrong@example.com");
+    const importer = await createUser("importer@example.com");
+    const channel = await createChannel("UCffffffffffffffffffffff", "Imported Channel");
+    await assignYoutubeKey(wrongUser.id);
+    await assignYoutubeKey(importer.id);
+    await createImportedChannelProvenance({
+      channelId: channel.id,
+      requestedByUserId: importer.id,
+      youtubeChannelId: "UCffffffffffffffffffffff",
+      title: "Imported Channel",
+      createdAt: new Date(now.getTime() - 3 * 60 * 1000),
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.FAILED,
+        requestedByUserId: wrongUser.id,
+        requestedAt: new Date(now.getTime() - 5 * 60 * 1000),
+        startedAt: new Date(now.getTime() - 5 * 60 * 1000),
+        lastError: "Previous automatic attempt used an unrelated key",
+      },
+    });
+
+    const enqueuedPayloads: Array<{
+      channelId: string;
+      requestedByUserId: string;
+    }> = [];
+    const result = await getCore().queueDueChannelLlmEnrichments({
+      batchSize: 10,
+      now,
+      enqueue: async (payload) => {
+        enqueuedPayloads.push(payload);
+      },
+    });
+
+    expect(result.queued).toBe(1);
+    expect(enqueuedPayloads).toEqual([
+      {
+        channelId: channel.id,
+        requestedByUserId: importer.id,
+      },
+    ]);
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.requestedByUserId).toBe(importer.id);
+  });
+
+  it("requeues failed and stuck continuous enrichments with bounded retry state", async () => {
+    const now = new Date("2026-05-04T10:00:00.000Z");
+    const user = await createUser("retry@example.com");
+    const retryableFailed = await createChannel("UCrrrrrrrrrrrrrrrrrrrrrr", "Retryable Failed");
+    const maxedFailed = await createChannel("UCmmmmmmmmmmmmmmmmmmmmmm", "Maxed Failed");
+    const stuckRunning = await createChannel("UCpppppppppppppppppppppp", "Stuck Running");
+    const oldQueued = await createChannel("UCqqqqqqqqqqqqqqqqqqqqqq", "Old Queued");
+    await assignYoutubeKey(user.id);
+
+    for (const channel of [retryableFailed, maxedFailed, stuckRunning, oldQueued]) {
+      await createRunChannelProvenance({
+        channelId: channel.id,
+        requestedByUserId: user.id,
+        createdAt: new Date(now.getTime() - 60 * 60 * 1000),
+      });
+    }
+
+    await prisma.channelEnrichment.createMany({
+      data: [
+        {
+          channelId: retryableFailed.id,
+          status: PrismaChannelEnrichmentStatus.FAILED,
+          requestedByUserId: user.id,
+          requestedAt: new Date(now.getTime() - 30 * 60 * 1000),
+          retryCount: 1,
+          nextRetryAt: new Date(now.getTime() - 1000),
+          lastError: "temporary provider failure",
+        },
+        {
+          channelId: maxedFailed.id,
+          status: PrismaChannelEnrichmentStatus.FAILED,
+          requestedByUserId: user.id,
+          requestedAt: new Date(now.getTime() - 30 * 60 * 1000),
+          retryCount: 5,
+          nextRetryAt: new Date(now.getTime() - 1000),
+          lastError: "permanent provider failure",
+        },
+        {
+          channelId: stuckRunning.id,
+          status: PrismaChannelEnrichmentStatus.RUNNING,
+          requestedByUserId: user.id,
+          requestedAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+          startedAt: new Date(now.getTime() - 61 * 60 * 1000),
+          retryCount: 0,
+        },
+        {
+          channelId: oldQueued.id,
+          status: PrismaChannelEnrichmentStatus.QUEUED,
+          requestedByUserId: user.id,
+          requestedAt: new Date(now.getTime() - 20 * 60 * 1000),
+          retryCount: 0,
+        },
+      ],
+    });
+
+    const enqueuedPayloads: Array<{
+      channelId: string;
+      requestedByUserId: string;
+    }> = [];
+    const result = await getCore().queueDueChannelLlmEnrichments({
+      batchSize: 10,
+      maxRetryCount: 5,
+      processingTimeoutMs: 30 * 60 * 1000,
+      queuedTimeoutMs: 10 * 60 * 1000,
+      now,
+      enqueue: async (payload) => {
+        enqueuedPayloads.push(payload);
+      },
+    });
+
+    expect(result.queuedChannelIds).toEqual([
+      retryableFailed.id,
+      oldQueued.id,
+      stuckRunning.id,
+    ]);
+    expect(enqueuedPayloads).toHaveLength(3);
+
+    const enrichments = await prisma.channelEnrichment.findMany({
+      where: {
+        channelId: {
+          in: [retryableFailed.id, maxedFailed.id, stuckRunning.id, oldQueued.id],
+        },
+      },
+    });
+    const byChannelId = new Map(enrichments.map((enrichment) => [enrichment.channelId, enrichment]));
+
+    expect(byChannelId.get(retryableFailed.id)?.status).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+    expect(byChannelId.get(retryableFailed.id)?.retryCount).toBe(1);
+    expect(byChannelId.get(retryableFailed.id)?.nextRetryAt).toBeNull();
+    expect(byChannelId.get(maxedFailed.id)?.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
+    expect(byChannelId.get(stuckRunning.id)?.status).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+    expect(byChannelId.get(stuckRunning.id)?.retryCount).toBe(1);
+    expect(byChannelId.get(oldQueued.id)?.status).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+  });
+
+  it("skips continuous enrichment scans when no YouTube credential is available", async () => {
+    const channel = await createChannel("UCeeeeeeeeeeeeeeeeeeeeee", "No Key");
+    const result = await getCore().queueDueChannelLlmEnrichments({
+      batchSize: 10,
+      now: new Date("2026-05-04T10:00:00.000Z"),
+      enqueue: async () => {
+        throw new Error("Should not enqueue without a credential");
+      },
+    });
+
+    expect(result).toMatchObject({
+      queued: 0,
+      skipped: 0,
+      failed: 0,
+      missingYoutubeCredential: true,
+    });
+
+    await expect(
+      prisma.channelEnrichment.findUnique({
+        where: {
+          channelId: channel.id,
+        },
+      }),
+    ).resolves.toBeNull();
   });
 
   it("reuses fresh cached youtube context during execution", async () => {
@@ -537,7 +935,7 @@ integration("week 4 core integration", () => {
         channelId: channel.id,
       },
       data: {
-        status: PrismaChannelEnrichmentStatus.FAILED,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
       },
     });
     await prisma.channelYoutubeContext.update({
@@ -941,6 +1339,9 @@ integration("week 4 core integration", () => {
     });
     expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
     expect(enrichment.lastError).toContain("OpenAI rate limit exceeded");
+    expect(enrichment.lastEnrichedAt).toBeNull();
+    expect(enrichment.retryCount).toBe(1);
+    expect(enrichment.nextRetryAt).not.toBeNull();
   });
 
   it("skips OpenAI when rawOpenaiPayloadFetchedAt is set", async () => {
@@ -958,7 +1359,7 @@ integration("week 4 core integration", () => {
     await prisma.channelEnrichment.create({
       data: {
         channelId: channel.id,
-        status: PrismaChannelEnrichmentStatus.FAILED,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
         requestedByUserId: user.id,
         requestedAt: new Date(),
         rawOpenaiPayload: STORED_OPENAI_RAW_PAYLOAD,
@@ -1000,7 +1401,7 @@ integration("week 4 core integration", () => {
     await prisma.channelEnrichment.create({
       data: {
         channelId: channel.id,
-        status: PrismaChannelEnrichmentStatus.FAILED,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
         requestedByUserId: user.id,
         requestedAt: new Date(),
         rawOpenaiPayload: LEGACY_STORED_OPENAI_RAW_PAYLOAD,
@@ -1038,7 +1439,7 @@ integration("week 4 core integration", () => {
     await prisma.channelEnrichment.create({
       data: {
         channelId: channel.id,
-        status: PrismaChannelEnrichmentStatus.FAILED,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
         requestedByUserId: user.id,
         requestedAt: new Date(),
         youtubeFetchedAt: new Date(),
@@ -1148,7 +1549,7 @@ integration("week 4 core integration", () => {
     expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
   });
 
-  it("returns stale enrichment when completion age or channel freshness rules are violated", async () => {
+  it("returns stale enrichment when last enriched age exceeds the freshness window", async () => {
     const user = await createUser();
     const channelByAge = await createChannel("UC-STALE-AGE", "Old Completion");
     const channelByUpdate = await createChannel("UC-STALE-UPDATE", "Updated Channel");
@@ -1158,8 +1559,9 @@ integration("week 4 core integration", () => {
         channelId: channelByAge.id,
         status: PrismaChannelEnrichmentStatus.COMPLETED,
         requestedByUserId: user.id,
-        requestedAt: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000),
-        completedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+        requestedAt: new Date(Date.now() - 32 * 24 * 60 * 60 * 1000),
+        completedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        lastEnrichedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
         summary: "Old summary",
         topics: ["gaming"],
         brandFitNotes: "Old notes",
@@ -1173,6 +1575,7 @@ integration("week 4 core integration", () => {
         requestedByUserId: user.id,
         requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
         completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+        lastEnrichedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
         summary: "Fresh-ish summary",
         topics: ["tech"],
         brandFitNotes: "Fresh-ish notes",
@@ -1184,6 +1587,6 @@ integration("week 4 core integration", () => {
     const staleByUpdate = await getCore().getChannelById(channelByUpdate.id);
 
     expect(staleByAge?.enrichment.status).toBe("stale");
-    expect(staleByUpdate?.enrichment.status).toBe("stale");
+    expect(staleByUpdate?.enrichment.status).toBe("completed");
   });
 });

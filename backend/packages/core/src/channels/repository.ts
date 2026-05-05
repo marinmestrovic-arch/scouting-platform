@@ -54,6 +54,7 @@ export type ChannelEnrichmentSummary = {
   status: ContractChannelEnrichmentStatus;
   updatedAt: string | null;
   completedAt: string | null;
+  lastEnrichedAt: string | null;
   lastError: string | null;
 };
 
@@ -141,6 +142,7 @@ const channelEnrichmentListSelect = {
   status: true,
   updatedAt: true,
   completedAt: true,
+  lastEnrichedAt: true,
   lastError: true,
 } as const;
 
@@ -422,6 +424,7 @@ function toChannelEnrichmentSummary(
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
     completedAt: Date | null;
+    lastEnrichedAt: Date | null;
     lastError: string | null;
   } | null,
 ): ChannelEnrichmentSummary {
@@ -432,6 +435,7 @@ function toChannelEnrichmentSummary(
     }),
     updatedAt: enrichment?.updatedAt.toISOString() ?? null,
     completedAt: enrichment?.completedAt?.toISOString() ?? null,
+    lastEnrichedAt: enrichment?.lastEnrichedAt?.toISOString() ?? null,
     lastError: enrichment?.lastError ?? null,
   };
 }
@@ -442,6 +446,7 @@ function toChannelEnrichmentDetail(
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
     completedAt: Date | null;
+    lastEnrichedAt: Date | null;
     lastError: string | null;
     summary: string | null;
     topics: Prisma.JsonValue | null;
@@ -580,6 +585,7 @@ function toChannelSummary(channel: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
     completedAt: Date | null;
+    lastEnrichedAt: Date | null;
     lastError: string | null;
     topics: Prisma.JsonValue | null;
   } | null;
@@ -638,6 +644,7 @@ function toChannelDetail(channel: {
     status: PrismaChannelEnrichmentStatus;
     updatedAt: Date;
     completedAt: Date | null;
+    lastEnrichedAt: Date | null;
     lastError: string | null;
     summary: string | null;
     topics: Prisma.JsonValue | null;
@@ -908,8 +915,7 @@ function buildChannelListResolvedStatusWhereSql(input: {
               WHEN ce.status::text = 'completed'
                 AND (
                   ce.completed_at IS NULL
-                  OR c.updated_at > ce.completed_at
-                  OR ce.completed_at <= ${enrichmentStaleThreshold}
+                  OR COALESCE(ce.last_enriched_at, ce.completed_at) <= ${enrichmentStaleThreshold}
                 ) THEN 'stale'
               WHEN ce.status::text = 'completed' THEN 'completed'
               WHEN ce.status::text = 'running' THEN 'running'

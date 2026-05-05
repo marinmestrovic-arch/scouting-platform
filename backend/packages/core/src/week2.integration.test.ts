@@ -457,6 +457,7 @@ integration("week 2 core integration", () => {
         requestedByUserId: requester.id,
         requestedAt: new Date("2026-02-01T10:00:00.000Z"),
         completedAt: new Date("2026-02-01T10:00:00.000Z"),
+        lastEnrichedAt: new Date("2026-02-01T10:00:00.000Z"),
       },
     });
     const readyEnrichmentCompletedAt = new Date();
@@ -468,6 +469,7 @@ integration("week 2 core integration", () => {
         requestedByUserId: requester.id,
         requestedAt: readyEnrichmentCompletedAt,
         completedAt: readyEnrichmentCompletedAt,
+        lastEnrichedAt: readyEnrichmentCompletedAt,
       },
     });
     await prisma.$executeRaw`

@@ -28,13 +28,17 @@ import { inferVerticalsForHubspot } from "../hubspot/vertical-inference";
 import { enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
+import { markChannelLlmEnrichmentFailed } from "./continuous";
 import {
   deriveCreatorListYoutubeMetrics,
   deriveYoutubeMetrics,
   isYoutubeShortVideo,
   normalizeYoutubeContext,
 } from "./metrics";
-import { isYoutubeContextFresh, resolveChannelEnrichmentStatus } from "./status";
+import {
+  isYoutubeContextFresh,
+  resolveChannelEnrichmentStatus,
+} from "./status";
 
 type ChannelYoutubeContextCacheRow = {
   context: Prisma.JsonValue | null;
@@ -641,6 +645,7 @@ export async function requestChannelLlmEnrichment(input: {
           select: {
             status: true,
             completedAt: true,
+            lastEnrichedAt: true,
           },
         },
       },
@@ -692,7 +697,11 @@ export async function requestChannelLlmEnrichment(input: {
           requestedByUserId: input.requestedByUserId,
           requestedAt,
           startedAt: null,
+          retryCount: 0,
+          nextRetryAt: null,
           lastError: null,
+          youtubeFetchedAt: null,
+          rawOpenaiPayloadFetchedAt: null,
         },
       });
     } else {
@@ -704,6 +713,8 @@ export async function requestChannelLlmEnrichment(input: {
           status: PrismaChannelEnrichmentStatus.QUEUED,
           requestedByUserId: input.requestedByUserId,
           requestedAt,
+          retryCount: 0,
+          nextRetryAt: null,
         },
       });
     }
@@ -729,14 +740,9 @@ export async function requestChannelLlmEnrichment(input: {
         requestedByUserId: input.requestedByUserId,
       });
     } catch (error) {
-      await prisma.channelEnrichment.update({
-        where: {
-          channelId: input.channelId,
-        },
-        data: {
-          status: PrismaChannelEnrichmentStatus.FAILED,
-          lastError: formatErrorMessage(error),
-        },
+      await markChannelLlmEnrichmentFailed({
+        channelId: input.channelId,
+        error,
       });
 
       throw new ServiceError(
@@ -763,6 +769,7 @@ export async function executeChannelLlmEnrichment(input: {
   channelId: string;
   requestedByUserId: string;
 }): Promise<void> {
+  const startedAt = new Date();
   const enrichment = await prisma.channelEnrichment.findUnique({
     where: {
       channelId: input.channelId,
@@ -783,14 +790,13 @@ export async function executeChannelLlmEnrichment(input: {
       status: {
         in: [
           PrismaChannelEnrichmentStatus.QUEUED,
-          PrismaChannelEnrichmentStatus.FAILED,
           PrismaChannelEnrichmentStatus.STALE,
         ],
       },
     },
     data: {
       status: PrismaChannelEnrichmentStatus.RUNNING,
-      startedAt: new Date(),
+      startedAt,
       lastError: null,
     },
   });
@@ -1155,13 +1161,18 @@ export async function executeChannelLlmEnrichment(input: {
         },
       });
 
+      const completedAt = new Date();
+
       await tx.channelEnrichment.update({
         where: {
           channelId: executionState.channelId,
         },
         data: {
           status: PrismaChannelEnrichmentStatus.COMPLETED,
-          completedAt: new Date(),
+          completedAt,
+          lastEnrichedAt: completedAt,
+          retryCount: 0,
+          nextRetryAt: null,
           lastError: null,
           youtubeFetchedAt: null,
           rawOpenaiPayloadFetchedAt: null,
@@ -1177,14 +1188,9 @@ export async function executeChannelLlmEnrichment(input: {
       });
     });
   } catch (error) {
-    await prisma.channelEnrichment.update({
-      where: {
-        channelId: input.channelId,
-      },
-      data: {
-        status: PrismaChannelEnrichmentStatus.FAILED,
-        lastError: formatErrorMessage(error),
-      },
+    await markChannelLlmEnrichmentFailed({
+      channelId: input.channelId,
+      error,
     });
 
     throw error;
@@ -1192,3 +1198,4 @@ export async function executeChannelLlmEnrichment(input: {
 }
 
 export * from "./status";
+export * from "./continuous";

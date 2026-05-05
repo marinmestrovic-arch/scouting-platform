@@ -110,6 +110,7 @@ export const channelEnrichmentSummarySchema = z.object({
   status: channelEnrichmentStatusSchema,
   updatedAt: isoDatetimeSchema.nullable(),
   completedAt: isoDatetimeSchema.nullable(),
+  lastEnrichedAt: isoDatetimeSchema.nullable().optional(),
   lastError: z.string().nullable(),
 });
 

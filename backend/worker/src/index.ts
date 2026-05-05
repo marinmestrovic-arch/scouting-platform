@@ -3,6 +3,10 @@ import { PgBoss } from "pg-boss";
 
 import { registerChannelsEnrichHypeAuditorWorker } from "./channels-enrich-hypeauditor-worker";
 import { registerChannelsEnrichLlmWorker } from "./channels-enrich-llm-worker";
+import {
+  startContinuousEnrichmentMonitor,
+  type ContinuousEnrichmentMonitor,
+} from "./continuous-enrichment-monitor";
 import { registerExportsCsvGenerateWorker } from "./exports-csv-generate-worker";
 import { registerHubspotImportBatchWorker } from "./hubspot-import-batch-worker";
 import { registerHubspotObjectSyncWorker } from "./hubspot-object-sync-worker";
@@ -63,6 +67,8 @@ async function startWorker(): Promise<void> {
   await boss.start();
   await ensureQueues(boss);
   await registerWorkers(boss, config);
+  const continuousEnrichmentMonitor: ContinuousEnrichmentMonitor =
+    startContinuousEnrichmentMonitor(boss, config.continuousEnrichment);
   process.stdout.write(`[worker] started with schema "${config.pgBossSchema}"\n`);
 
   let shuttingDown = false;
@@ -74,6 +80,7 @@ async function startWorker(): Promise<void> {
 
     shuttingDown = true;
     process.stdout.write(`[worker] received ${signal}, shutting down\n`);
+    continuousEnrichmentMonitor.stop();
 
     try {
       await boss.stop({ graceful: true, timeout: 30_000 });
