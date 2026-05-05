@@ -542,6 +542,9 @@ model ChannelEnrichment {
   requestedAt               DateTime                @map("requested_at")
   startedAt                 DateTime?               @map("started_at")
   completedAt               DateTime?               @map("completed_at")
+  lastEnrichedAt            DateTime?               @map("last_enriched_at")
+  retryCount                Int                     @default(0) @map("retry_count")
+  nextRetryAt               DateTime?               @map("next_retry_at")
   lastError                 String?                 @map("last_error") @db.Text
   rawOpenaiPayload          Json?                   @map("raw_openai_payload")
   rawOpenaiPayloadFetchedAt DateTime?               @map("raw_openai_payload_fetched_at")
@@ -557,7 +560,11 @@ model ChannelEnrichment {
   requestedByUser           User                    @relation("ChannelEnrichmentRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
 
   @@index([status], map: "channel_enrichments_status_idx")
+  @@index([status, requestedAt], map: "channel_enrichments_status_requested_at_idx")
+  @@index([status, startedAt], map: "channel_enrichments_status_started_at_idx")
+  @@index([status, nextRetryAt], map: "channel_enrichments_status_next_retry_at_idx")
   @@index([completedAt], map: "channel_enrichments_completed_at_idx")
+  @@index([lastEnrichedAt], map: "channel_enrichments_last_enriched_at_idx")
   @@index([requestedByUserId], map: "channel_enrichments_requested_by_user_id_idx")
   @@map("channel_enrichments")
 }
@@ -1039,6 +1046,7 @@ model RunResult {
 
   @@unique([runRequestId, channelId], map: "run_results_run_request_id_channel_id_key")
   @@index([runRequestId], map: "run_results_run_request_id_idx")
+  @@index([channelId], map: "run_results_channel_id_idx")
   @@map("run_results")
 }
 

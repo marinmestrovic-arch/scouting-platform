@@ -9,6 +9,16 @@ export type WorkerJobOptions = Readonly<{
 export type WorkerRuntimeConfig = Readonly<{
   databaseUrl: string;
   pgBossSchema: string;
+  continuousEnrichment: Readonly<{
+    enabled: boolean;
+    intervalMs: number;
+    initialDelayMs: number;
+    batchSize: number;
+    staleAfterDays: number;
+    maxRetryCount: number;
+    processingTimeoutMs: number;
+    queuedTimeoutMs: number;
+  }>;
   jobs: Readonly<{
     runsDiscover: WorkerJobOptions;
     runsAssessChannelFit: WorkerJobOptions;
@@ -71,6 +81,48 @@ function parsePositiveInt(
   return parsedValue;
 }
 
+function parseNonNegativeInt(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  defaultValue: number,
+): number {
+  const rawValue = env[name]?.trim();
+
+  if (!rawValue) {
+    return defaultValue;
+  }
+
+  const parsedValue = Number.parseInt(rawValue, 10);
+
+  if (!Number.isInteger(parsedValue) || parsedValue < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+
+  return parsedValue;
+}
+
+function parseBooleanEnv(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  defaultValue: boolean,
+): boolean {
+  const rawValue = env[name]?.trim().toLowerCase();
+
+  if (!rawValue) {
+    return defaultValue;
+  }
+
+  if (["1", "true", "yes", "on"].includes(rawValue)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(rawValue)) {
+    return false;
+  }
+
+  throw new Error(`${name} must be a boolean`);
+}
+
 function buildWorkerJobOptions(
   env: NodeJS.ProcessEnv,
   name: string,
@@ -91,6 +143,40 @@ export function getWorkerRuntimeConfig(
   return {
     databaseUrl: getRequiredEnv(env, "DATABASE_URL"),
     pgBossSchema: env.PG_BOSS_SCHEMA?.trim() || "pgboss",
+    continuousEnrichment: {
+      enabled: parseBooleanEnv(env, "WORKER_CONTINUOUS_ENRICHMENT_ENABLED", true),
+      intervalMs: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_INTERVAL_MS",
+        60 * 1000,
+      ),
+      initialDelayMs: parseNonNegativeInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_INITIAL_DELAY_MS",
+        5 * 1000,
+      ),
+      batchSize: parsePositiveInt(env, "WORKER_CONTINUOUS_ENRICHMENT_BATCH_SIZE", 5),
+      staleAfterDays: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_STALE_AFTER_DAYS",
+        30,
+      ),
+      maxRetryCount: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_MAX_RETRY_COUNT",
+        5,
+      ),
+      processingTimeoutMs: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_PROCESSING_TIMEOUT_MS",
+        30 * 60 * 1000,
+      ),
+      queuedTimeoutMs: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_QUEUED_TIMEOUT_MS",
+        10 * 60 * 1000,
+      ),
+    },
     jobs: {
       runsDiscover: buildWorkerJobOptions(env, "WORKER_RUNS_DISCOVER_CONCURRENCY", 1),
       runsAssessChannelFit: buildWorkerJobOptions(

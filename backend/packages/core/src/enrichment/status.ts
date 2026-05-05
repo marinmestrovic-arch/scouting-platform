@@ -3,12 +3,13 @@ import type { ChannelEnrichmentStatus } from "@scouting-platform/contracts";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-export const CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS = 14;
+export const CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS = 30;
 export const YOUTUBE_CONTEXT_FRESH_WINDOW_DAYS = 14;
 
 type ChannelEnrichmentStatusSource = {
   status: PrismaChannelEnrichmentStatus;
   completedAt: Date | null;
+  lastEnrichedAt?: Date | null;
 };
 
 export function isChannelEnrichmentStale(input: {
@@ -29,12 +30,9 @@ export function isChannelEnrichmentStale(input: {
   }
 
   const now = input.now ?? new Date();
-  const completedAtMs = input.enrichment.completedAt.getTime();
+  const lastEnrichedAt = input.enrichment.lastEnrichedAt ?? input.enrichment.completedAt;
 
-  return (
-    input.channelUpdatedAt.getTime() > completedAtMs ||
-    now.getTime() - completedAtMs >= CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS * DAY_IN_MS
-  );
+  return now.getTime() - lastEnrichedAt.getTime() >= CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS * DAY_IN_MS;
 }
 
 export function resolveChannelEnrichmentStatus(input: {

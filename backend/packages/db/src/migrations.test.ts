@@ -94,6 +94,14 @@ const hubspotObjectSyncMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260422120000_hubspot_object_sync/migration.sql",
 );
+const channelEnrichmentLastEnrichedAtMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260504190000_channel_enrichment_last_enriched_at/migration.sql",
+);
+const channelEnrichmentRetryStateMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260505090000_channel_enrichment_retry_state/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -355,6 +363,33 @@ describe("channel content language migration", () => {
 
     expect(migrationSql).toContain('ALTER TABLE "channels"');
     expect(migrationSql).toContain('"content_language" TEXT');
+  });
+});
+
+describe("channel enrichment last enriched migration", () => {
+  it("adds and backfills a dedicated last_enriched_at column", () => {
+    const migrationSql = readFileSync(channelEnrichmentLastEnrichedAtMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('ALTER TABLE "channel_enrichments"');
+    expect(migrationSql).toContain('"last_enriched_at" TIMESTAMP(3)');
+    expect(migrationSql).not.toContain('"retry_count"');
+    expect(migrationSql).not.toContain('"next_retry_at"');
+    expect(migrationSql).toContain('COALESCE("completed_at", "started_at")');
+    expect(migrationSql).toContain('"channel_enrichments_last_enriched_at_idx"');
+  });
+});
+
+describe("channel enrichment retry state migration", () => {
+  it("adds retry columns and scan indexes for continuous enrichment", () => {
+    const migrationSql = readFileSync(channelEnrichmentRetryStateMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain("DO $$");
+    expect(migrationSql).toContain('"retry_count" INTEGER NOT NULL DEFAULT 0');
+    expect(migrationSql).toContain('"next_retry_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"channel_enrichments_status_requested_at_idx"');
+    expect(migrationSql).toContain('"channel_enrichments_status_next_retry_at_idx"');
+    expect(migrationSql).toContain('"channel_enrichments_status_started_at_idx"');
+    expect(migrationSql).toContain('"run_results_channel_id_idx"');
   });
 });
 

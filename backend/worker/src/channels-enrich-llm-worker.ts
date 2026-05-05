@@ -3,7 +3,7 @@ import process from "node:process";
 import type { PgBoss } from "pg-boss";
 
 import { parseJobPayload } from "@scouting-platform/contracts";
-import { executeChannelLlmEnrichment } from "@scouting-platform/core";
+import { executeChannelLlmEnrichment, ServiceError } from "@scouting-platform/core";
 
 import type { WorkerJobOptions } from "./runtime-config";
 
@@ -25,6 +25,10 @@ function formatErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function formatServiceError(error: ServiceError): string {
+  return `${error.code} (${error.status}): ${error.message}`;
+}
+
 export async function registerChannelsEnrichLlmWorker(
   boss: Pick<PgBoss, "work">,
   options: WorkerJobOptions = channelsEnrichLlmWorkerOptions,
@@ -41,6 +45,13 @@ export async function registerChannelsEnrichLlmWorker(
         try {
           await executeChannelLlmEnrichment(payload);
         } catch (error) {
+          if (error instanceof ServiceError) {
+            process.stderr.write(
+              `[worker] channels.enrich.llm recorded failure for ${payload.channelId}: ${formatServiceError(error)}\n`,
+            );
+            continue;
+          }
+
           process.stderr.write(
             `[worker] channels.enrich.llm failed for ${payload.channelId}: ${formatErrorMessage(error)}\n`,
           );
