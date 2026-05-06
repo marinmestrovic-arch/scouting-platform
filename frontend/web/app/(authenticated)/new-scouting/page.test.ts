@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStringAsync } from "../../../lib/test-render";
 
-const { getSessionMock, listCampaignManagersMock, listCampaignsMock, newScoutingWorkspaceMock } = vi.hoisted(() => ({
+const { getSessionMock, listCampaignManagersMock, listCampaignsMock, listDropdownValuesMock, newScoutingWorkspaceMock } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
   listCampaignManagersMock: vi.fn(async () => []),
   listCampaignsMock: vi.fn(async () => ({
     items: [],
     filterOptions: { clients: [], markets: [] },
     permissions: { canCreate: false, role: "user", userType: "campaign_manager" },
+  })),
+  listDropdownValuesMock: vi.fn(async () => ({
+    items: [],
   })),
   newScoutingWorkspaceMock: vi.fn(() => "new-scouting-workspace"),
 }));
@@ -19,6 +22,7 @@ vi.mock("../../../lib/cached-auth", () => ({
 vi.mock("../../../lib/cached-data", () => ({
   getCachedCampaignManagers: listCampaignManagersMock,
   getCachedCampaigns: listCampaignsMock,
+  getCachedDropdownValues: listDropdownValuesMock,
 }));
 
 vi.mock("../../../components/scouting/new-scouting-workspace", () => ({

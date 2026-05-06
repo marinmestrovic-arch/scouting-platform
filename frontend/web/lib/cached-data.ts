@@ -30,11 +30,11 @@ import {
 // Tier 1 – Global, rarely changing (5 min)
 // ---------------------------------------------------------------------------
 
-export const getCachedDropdownValues = unstable_cache(
-  () => listDropdownValues(),
-  ["dropdown-values"],
-  { revalidate: 300 },
-);
+// HubSpot sync writes dropdown values in a background worker.
+// Keep this uncached so New Scouting/Database/Catalog reflect synced values immediately.
+export async function getCachedDropdownValues() {
+  return listDropdownValues();
+}
 
 export const getCachedCampaignManagers = unstable_cache(
   () => listCampaignManagers(),

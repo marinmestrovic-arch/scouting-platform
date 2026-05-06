@@ -3,6 +3,8 @@ import process from "node:process";
 import { PrismaClient } from "@prisma/client";
 import { createPrismaClient } from "@scouting-platform/db";
 
+import { assertSafeTestDatabaseConfiguration } from "./test-db-guard.mjs";
+
 function parseDatabaseName(databaseUrl: string): string {
   const url = new URL(databaseUrl);
   const databaseName = url.pathname.replace(/^\//, "");
@@ -21,6 +23,11 @@ async function main(): Promise<void> {
   if (!databaseUrl || !databaseUrlTest) {
     throw new Error("DATABASE_URL and DATABASE_URL_TEST are required");
   }
+
+  assertSafeTestDatabaseConfiguration({
+    databaseUrl,
+    databaseUrlTest,
+  });
 
   const testDatabaseName = parseDatabaseName(databaseUrlTest);
   const escapedTestDatabaseName = testDatabaseName.replace(/'/g, "''");

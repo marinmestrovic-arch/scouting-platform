@@ -1,5 +1,7 @@
 import process from "node:process";
 
+import { assertSafeTestDatabaseConfiguration } from "./test-db-guard.mjs";
+
 const localUrlFlag = "--bootstrap";
 
 function getMode() {
@@ -73,10 +75,18 @@ function validateSharedEnvironment() {
   requireMinLength("AUTH_SECRET", 16);
   requireExactLength("APP_ENCRYPTION_KEY", 32);
   requireUrl("NEXT_PUBLIC_APP_URL");
+  const databaseUrlTest = process.env.DATABASE_URL_TEST?.trim();
+
+  if (databaseUrlTest) {
+    requirePostgresUrl("DATABASE_URL_TEST");
+    assertSafeTestDatabaseConfiguration();
+  }
 }
 
 function validateBootstrapEnvironment() {
   validateSharedEnvironment();
+  requirePostgresUrl("DATABASE_URL_TEST");
+  assertSafeTestDatabaseConfiguration();
   requireEmail("INITIAL_ADMIN_EMAIL");
   requireMinLength("INITIAL_ADMIN_PASSWORD", 8);
   required("INITIAL_ADMIN_NAME");

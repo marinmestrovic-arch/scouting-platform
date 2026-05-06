@@ -58,7 +58,8 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "next start -p 3101 -H 127.0.0.1",
+    command:
+      "if [ -f .next/standalone/server.js ]; then PORT=3101 HOSTNAME=127.0.0.1 node .next/standalone/server.js; else next start -p 3101 -H 127.0.0.1; fi",
     env: {
       ...process.env,
       AUTH_TRUST_HOST: "true",

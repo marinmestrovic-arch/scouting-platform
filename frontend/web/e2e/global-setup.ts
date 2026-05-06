@@ -38,6 +38,7 @@ import {
   PLAYWRIGHT_SEED_PATH,
   type PlaywrightSeedData,
 } from "./test-data";
+import { assertSafeTestDatabaseConfiguration } from "./test-db-guard";
 import { ensurePlaywrightEnvironment } from "./test-env";
 
 function buildSeededExportCsv(channelId: string): string {
@@ -122,6 +123,7 @@ async function writeSeedDataFile(seedData: PlaywrightSeedData): Promise<void> {
 }
 
 export default async function globalSetup(): Promise<void> {
+  assertSafeTestDatabaseConfiguration();
   ensurePlaywrightEnvironment();
 
   const [admin, manager] = await Promise.all([

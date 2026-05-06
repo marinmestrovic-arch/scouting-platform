@@ -74,6 +74,9 @@ describe("new scouting workspace", () => {
             updatedAt: "2026-03-26T12:00:00.000Z",
           },
         ],
+        initialCountryRegionOptions: ["Germany", "Austria"],
+        initialInfluencerVerticalOptions: ["Gaming", "Tech"],
+        initialLanguageOptions: ["German", "English"],
         showLegacyNotice: true,
       }),
     );
@@ -87,7 +90,7 @@ describe("new scouting workspace", () => {
     expect(html).toContain("Location");
     expect(html).toContain("Language");
     expect(html).toContain("Last post day since");
-    expect(html).toContain("Category");
+    expect(html).toContain("Influencer Vertical");
     expect(html).toContain("Niche");
     expect(html).toContain("Legacy route");
     expect(html).toContain('href="/database?tab=campaigns"');
@@ -125,6 +128,9 @@ describe("new scouting workspace", () => {
           updatedAt: "2026-03-26T12:00:00.000Z",
         },
       ],
+      initialCountryRegionOptions: ["Germany", "Austria"],
+      initialInfluencerVerticalOptions: ["Gaming", "Tech"],
+      initialLanguageOptions: ["German", "English"],
     });
     const rendered = NewScoutingWorkspaceView(tree.props);
     const searchableTriggers = findElementsByType(rendered, "button").filter((element) => {

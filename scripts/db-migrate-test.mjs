@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
+import { assertSafeTestDatabaseConfiguration } from "./test-db-guard.mjs";
 import { loadLocalEnv } from "./local-env.mjs";
 
 loadLocalEnv();
+assertSafeTestDatabaseConfiguration();
 
 const databaseUrlTest = process.env.DATABASE_URL_TEST?.trim();
 

@@ -3,8 +3,10 @@ import fs from "node:fs/promises";
 import { disconnectPrisma, prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { E2E_ADMIN, E2E_MANAGER, PLAYWRIGHT_SEED_PATH } from "./test-data";
+import { assertSafeTestDatabaseConfiguration } from "./test-db-guard";
 
 export default async function globalTeardown(): Promise<void> {
+  assertSafeTestDatabaseConfiguration();
   const users = await prisma.user.findMany({
     where: {
       email: {

@@ -10,15 +10,19 @@ import {
 } from "@scouting-platform/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { startTransition, useState } from "react";
+import React, { startTransition, useMemo, useState } from "react";
 
 import { createRun } from "../../lib/runs-api";
 import { getCreateRunErrorMessage, normalizeRunTarget } from "../runs/create-run-shell";
+import { SearchableMultiSelect, type SearchableMultiSelectOption } from "../ui/searchable-multi-select";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type NewScoutingWorkspaceProps = Readonly<{
   initialCampaigns?: CampaignSummary[] | undefined;
   initialCampaignManagers?: CampaignManagerOption[] | undefined;
+  initialCountryRegionOptions?: string[] | undefined;
+  initialLanguageOptions?: string[] | undefined;
+  initialInfluencerVerticalOptions?: string[] | undefined;
   showLegacyNotice?: boolean;
 }>;
 
@@ -34,14 +38,211 @@ type NewScoutingRequestState = {
   message: string;
 };
 
+type MetricRangeSelection = Readonly<{
+  minIndex: number;
+  maxIndex: number;
+}>;
+
 const DEFAULT_REQUEST_STATE: NewScoutingRequestState = {
   status: "idle",
-  message: "Pick an active campaign and add at least one catalog criterion to build this scouting list.",
+  message: "",
 };
+
+const METRIC_SLIDER_STEPS = [
+  1000,
+  2500,
+  5000,
+  10000,
+  25000,
+  50000,
+  100000,
+  250000,
+  500000,
+  750000,
+  1000000,
+] as const;
+
+const LAST_METRIC_SLIDER_INDEX = METRIC_SLIDER_STEPS.length - 1;
+const MULTI_VALUE_SEPARATOR = " | ";
+
+function formatMetricStep(value: number): string {
+  if (value >= 1000000) {
+    return "1M";
+  }
+
+  if (value >= 1000) {
+    return `${Number.parseFloat((value / 1000).toFixed(1)).toString()}K`;
+  }
+
+  return String(value);
+}
+
+function parseMetricValue(rawValue: string): number | null {
+  const normalized = rawValue.trim().toLowerCase().replaceAll(",", "").replace(/\s+/g, "");
+
+  if (!normalized) {
+    return null;
+  }
+
+  const match = normalized.match(/^(\d+(?:\.\d+)?)([kmb])?$/);
+
+  if (!match || !match[1]) {
+    return null;
+  }
+
+  const numeric = Number.parseFloat(match[1]);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+
+  const multiplier =
+    match[2] === "k" ? 1000 : match[2] === "m" ? 1000000 : match[2] === "b" ? 1000000000 : 1;
+
+  return Math.round(numeric * multiplier);
+}
+
+function getNearestMetricStepIndex(value: number): number {
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const [index, step] of METRIC_SLIDER_STEPS.entries()) {
+    const distance = Math.abs(step - value);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
+}
+
+function parseMetricRangeSelection(value: string): MetricRangeSelection {
+  const normalized = value.trim().toLowerCase().replaceAll(",", "").replace(/\s+/g, "");
+
+  if (!normalized) {
+    return {
+      minIndex: 0,
+      maxIndex: LAST_METRIC_SLIDER_INDEX,
+    };
+  }
+
+  const plusMatch = normalized.match(/^(.+)\+$/);
+
+  if (plusMatch?.[1]) {
+    const minimum = parseMetricValue(plusMatch[1]);
+
+    if (minimum !== null) {
+      return {
+        minIndex: getNearestMetricStepIndex(minimum),
+        maxIndex: LAST_METRIC_SLIDER_INDEX,
+      };
+    }
+  }
+
+  const rangeMatch = normalized.match(/^([0-9]+(?:\.\d+)?[kmb]?)(?:-|to)([0-9]+(?:\.\d+)?[kmb]?)$/);
+
+  if (rangeMatch?.[1] && rangeMatch[2]) {
+    const first = parseMetricValue(rangeMatch[1]);
+    const second = parseMetricValue(rangeMatch[2]);
+
+    if (first !== null && second !== null) {
+      const firstIndex = getNearestMetricStepIndex(first);
+      const secondIndex = getNearestMetricStepIndex(second);
+
+      return {
+        minIndex: Math.min(firstIndex, secondIndex),
+        maxIndex: Math.max(firstIndex, secondIndex),
+      };
+    }
+  }
+
+  const minimum = parseMetricValue(normalized);
+
+  if (minimum === null) {
+    return {
+      minIndex: 0,
+      maxIndex: LAST_METRIC_SLIDER_INDEX,
+    };
+  }
+
+  return {
+    minIndex: getNearestMetricStepIndex(minimum),
+    maxIndex: LAST_METRIC_SLIDER_INDEX,
+  };
+}
+
+function buildMetricCriteriaFromRange(selection: MetricRangeSelection): string {
+  const boundedMinIndex = Math.max(0, Math.min(selection.minIndex, LAST_METRIC_SLIDER_INDEX));
+  const boundedMaxIndex = Math.max(0, Math.min(selection.maxIndex, LAST_METRIC_SLIDER_INDEX));
+  const minIndex = Math.min(boundedMinIndex, boundedMaxIndex);
+  const maxIndex = Math.max(boundedMinIndex, boundedMaxIndex);
+  const minValue = METRIC_SLIDER_STEPS[minIndex];
+  const maxValue = METRIC_SLIDER_STEPS[maxIndex];
+
+  if (minValue === undefined || maxValue === undefined) {
+    return "";
+  }
+
+  if (minIndex === 0 && maxIndex === LAST_METRIC_SLIDER_INDEX) {
+    return "";
+  }
+
+  if (maxIndex === LAST_METRIC_SLIDER_INDEX) {
+    return `${formatMetricStep(minValue)}+`;
+  }
+
+  return `${formatMetricStep(minValue)}-${formatMetricStep(maxValue)}`;
+}
+
+function formatMetricRangeSummary(selection: MetricRangeSelection): string {
+  const minValue = METRIC_SLIDER_STEPS[selection.minIndex];
+  const maxValue = METRIC_SLIDER_STEPS[selection.maxIndex];
+
+  if (minValue === undefined || maxValue === undefined) {
+    return "Any";
+  }
+
+  if (selection.minIndex === 0 && selection.maxIndex === LAST_METRIC_SLIDER_INDEX) {
+    return "Any";
+  }
+
+  const minLabel = formatMetricStep(minValue);
+  const maxLabel = selection.maxIndex === LAST_METRIC_SLIDER_INDEX ? "1M+" : formatMetricStep(maxValue);
+
+  return `${minLabel} - ${maxLabel}`;
+}
+
+function parseMultiValueSelection(value: string): string[] {
+  if (!value.trim()) {
+    return [];
+  }
+
+  return value
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function joinMultiValueSelection(values: readonly string[]): string {
+  return values.join(MULTI_VALUE_SEPARATOR);
+}
+
+function normalizeDropdownValues(values: readonly string[]): string[] {
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return [...new Set(normalized)].sort((left, right) => left.localeCompare(right));
+}
 
 export function NewScoutingWorkspace({
   initialCampaigns = [],
   initialCampaignManagers = [],
+  initialCountryRegionOptions = [],
+  initialLanguageOptions = [],
+  initialInfluencerVerticalOptions = [],
   showLegacyNotice = false,
 }: NewScoutingWorkspaceProps) {
   const router = useRouter();
@@ -83,6 +284,37 @@ export function NewScoutingWorkspace({
       keywords: [campaignManager.email],
     })),
   ];
+  const countryRegionOptions = useMemo(
+    () => normalizeDropdownValues(initialCountryRegionOptions),
+    [initialCountryRegionOptions],
+  );
+  const languageOptions = useMemo(
+    () => normalizeDropdownValues(initialLanguageOptions),
+    [initialLanguageOptions],
+  );
+  const influencerVerticalOptions = useMemo(
+    () => normalizeDropdownValues(initialInfluencerVerticalOptions),
+    [initialInfluencerVerticalOptions],
+  );
+  const locationMultiSelectOptions = useMemo<SearchableMultiSelectOption[]>(
+    () => countryRegionOptions.map((value) => ({ value, label: value, keywords: [value] })),
+    [countryRegionOptions],
+  );
+  const languageSelectOptions = useMemo<SearchableSelectOption[]>(
+    () => languageOptions.map((value) => ({ value, label: value, keywords: [value] })),
+    [languageOptions],
+  );
+  const influencerVerticalSelectOptions = useMemo<SearchableSelectOption[]>(
+    () => influencerVerticalOptions.map((value) => ({ value, label: value, keywords: [value] })),
+    [influencerVerticalOptions],
+  );
+  const selectedLocations = useMemo(() => parseMultiValueSelection(draft.location), [draft.location]);
+  const subscribersRange = useMemo(() => parseMetricRangeSelection(draft.subscribers), [draft.subscribers]);
+  const viewsRange = useMemo(() => parseMetricRangeSelection(draft.views), [draft.views]);
+  const subscribersRangeStart = (subscribersRange.minIndex / LAST_METRIC_SLIDER_INDEX) * 100;
+  const subscribersRangeEnd = (subscribersRange.maxIndex / LAST_METRIC_SLIDER_INDEX) * 100;
+  const viewsRangeStart = (viewsRange.minIndex / LAST_METRIC_SLIDER_INDEX) * 100;
+  const viewsRangeEnd = (viewsRange.maxIndex / LAST_METRIC_SLIDER_INDEX) * 100;
 
   function updateDraftField<Key extends keyof NewScoutingDraft>(field: Key, value: NewScoutingDraft[Key]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -150,6 +382,7 @@ export function NewScoutingWorkspace({
               autoComplete="off"
               disabled={isBusy}
               maxLength={200}
+              name="name"
               onChange={(event) => updateDraftField("name", event.currentTarget.value)}
               placeholder="Spring gaming outreach"
               required
@@ -191,6 +424,7 @@ export function NewScoutingWorkspace({
               disabled={isBusy}
               inputMode="numeric"
               min={1}
+              name="target"
               onChange={(event) => updateDraftField("target", event.currentTarget.value)}
               placeholder="25"
               required
@@ -198,57 +432,144 @@ export function NewScoutingWorkspace({
               type="number"
               value={draft.target}
             />
-            <small>Number of creators needed for this scouting list.</small>
           </label>
         </div>
 
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Subscribers</span>
-            <input
-              autoComplete="off"
-              disabled={isBusy}
-              maxLength={50}
-              onChange={(event) => updateDraftField("subscribers", event.currentTarget.value)}
-              placeholder="100K+"
-              value={draft.subscribers}
-            />
+            <div className="new-scouting__range-control">
+              <div className="new-scouting__range-meta">
+                <span className="new-scouting__range-value">{formatMetricRangeSummary(subscribersRange)}</span>
+              </div>
+              <div
+                className="new-scouting__dual-range"
+                style={{
+                  "--new-scouting-range-start": `${subscribersRangeStart}%`,
+                  "--new-scouting-range-end": `${subscribersRangeEnd}%`,
+                } as React.CSSProperties}
+              >
+                <div className="new-scouting__dual-range-track" />
+                <input
+                  aria-label="Subscribers minimum"
+                  className="new-scouting__dual-range-input"
+                  disabled={isBusy}
+                  max={LAST_METRIC_SLIDER_INDEX}
+                  min={0}
+                  name="subscribersMin"
+                  onChange={(event) => {
+                    const nextMinIndex = Math.min(Number(event.currentTarget.value), subscribersRange.maxIndex);
+                    updateDraftField(
+                      "subscribers",
+                      buildMetricCriteriaFromRange({ minIndex: nextMinIndex, maxIndex: subscribersRange.maxIndex }),
+                    );
+                  }}
+                  step={1}
+                  type="range"
+                  value={subscribersRange.minIndex}
+                />
+                <input
+                  aria-label="Subscribers maximum"
+                  className="new-scouting__dual-range-input"
+                  disabled={isBusy}
+                  max={LAST_METRIC_SLIDER_INDEX}
+                  min={0}
+                  name="subscribersMax"
+                  onChange={(event) => {
+                    const nextMaxIndex = Math.max(Number(event.currentTarget.value), subscribersRange.minIndex);
+                    updateDraftField(
+                      "subscribers",
+                      buildMetricCriteriaFromRange({ minIndex: subscribersRange.minIndex, maxIndex: nextMaxIndex }),
+                    );
+                  }}
+                  step={1}
+                  type="range"
+                  value={subscribersRange.maxIndex}
+                />
+              </div>
+            </div>
           </label>
 
           <label className="new-scouting__field">
             <span>Views</span>
-            <input
-              autoComplete="off"
-              disabled={isBusy}
-              maxLength={50}
-              onChange={(event) => updateDraftField("views", event.currentTarget.value)}
-              placeholder="25K-250K"
-              value={draft.views}
-            />
+            <div className="new-scouting__range-control">
+              <div className="new-scouting__range-meta">
+                <span className="new-scouting__range-value">{formatMetricRangeSummary(viewsRange)}</span>
+              </div>
+              <div
+                className="new-scouting__dual-range"
+                style={{
+                  "--new-scouting-range-start": `${viewsRangeStart}%`,
+                  "--new-scouting-range-end": `${viewsRangeEnd}%`,
+                } as React.CSSProperties}
+              >
+                <div className="new-scouting__dual-range-track" />
+                <input
+                  aria-label="Views minimum"
+                  className="new-scouting__dual-range-input"
+                  disabled={isBusy}
+                  max={LAST_METRIC_SLIDER_INDEX}
+                  min={0}
+                  name="viewsMin"
+                  onChange={(event) => {
+                    const nextMinIndex = Math.min(Number(event.currentTarget.value), viewsRange.maxIndex);
+                    updateDraftField(
+                      "views",
+                      buildMetricCriteriaFromRange({ minIndex: nextMinIndex, maxIndex: viewsRange.maxIndex }),
+                    );
+                  }}
+                  step={1}
+                  type="range"
+                  value={viewsRange.minIndex}
+                />
+                <input
+                  aria-label="Views maximum"
+                  className="new-scouting__dual-range-input"
+                  disabled={isBusy}
+                  max={LAST_METRIC_SLIDER_INDEX}
+                  min={0}
+                  name="viewsMax"
+                  onChange={(event) => {
+                    const nextMaxIndex = Math.max(Number(event.currentTarget.value), viewsRange.minIndex);
+                    updateDraftField(
+                      "views",
+                      buildMetricCriteriaFromRange({ minIndex: viewsRange.minIndex, maxIndex: nextMaxIndex }),
+                    );
+                  }}
+                  step={1}
+                  type="range"
+                  value={viewsRange.maxIndex}
+                />
+              </div>
+            </div>
           </label>
         </div>
 
         <div className="new-scouting__grid new-scouting__grid--two">
           <label className="new-scouting__field">
             <span>Location</span>
-            <input
-              autoComplete="off"
-              disabled={isBusy}
-              maxLength={50}
-              onChange={(event) => updateDraftField("location", event.currentTarget.value)}
-              placeholder="Germany"
-              value={draft.location}
+            <SearchableMultiSelect
+              ariaLabel="Location"
+              disabled={isBusy || locationMultiSelectOptions.length === 0}
+              onChange={(values) => updateDraftField("location", joinMultiValueSelection(values))}
+              options={locationMultiSelectOptions}
+              placeholder={
+                locationMultiSelectOptions.length === 0 ? "No Country/Region values available" : "Select one or more locations"
+              }
+              searchPlaceholder="Search locations..."
+              values={selectedLocations}
             />
           </label>
 
           <label className="new-scouting__field">
             <span>Language</span>
-            <input
-              autoComplete="off"
-              disabled={isBusy}
-              maxLength={50}
-              onChange={(event) => updateDraftField("language", event.currentTarget.value)}
-              placeholder="German"
+            <SearchableSelect
+              ariaLabel="Language"
+              disabled={isBusy || languageSelectOptions.length === 0}
+              onChange={(language) => updateDraftField("language", language)}
+              options={languageSelectOptions}
+              placeholder={languageSelectOptions.length === 0 ? "No Language values available" : "Select language"}
+              searchPlaceholder="Search languages..."
               value={draft.language}
             />
           </label>
@@ -258,25 +579,31 @@ export function NewScoutingWorkspace({
           <label className="new-scouting__field">
             <span>Last post day since</span>
             <input
-              autoComplete="off"
               disabled={isBusy}
               inputMode="numeric"
-              maxLength={10}
+              min={0}
+              name="lastPostDaysSince"
               onChange={(event) => updateDraftField("lastPostDaysSince", event.currentTarget.value)}
               placeholder="30"
+              step={1}
+              type="number"
               value={draft.lastPostDaysSince}
             />
-            <small>Use days, for example `30` to keep channels active within the last month.</small>
           </label>
 
           <label className="new-scouting__field">
-            <span>Category</span>
-            <input
-              autoComplete="off"
-              disabled={isBusy}
-              maxLength={50}
-              onChange={(event) => updateDraftField("category", event.currentTarget.value)}
-              placeholder="Gaming"
+            <span>Influencer Vertical</span>
+            <SearchableSelect
+              ariaLabel="Influencer Vertical"
+              disabled={isBusy || influencerVerticalSelectOptions.length === 0}
+              onChange={(value) => updateDraftField("category", value)}
+              options={influencerVerticalSelectOptions}
+              placeholder={
+                influencerVerticalSelectOptions.length === 0
+                  ? "No Influencer Vertical values available"
+                  : "Select influencer vertical"
+              }
+              searchPlaceholder="Search influencer verticals..."
               value={draft.category}
             />
           </label>
@@ -287,19 +614,22 @@ export function NewScoutingWorkspace({
           <input
             autoComplete="off"
             disabled={isBusy}
-            maxLength={50}
+            maxLength={120}
+            name="niche"
             onChange={(event) => updateDraftField("niche", event.currentTarget.value)}
-            placeholder="Strategy"
+            placeholder="e.g. Competitive shooters, strategy RPGs"
             value={draft.niche}
           />
         </label>
 
-        <p
-          className={`new-scouting__status new-scouting__status--${requestState.status}`}
-          role={requestState.status === "error" ? "alert" : "status"}
-        >
-          {requestState.message}
-        </p>
+        {requestState.message ? (
+          <p
+            className={`new-scouting__status new-scouting__status--${requestState.status}`}
+            role={requestState.status === "error" ? "alert" : "status"}
+          >
+            {requestState.message}
+          </p>
+        ) : null}
 
         <div className="new-scouting__actions">
           <button

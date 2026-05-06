@@ -16,6 +16,7 @@ vi.mock("react", async () => {
   return {
     ...actual,
     useState: useStateMock,
+    useMemo: <Value>(factory: () => Value) => factory(),
     startTransition: (callback: () => void) => callback(),
   };
 });
@@ -69,8 +70,7 @@ const DEFAULT_TEST_DRAFT = {
   niche: "Strategy",
 };
 
-const IDLE_MESSAGE =
-  "Pick an active campaign and add at least one catalog criterion to build this scouting list.";
+const IDLE_MESSAGE = "";
 
 function findElementsByType(node: ReactNode, type: string): Array<ReactElement<Record<string, unknown>>> {
   if (Array.isArray(node)) {
@@ -87,6 +87,21 @@ function findElementsByType(node: ReactNode, type: string): Array<ReactElement<R
     ...(element.type === type ? [element] : []),
     ...findElementsByType(element.props.children as ReactNode, type),
   ];
+}
+
+function findInputByName(
+  node: ReactNode,
+  name: string,
+): ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }> {
+  const input = findElementsByType(node, "input").find((element) => element.props.name === name) as
+    | ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
+    | undefined;
+
+  if (!input) {
+    throw new Error(`Input with name ${name} not found.`);
+  }
+
+  return input;
 }
 
 function renderWorkspace(options?: {
@@ -116,6 +131,9 @@ function renderWorkspace(options?: {
   const element = NewScoutingWorkspace({
     initialCampaignManagers: [CAMPAIGN_MANAGER_OPTION],
     initialCampaigns: [CAMPAIGN_OPTION],
+    initialCountryRegionOptions: ["Germany", "Austria"],
+    initialInfluencerVerticalOptions: ["Gaming", "Tech"],
+    initialLanguageOptions: ["German", "English"],
   });
 
   return {
@@ -181,11 +199,9 @@ describe("new scouting workspace behavior", () => {
 
   it("updates the subscribers draft when the subscribers field changes", () => {
     const { element, setDraft } = renderWorkspace();
-    const inputs = findElementsByType(element, "input") as Array<
-      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
-    >;
+    const subscribersInput = findInputByName(element, "subscribersMin");
 
-    inputs[2]?.props.onChange({ currentTarget: { value: "250K+" } });
+    subscribersInput.props.onChange({ currentTarget: { value: "7" } });
 
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
@@ -199,11 +215,9 @@ describe("new scouting workspace behavior", () => {
 
   it("updates the run name draft when the name field changes", () => {
     const { element, setDraft } = renderWorkspace();
-    const inputs = findElementsByType(element, "input") as Array<
-      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
-    >;
+    const nameInput = findInputByName(element, "name");
 
-    inputs[0]?.props.onChange({ currentTarget: { value: "Updated run" } });
+    nameInput.props.onChange({ currentTarget: { value: "Updated run" } });
 
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
@@ -217,11 +231,9 @@ describe("new scouting workspace behavior", () => {
 
   it("updates the target draft when the target field changes", () => {
     const { element, setDraft } = renderWorkspace();
-    const inputs = findElementsByType(element, "input") as Array<
-      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
-    >;
+    const targetInput = findInputByName(element, "target");
 
-    inputs[1]?.props.onChange({ currentTarget: { value: "35" } });
+    targetInput.props.onChange({ currentTarget: { value: "35" } });
 
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
@@ -235,11 +247,9 @@ describe("new scouting workspace behavior", () => {
 
   it("updates the niche draft when the niche field changes", () => {
     const { element, setDraft } = renderWorkspace();
-    const inputs = findElementsByType(element, "input") as Array<
-      ReactElement<{ onChange: (event: { currentTarget: { value: string } }) => void }>
-    >;
+    const nicheInput = findInputByName(element, "niche");
 
-    inputs[8]?.props.onChange({ currentTarget: { value: "Walkthroughs" } });
+    nicheInput.props.onChange({ currentTarget: { value: "Walkthroughs" } });
 
     const updateDraft = setDraft.mock.calls[0]?.[0] as
       | ((draft: typeof DEFAULT_TEST_DRAFT) => typeof DEFAULT_TEST_DRAFT)
