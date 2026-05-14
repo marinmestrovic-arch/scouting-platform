@@ -8,6 +8,12 @@ const integration = databaseUrl ? describe.sequential : describe.skip;
 type ImportsModule = typeof import("./imports/index");
 type ImportsQueueModule = typeof import("./imports/queue");
 
+const CSV_CHANNEL_ONE_ID = "UCcsvimport0000000000001";
+const CSV_CHANNEL_NINE_ID = "UCcsvimport0000000000009";
+const DUPLICATE_URL_FORMAT_CHANNEL_ID = "UCdupeurls00000000000001";
+const SAME_TITLE_CHANNEL_ONE_ID = "UCsametitle0000000000001";
+const SAME_TITLE_CHANNEL_TWO_ID = "UCsametitle0000000000002";
+
 integration("week 5 csv import core integration", () => {
   let prisma: PrismaClient;
 
@@ -137,6 +143,21 @@ integration("week 5 csv import core integration", () => {
       CSV_IMPORT_HEADER.join(","),
       ...rows,
     ].join("\n");
+  }
+
+  function makeCreatorImportRow(
+    values: Partial<Record<(typeof CSV_IMPORT_HEADER)[number], string>>,
+  ): string {
+    return CSV_IMPORT_HEADER
+      .map((header) => values[header] ?? "")
+      .map((value) => {
+        if (/[",\n\r]/.test(value)) {
+          return `"${value.replace(/"/g, "\"\"")}"`;
+        }
+
+        return value;
+      })
+      .join(",");
   }
 
   function makeDeprecatedYoutubeAverageHeader(): string {
@@ -388,9 +409,9 @@ integration("week 5 csv import core integration", () => {
       fileName: "dedupe.csv",
       fileSize: 1024,
       csvText: makeLegacyCsv([
-        "UC-CSV-1,Creator One,FIRST@example.com,,,100,1000,10,first row,ops,Male,Gaming,Croatia,Croatian",
-        "UC-CSV-1,Creator One,first@example.com,,,,2000,,duplicate email,ops,,,,",
-        "UC-CSV-1,Creator One,second@example.com,,,,,11,second email,ops,,,,German",
+        `${CSV_CHANNEL_ONE_ID},Creator One,FIRST@example.com,,,100,1000,10,first row,ops,Male,Gaming,Croatia,Croatian`,
+        `${CSV_CHANNEL_ONE_ID},Creator One,first@example.com,,,,2000,,duplicate email,ops,,,,`,
+        `${CSV_CHANNEL_ONE_ID},Creator One,second@example.com,,,,,11,second email,ops,,,,German`,
       ]),
     });
     expect(batch.templateVersion).toBe("v2");
@@ -416,6 +437,7 @@ integration("week 5 csv import core integration", () => {
 
     const channels = await prisma.channel.findMany();
     expect(channels).toHaveLength(1);
+    expect(channels[0]?.youtubeChannelId).toBe(CSV_CHANNEL_ONE_ID);
     expect(channels[0]?.influencerType).toBe("Male");
     expect(channels[0]?.influencerVertical).toBe("Gaming");
     expect(channels[0]?.countryRegion).toBe("Croatia");
@@ -459,6 +481,185 @@ integration("week 5 csv import core integration", () => {
 
     const retriedContacts = await prisma.channelContact.count();
     expect(retriedContacts).toBe(2);
+  });
+
+  it("reuses a channel when the same youtube channel is imported with different url formats", async () => {
+    vi.resetModules();
+    vi.doUnmock("./imports/queue");
+    vi.doMock("@scouting-platform/integrations", async () => {
+      const actual = await vi.importActual<typeof import("@scouting-platform/integrations")>(
+        "@scouting-platform/integrations",
+      );
+
+      return {
+        ...actual,
+        resolveYoutubeChannelForEnrichment: vi.fn(async () => ({
+          channelId: DUPLICATE_URL_FORMAT_CHANNEL_ID,
+          canonicalUrl: "https://www.youtube.com/@samecreator",
+        })),
+      };
+    });
+
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "same-channel-different-urls.csv",
+      fileSize: 1024,
+      csvText: makeCreatorListCsv([
+        makeCreatorImportRow({
+          "Channel Name": "Same Creator",
+          "Channel URL": `https://www.youtube.com/channel/${DUPLICATE_URL_FORMAT_CHANNEL_ID}`,
+          Email: "first@example.com",
+          "First Name": "First",
+          "Last Name": "Creator",
+          "Influencer Type": "Male",
+          "Influencer Vertical": "Gaming",
+          "Country/Region": "Croatia",
+          Language: "Croatian",
+          "YouTube Followers": "1000",
+        }),
+        makeCreatorImportRow({
+          "Channel Name": "Same Creator",
+          "Channel URL": "https://www.youtube.com/@samecreator",
+          Email: "second@example.com",
+          "First Name": "Second",
+          "Last Name": "Creator",
+          "Influencer Type": "Male",
+          "Influencer Vertical": "Gaming",
+          "Country/Region": "Croatia",
+          Language: "Croatian",
+          "YouTube Handle": "@samecreator",
+          "YouTube URL": "https://www.youtube.com/@samecreator",
+          "YouTube Followers": "1000",
+        }),
+      ]),
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'imports.csv.process'
+    `);
+
+    await imports.executeCsvImportBatch({
+      importBatchId: batch.id,
+      requestedByUserId: admin.id,
+    });
+
+    const channels = await prisma.channel.findMany({
+      where: {
+        youtubeChannelId: DUPLICATE_URL_FORMAT_CHANNEL_ID,
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(channels).toHaveLength(1);
+
+    const rows = await prisma.csvImportRow.findMany({
+      where: {
+        batchId: batch.id,
+      },
+      orderBy: {
+        rowNumber: "asc",
+      },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.status === "IMPORTED")).toBe(true);
+    expect(rows.every((row) => row.channelId === channels[0]?.id)).toBe(true);
+  });
+
+  it("creates separate channels when titles match but youtube channel ids differ", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "same-title-different-ids.csv",
+      fileSize: 1024,
+      csvText: makeCreatorListCsv([
+        makeCreatorImportRow({
+          "Channel Name": "Shared Title",
+          "Channel URL": `https://www.youtube.com/channel/${SAME_TITLE_CHANNEL_ONE_ID}`,
+          Email: "first@example.com",
+          "First Name": "First",
+          "Last Name": "Creator",
+          "Influencer Type": "Male",
+          "Influencer Vertical": "Gaming",
+          "Country/Region": "Croatia",
+          Language: "Croatian",
+          "YouTube Followers": "1000",
+        }),
+        makeCreatorImportRow({
+          "Channel Name": "Shared Title",
+          "Channel URL": `https://www.youtube.com/channel/${SAME_TITLE_CHANNEL_TWO_ID}`,
+          Email: "second@example.com",
+          "First Name": "Second",
+          "Last Name": "Creator",
+          "Influencer Type": "Male",
+          "Influencer Vertical": "Gaming",
+          "Country/Region": "Croatia",
+          Language: "Croatian",
+          "YouTube Followers": "1000",
+        }),
+      ]),
+    });
+
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'imports.csv.process'
+    `);
+
+    await imports.executeCsvImportBatch({
+      importBatchId: batch.id,
+      requestedByUserId: admin.id,
+    });
+
+    const channels = await prisma.channel.findMany({
+      where: {
+        title: "Shared Title",
+      },
+      orderBy: {
+        youtubeChannelId: "asc",
+      },
+    });
+    expect(channels.map((channel) => channel.youtubeChannelId)).toEqual([
+      SAME_TITLE_CHANNEL_ONE_ID,
+      SAME_TITLE_CHANNEL_TWO_ID,
+    ]);
+  });
+
+  it("fails legacy rows with invalid youtube channel ids without creating a channel", async () => {
+    const imports = await loadImports();
+    const admin = await createUser("admin@example.com");
+    await seedSyncedDropdownValues();
+
+    const batch = await imports.createCsvImportBatch({
+      requestedByUserId: admin.id,
+      fileName: "invalid-youtube-channel-id.csv",
+      fileSize: 512,
+      csvText: makeLegacyCsv([
+        "not-a-channel-id,Creator One,creator@example.com,,,100,1000,10,first row,ops,Male,Gaming,Croatia,Croatian",
+      ]),
+    });
+
+    expect(batch.status).toBe("completed");
+    expect(batch.importedRowCount).toBe(0);
+    expect(batch.failedRowCount).toBe(1);
+
+    const row = await prisma.csvImportRow.findFirstOrThrow({
+      where: {
+        batchId: batch.id,
+      },
+      select: {
+        errorMessage: true,
+      },
+    });
+    expect(row.errorMessage).toContain("YouTube Channel ID is invalid");
+
+    const channelCount = await prisma.channel.count();
+    expect(channelCount).toBe(0);
   });
 
   it("resolves existing channels when stored handle omits @ but csv uses @handle youtube urls", async () => {
@@ -672,7 +873,7 @@ integration("week 5 csv import core integration", () => {
       fileName: "queue-failure.csv",
       fileSize: 512,
       csvText: makeLegacyCsv([
-        "UC-CSV-9,Creator Nine,creator-nine@example.com,,,100,1000,10,,ops,Male,Gaming,Croatia,Croatian",
+        `${CSV_CHANNEL_NINE_ID},Creator Nine,creator-nine@example.com,,,100,1000,10,,ops,Male,Gaming,Croatia,Croatian`,
       ]),
     });
 

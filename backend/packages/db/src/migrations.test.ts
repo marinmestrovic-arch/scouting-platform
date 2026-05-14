@@ -121,6 +121,7 @@ describe("week 1 auth/catalog migration", () => {
     expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS sessions");
     expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS user_provider_credentials");
     expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS channels");
+    expect(migrationSql).toContain("youtube_channel_id text NOT NULL UNIQUE");
     expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS audit_events");
   });
 });

@@ -70,6 +70,20 @@ export type ChannelAdvancedReportSummary = ContractChannelAdvancedReportSummary;
 export type ChannelAdvancedReportDetail = ContractChannelAdvancedReportDetail;
 export type ChannelInsights = ContractChannelInsights;
 
+function isYoutubeChannelIdUniqueConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+
+  const target = error.meta?.target;
+
+  if (Array.isArray(target)) {
+    return target.includes("youtubeChannelId") || target.includes("youtube_channel_id");
+  }
+
+  return typeof target === "string" && target.includes("youtube_channel_id");
+}
+
 export type ChannelSummary = {
   id: string;
   youtubeChannelId: string;
@@ -1156,7 +1170,7 @@ export async function upsertChannelSkeleton(input: {
   };
 
   const channelId = await withDbTransaction(async (tx) => {
-    const existing = await tx.channel.findUnique({
+    let existing = await tx.channel.findUnique({
       where: {
         youtubeChannelId: input.youtubeChannelId,
       },
@@ -1170,21 +1184,44 @@ export async function upsertChannelSkeleton(input: {
     });
 
     if (!existing) {
-      const created = await tx.channel.create({
-        data: {
-          youtubeChannelId: input.youtubeChannelId,
-          title: automatedValues.title,
-          handle: automatedValues.handle,
-          youtubeUrl: `https://www.youtube.com/channel/${input.youtubeChannelId}`,
-          description: automatedValues.description,
-          thumbnailUrl: automatedValues.thumbnailUrl,
-        },
-        select: {
-          id: true,
-        },
-      });
+      try {
+        const created = await tx.channel.create({
+          data: {
+            youtubeChannelId: input.youtubeChannelId,
+            title: automatedValues.title,
+            handle: automatedValues.handle,
+            youtubeUrl: `https://www.youtube.com/channel/${input.youtubeChannelId}`,
+            description: automatedValues.description,
+            thumbnailUrl: automatedValues.thumbnailUrl,
+          },
+          select: {
+            id: true,
+          },
+        });
 
-      return created.id;
+        return created.id;
+      } catch (error) {
+        if (!isYoutubeChannelIdUniqueConflict(error)) {
+          throw error;
+        }
+
+        existing = await tx.channel.findUnique({
+          where: {
+            youtubeChannelId: input.youtubeChannelId,
+          },
+          select: {
+            id: true,
+            title: true,
+            handle: true,
+            description: true,
+            thumbnailUrl: true,
+          },
+        });
+
+        if (!existing) {
+          throw error;
+        }
+      }
     }
 
     const updateData: Prisma.ChannelUpdateInput = {

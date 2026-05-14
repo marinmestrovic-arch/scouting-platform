@@ -1,7 +1,7 @@
 import {
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
   CsvImportRowStatus as PrismaCsvImportRowStatus,
-  type Prisma,
+  Prisma,
 } from "@prisma/client";
 import {
   CREATOR_LIST_HUBSPOT_IMPORT_HEADER_BY_NORMALIZED,
@@ -542,11 +542,25 @@ function validateRequiredField(
 }
 
 function isValidYoutubeChannelId(value: string): boolean {
-  return value.length > 0 && value.length <= 200;
+  return isLikelyCanonicalYoutubeChannelId(value.trim());
 }
 
 function isLikelyCanonicalYoutubeChannelId(value: string): boolean {
   return /^UC[a-zA-Z0-9_-]{22}$/.test(value);
+}
+
+function isYoutubeChannelIdUniqueConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+
+  const target = error.meta?.target;
+
+  if (Array.isArray(target)) {
+    return target.includes("youtubeChannelId") || target.includes("youtube_channel_id");
+  }
+
+  return typeof target === "string" && target.includes("youtube_channel_id");
 }
 
 function isValidChannelTitle(value: string): boolean {
@@ -676,19 +690,14 @@ function extractYoutubeChannelIdFromUrl(value: string | null): string | null {
     const parsedUrl = new URL(normalizedValue);
     const host = parsedUrl.hostname.replace(/^www\./i, "").toLowerCase();
 
-    if (!host.endsWith("youtube.com")) {
+    if (!host.endsWith("youtube.com") && !host.endsWith("youtu.be")) {
       return null;
     }
 
-    const pathParts = parsedUrl.pathname.split("/").filter(Boolean);
+    const channelId = normalizedValue.match(/(?:^|[/?#=&])(UC[a-zA-Z0-9_-]{22})(?:$|[/?#=&])/u)?.[1]
+      ?? null;
 
-    if (pathParts[0]?.toLowerCase() !== "channel") {
-      return null;
-    }
-
-    const channelId = pathParts[1]?.trim() ?? "";
-
-    if (!isLikelyCanonicalYoutubeChannelId(channelId)) {
+    if (!channelId || !isLikelyCanonicalYoutubeChannelId(channelId)) {
       return null;
     }
 
@@ -1889,6 +1898,14 @@ async function applyPendingRow(input: {
     let channel: { id: string } | null = null;
 
     if (resolvedYoutubeChannelId) {
+      if (!isLikelyCanonicalYoutubeChannelId(resolvedYoutubeChannelId)) {
+        throw new ServiceError(
+          "CSV_IMPORT_ROW_CHANNEL_INVALID",
+          400,
+          "YouTube Channel ID is invalid",
+        );
+      }
+
       channel = await tx.channel.findUnique({
         where: {
           youtubeChannelId: resolvedYoutubeChannelId,
@@ -1991,7 +2008,6 @@ async function applyPendingRow(input: {
         for (const candidate of resolutionCandidates) {
           const resolved = await resolveYoutubeChannelForEnrichment({
             input: candidate,
-            channelName: row.channelTitle,
             ...(input.youtubeApiKey ? { apiKey: input.youtubeApiKey } : {}),
           });
 
@@ -2027,32 +2043,51 @@ async function applyPendingRow(input: {
         preferredYoutubeUrl = `https://www.youtube.com/channel/${resolvedYoutubeChannelId}`;
       }
 
-      channel = await tx.channel.create({
-        data: {
-          youtubeChannelId: resolvedYoutubeChannelId,
-          title: row.channelTitle,
-          ...(preferredYoutubeHandle ? { handle: preferredYoutubeHandle } : {}),
-          ...(preferredYoutubeUrl ? { youtubeUrl: preferredYoutubeUrl } : {}),
-          ...(row.instagramHandle ? { instagramHandle: row.instagramHandle } : {}),
-          ...(normalizedInstagramUrl ? { instagramUrl: normalizedInstagramUrl } : {}),
-          ...(row.tiktokHandle ? { tiktokHandle: row.tiktokHandle } : {}),
-          ...(normalizedTiktokUrl ? { tiktokUrl: normalizedTiktokUrl } : {}),
-          ...(row.twitchHandle ? { twitchHandle: row.twitchHandle } : {}),
-          ...(normalizedTwitchUrl ? { twitchUrl: normalizedTwitchUrl } : {}),
-          ...(row.kickHandle ? { kickHandle: row.kickHandle } : {}),
-          ...(normalizedKickUrl ? { kickUrl: normalizedKickUrl } : {}),
-          ...(row.xHandle ? { xHandle: row.xHandle } : {}),
-          ...(normalizedXUrl ? { xUrl: normalizedXUrl } : {}),
-          ...(row.influencerType ? { influencerType: row.influencerType } : {}),
-          ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
-          ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
-          ...(row.language ? { contentLanguage: row.language } : {}),
-        },
-        select: {
-          id: true,
-        },
-      });
-      createdChannel = true;
+      try {
+        channel = await tx.channel.create({
+          data: {
+            youtubeChannelId: resolvedYoutubeChannelId,
+            title: row.channelTitle,
+            ...(preferredYoutubeHandle ? { handle: preferredYoutubeHandle } : {}),
+            ...(preferredYoutubeUrl ? { youtubeUrl: preferredYoutubeUrl } : {}),
+            ...(row.instagramHandle ? { instagramHandle: row.instagramHandle } : {}),
+            ...(normalizedInstagramUrl ? { instagramUrl: normalizedInstagramUrl } : {}),
+            ...(row.tiktokHandle ? { tiktokHandle: row.tiktokHandle } : {}),
+            ...(normalizedTiktokUrl ? { tiktokUrl: normalizedTiktokUrl } : {}),
+            ...(row.twitchHandle ? { twitchHandle: row.twitchHandle } : {}),
+            ...(normalizedTwitchUrl ? { twitchUrl: normalizedTwitchUrl } : {}),
+            ...(row.kickHandle ? { kickHandle: row.kickHandle } : {}),
+            ...(normalizedKickUrl ? { kickUrl: normalizedKickUrl } : {}),
+            ...(row.xHandle ? { xHandle: row.xHandle } : {}),
+            ...(normalizedXUrl ? { xUrl: normalizedXUrl } : {}),
+            ...(row.influencerType ? { influencerType: row.influencerType } : {}),
+            ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
+            ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
+            ...(row.language ? { contentLanguage: row.language } : {}),
+          },
+          select: {
+            id: true,
+          },
+        });
+        createdChannel = true;
+      } catch (error) {
+        if (!isYoutubeChannelIdUniqueConflict(error)) {
+          throw error;
+        }
+
+        channel = await tx.channel.findUnique({
+          where: {
+            youtubeChannelId: resolvedYoutubeChannelId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (!channel) {
+          throw error;
+        }
+      }
     }
 
     if (!channel && !resolvedYoutubeChannelId) {
