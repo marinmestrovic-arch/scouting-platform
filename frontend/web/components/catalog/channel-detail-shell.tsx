@@ -568,23 +568,26 @@ function renderReadyState(
           </div>
         </div>
 
-        <dl className="creator-profile__hero-meta channel-detail-shell__route-meta">
-          <div>
+      </section>
+
+      <section aria-label="Channel identifiers" className="creator-profile__meta-strip">
+        <dl className="channel-detail-shell__route-meta">
+          <article className="creator-meta-card">
             <dt>Catalog record ID</dt>
             <dd>
               <code>{channel.id}</code>
             </dd>
-          </div>
-          <div>
+          </article>
+          <article className="creator-meta-card">
             <dt>YouTube channel ID</dt>
             <dd>
               <code>{channel.youtubeChannelId}</code>
             </dd>
-          </div>
-          <div>
+          </article>
+          <article className="creator-meta-card">
             <dt>Last updated</dt>
             <dd>{formatIsoTimestamp(channel.updatedAt)}</dd>
-          </div>
+          </article>
         </dl>
       </section>
 

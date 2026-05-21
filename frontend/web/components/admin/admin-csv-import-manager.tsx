@@ -505,16 +505,54 @@ export function AdminCsvImportManagerView(props: AdminCsvImportManagerViewProps)
             </header>
 
             <div className="admin-csv-imports__template-copy">
-              <p>
-                Template version <strong>{CSV_IMPORT_TEMPLATE_VERSION}</strong>. Header must exactly
-                match:
+              <ul className="admin-csv-imports__quick-facts">
+                <li>
+                  <span className="admin-csv-imports__fact-label">Template</span>
+                  <span className="admin-csv-imports__fact-value">
+                    v<strong>{CSV_IMPORT_TEMPLATE_VERSION}</strong>
+                  </span>
+                </li>
+                <li>
+                  <span className="admin-csv-imports__fact-label">Max size</span>
+                  <span className="admin-csv-imports__fact-value">5 MiB</span>
+                </li>
+                <li>
+                  <span className="admin-csv-imports__fact-label">Max rows</span>
+                  <span className="admin-csv-imports__fact-value">
+                    {CSV_IMPORT_MAX_DATA_ROWS} rows
+                  </span>
+                </li>
+              </ul>
+              <p className="admin-csv-imports__limits-note">
+                Maximum file size 5 MiB. Up to {CSV_IMPORT_MAX_DATA_ROWS} data rows per batch.
               </p>
-              <code>{CSV_IMPORT_HEADER_LINE}</code>
-              <p>Maximum file size 5 MiB. Up to {CSV_IMPORT_MAX_DATA_ROWS} data rows per batch.</p>
-              <p>
-                `influencerType`, `influencerVertical`, `countryRegion`, and `language` must match
-                the saved creator profile values.
-              </p>
+              <details className="admin-csv-imports__header-guide">
+                <summary>
+                  <span className="admin-csv-imports__header-guide-title">
+                    Required column order
+                  </span>
+                  <span className="admin-csv-imports__header-guide-count">
+                    {CSV_IMPORT_HEADER.length} columns
+                  </span>
+                </summary>
+                <div className="admin-csv-imports__header-guide-body">
+                  <p className="admin-csv-imports__header-guide-hint">
+                    Header must exactly match. `influencerType`, `influencerVertical`,
+                    `countryRegion`, and `language` must match the saved creator profile values.
+                  </p>
+                  <ol className="admin-csv-imports__column-list">
+                    {CSV_IMPORT_HEADER.map((columnName, index) => (
+                      <li key={columnName}>
+                        <span className="admin-csv-imports__column-index">{index + 1}</span>
+                        <code>{columnName}</code>
+                      </li>
+                    ))}
+                  </ol>
+                  <code className="admin-csv-imports__header-guide-raw">
+                    {CSV_IMPORT_HEADER_LINE}
+                  </code>
+                </div>
+              </details>
             </div>
 
             <form className="admin-csv-imports__upload-form" onSubmit={handleUploadSubmit}>
