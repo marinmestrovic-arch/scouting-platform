@@ -230,6 +230,7 @@ export function DashboardWorkspace({
     ],
     [filterOptions],
   );
+  const allRuns = requestState.status === "ready" ? requestState.data.items : [];
   const visibleRuns =
     requestState.status === "ready"
       ? requestState.data.items.filter((run) => {
@@ -242,6 +243,13 @@ export function DashboardWorkspace({
           return matchesQuery && matchesStatusFilter(run, statusFilter);
         })
       : [];
+  const summary = useMemo(() => {
+    const active = allRuns.filter((run) => run.status === "queued" || run.status === "running").length;
+    const completed = allRuns.filter((run) => run.status === "completed").length;
+    const failed = allRuns.filter((run) => run.status === "failed").length;
+    const scouted = allRuns.reduce((total, run) => total + run.resultCount, 0);
+    return { active, completed, failed, scouted };
+  }, [allRuns]);
   const isPolling = visibleRuns.some((run) => shouldPollRunStatus(run.status));
   const hasAnyFiltersApplied =
     query.trim().length > 0 ||
@@ -298,6 +306,37 @@ export function DashboardWorkspace({
       />
       <div className="page-container page-section__body">
         <div className="dashboard-workspace">
+          <section
+            aria-label="Run summary"
+            className="dashboard-workspace__summary"
+          >
+            <article className="stat-card">
+              <p className="stat-card__label">Active runs</p>
+              <p className="stat-card__value">{summary.active}</p>
+              <p className="stat-card__hint">Queued or running right now</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-card__label">Completed</p>
+              <p className="stat-card__value">{summary.completed}</p>
+              <p className="stat-card__hint">In the loaded window</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-card__label">Creators scouted</p>
+              <p className="stat-card__value">{summary.scouted.toLocaleString()}</p>
+              <p className="stat-card__hint">Across loaded runs</p>
+            </article>
+            <article
+              className={
+                summary.failed > 0
+                  ? "stat-card stat-card--alert"
+                  : "stat-card"
+              }
+            >
+              <p className="stat-card__label">Needs attention</p>
+              <p className="stat-card__value">{summary.failed}</p>
+              <p className="stat-card__hint">Runs that failed</p>
+            </article>
+          </section>
           <section className="dashboard-workspace__table-panel">
             <div className="dashboard-workspace__filters">
               <label className="new-scouting__field dashboard-workspace__field">
