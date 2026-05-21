@@ -9758,7 +9758,7 @@ textarea:focus-visible,
 /* Hero */
 .creator-profile__hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(15rem, 22rem);
   gap: var(--space-6);
   padding: clamp(1.5rem, 2.4vw, 2.4rem);
   background:
@@ -9964,15 +9964,15 @@ textarea:focus-visible,
 .creator-profile__hero-actions .channel-detail-shell__status--stale::before    { background: var(--brand-highlight); }
 .creator-profile__hero-actions .channel-detail-shell__status--failed::before   { background: #FFB4B4; }
 
-/* Meta strip — white identifier cards styled like KPIs */
-.creator-profile__meta-strip {
+/* Hero meta column — KPI-style white cards stacked inside the navy hero */
+.creator-profile__hero-meta {
+  position: relative;
+  z-index: 1;
   display: grid;
-}
-.creator-profile__meta-strip > dl {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  align-content: start;
   gap: var(--space-3);
   margin: 0;
+  min-width: 0;
 }
 .creator-meta-card {
   position: relative;
@@ -10399,8 +10399,14 @@ textarea:focus-visible,
 
 /* Responsive */
 @media (max-width: 980px) {
+  .creator-profile__hero {
+    grid-template-columns: 1fr;
+  }
   .creator-profile__hero-main {
     grid-template-columns: auto 1fr;
+  }
+  .creator-profile__hero-meta {
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   }
   .creator-profile__layout {
     grid-template-columns: 1fr;

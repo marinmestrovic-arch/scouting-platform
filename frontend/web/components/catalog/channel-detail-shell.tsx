@@ -568,10 +568,7 @@ function renderReadyState(
           </div>
         </div>
 
-      </section>
-
-      <section aria-label="Channel identifiers" className="creator-profile__meta-strip">
-        <dl className="channel-detail-shell__route-meta">
+        <dl className="creator-profile__hero-meta channel-detail-shell__route-meta">
           <article className="creator-meta-card">
             <dt>Catalog record ID</dt>
             <dd>
