@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { LoginForm } from "../../components/auth/login-form";
 import { APP_TITLE } from "../../lib/shell";
@@ -7,9 +6,7 @@ export default function LoginPage() {
   return (
     <main className="login-page login-page--with-brand">
       <aside aria-hidden="true" className="login-brand-panel">
-        <div className="login-brand-panel__logo">
-          <Image alt="Arch" height={28} priority src="/arch-logo.svg" width={104} />
-        </div>
+        <span className="login-brand-panel__wordmark">ARCH.</span>
         <div>
           <h2 className="login-brand-panel__headline">
             The campaign-manager workspace for <em>creator scouting at scale.</em>

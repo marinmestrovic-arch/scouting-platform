@@ -9239,8 +9239,14 @@ select:focus {
     background: radial-gradient(circle, rgba(53, 98, 255, 0.18) 0%, transparent 70%);
     pointer-events: none;
   }
-  .login-brand-panel__logo svg path {
-    fill: var(--color-text-inverse) !important;
+  .login-brand-panel__wordmark {
+    position: relative;
+    z-index: 1;
+    display: inline-block;
+    color: var(--color-text-inverse);
+    font-size: 1.75rem;
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.02em;
   }
   .login-brand-panel__headline {
     position: relative;
