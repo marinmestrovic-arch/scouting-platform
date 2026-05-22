@@ -38,6 +38,10 @@ docker compose up --build
 This boots Postgres, runs bootstrap setup, applies Prisma migrations, seeds the initial admin, and
 starts both the web app and worker entirely inside Docker.
 
+Optional: set `INITIAL_ADMIN_YOUTUBE_API_KEY` in `.env` before starting the stack if you want
+local continuous enrichment to run immediately. Bootstrap encrypts that key onto the seeded admin
+account. Existing local `.env` files that use `YOUTUBE_API_KEY` are also accepted as a fallback.
+
 If you also want host-side `pnpm` commands available, use the longer toolchain setup:
 
 ```bash
@@ -62,7 +66,8 @@ password: StrongAdminPassword123
 
 The Compose bootstrap service now installs dependencies, waits for Postgres, ensures the test DB
 exists, applies Prisma migrations, and idempotently seeds the initial admin before `web` and
-`worker` start.
+`worker` start. The web service stores its Next.js dev build output in a Docker-managed volume so
+host-side `.next` artifacts from `pnpm build` cannot corrupt the container dev server.
 
 The first `pnpm infra:up` can take a few minutes because the bootstrap container installs the
 workspace dependencies into Docker-managed volumes.
