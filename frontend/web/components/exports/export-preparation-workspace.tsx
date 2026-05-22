@@ -225,13 +225,19 @@ export function ExportPreparationWorkspace({
     isHubspotPreview(currentPreview) &&
     (Object.values(drafts.touchedRowFields).some((fields) => fields.size > 0) ||
       drafts.touchedDefaults.size > 0);
-  const canExportToGoogleSheets =
+  const hasGoogleSheetsTarget =
     googleSheetsRequest.spreadsheetIdOrUrl.trim().length > 0 &&
-    googleSheetsRequest.sheetName.trim().length > 0 &&
+    googleSheetsRequest.sheetName.trim().length > 0;
+  const canExportToGoogleSheets =
+    hasGoogleSheetsTarget &&
     googleSheetsState !== "saving" &&
     creatorListEnrichmentState !== "saving" &&
     requestState !== "saving" &&
     !hasPendingChanges;
+  const googleSheetsBlockingMessage =
+    hasGoogleSheetsTarget && hasPendingChanges
+      ? "Save HubSpot preparation before exporting to Google Sheets."
+      : null;
   const canEnrichCreatorList =
     googleSheetsState !== "saving" &&
     creatorListEnrichmentState !== "saving" &&
@@ -599,6 +605,12 @@ export function ExportPreparationWorkspace({
               />
             </label>
           </div>
+
+          {googleSheetsBlockingMessage ? (
+            <p className="workspace-copy" role="status">
+              {googleSheetsBlockingMessage}
+            </p>
+          ) : null}
 
           {googleSheetsMessage ? (
             <p

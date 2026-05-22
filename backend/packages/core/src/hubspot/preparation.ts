@@ -21,6 +21,12 @@ export const HUBSPOT_DEFAULT_FIELD_KEYS = [
   "language",
 ] as const;
 
+export const HUBSPOT_RUN_DEFAULT_FIELD_KEYS = [
+  "currency",
+  "dealType",
+  "activationType",
+] as const;
+
 export const HUBSPOT_ROW_OVERRIDE_FIELD_KEYS = [
   "firstName",
   "lastName",
@@ -30,6 +36,7 @@ export const HUBSPOT_ROW_OVERRIDE_FIELD_KEYS = [
 ] as const;
 
 export type HubspotDefaultFieldKey = (typeof HUBSPOT_DEFAULT_FIELD_KEYS)[number];
+export type HubspotRunDefaultFieldKey = (typeof HUBSPOT_RUN_DEFAULT_FIELD_KEYS)[number];
 export type HubspotRowOverrideFieldKey = (typeof HUBSPOT_ROW_OVERRIDE_FIELD_KEYS)[number];
 
 export type HubspotPreparationRun = {
@@ -250,6 +257,17 @@ function hasAnyRowOverrideValue(values: Record<string, string | null | undefined
   return Object.values(values).some((value) => typeof value === "string" && value.trim().length > 0);
 }
 
+export function buildHubspotRunDefaultsUpdate(input: HubspotPrepUpdateDefaults): Record<
+  HubspotRunDefaultFieldKey,
+  string | null
+> {
+  return {
+    currency: input.currency.trim() || null,
+    dealType: input.dealType.trim() || null,
+    activationType: input.activationType.trim() || null,
+  };
+}
+
 export async function updateHubspotPreparation(input: RunAccessInput & {
   actorUserId: string;
   payload: HubspotPrepUpdateRequest;
@@ -291,21 +309,13 @@ export async function updateHubspotPreparation(input: RunAccessInput & {
       throw new ServiceError("RUN_FORBIDDEN", 403, "Forbidden");
     }
 
-    for (const field of HUBSPOT_DEFAULT_FIELD_KEYS) {
+    for (const field of HUBSPOT_RUN_DEFAULT_FIELD_KEYS) {
       await validateDropdownValue(field, payload.defaults[field], dropdownOptions);
     }
 
     await tx.runRequest.update({
       where: { id: run.id },
-      data: {
-        currency: payload.defaults.currency.trim() || null,
-        dealType: payload.defaults.dealType.trim() || null,
-        activationType: payload.defaults.activationType.trim() || null,
-        hubspotInfluencerType: payload.defaults.influencerType.trim() || null,
-        hubspotInfluencerVertical: payload.defaults.influencerVertical.trim() || null,
-        hubspotCountryRegion: payload.defaults.countryRegion.trim() || null,
-        hubspotLanguage: payload.defaults.language.trim() || null,
-      },
+      data: buildHubspotRunDefaultsUpdate(payload.defaults),
     });
 
     const overridesByRowKey = new Map(run.hubspotRowOverrides.map((row) => [row.rowKey, row]));

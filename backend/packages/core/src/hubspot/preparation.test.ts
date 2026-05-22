@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveHubspotInfluencerTypeFallback } from "./preparation";
+import {
+  buildHubspotRunDefaultsUpdate,
+  resolveHubspotInfluencerTypeFallback,
+} from "./preparation";
 
 describe("resolveHubspotInfluencerTypeFallback", () => {
   it("prefers the channel value when present", () => {
@@ -28,5 +31,45 @@ describe("resolveHubspotInfluencerTypeFallback", () => {
         runHubspotInfluencerType: undefined,
       }),
     ).toBe("");
+  });
+});
+
+describe("buildHubspotRunDefaultsUpdate", () => {
+  it("updates only the fields exposed in Run defaults", () => {
+    const update = buildHubspotRunDefaultsUpdate({
+      currency: " EUR ",
+      dealType: " Flat Fee ",
+      activationType: " YTI (Integration) ",
+      influencerType: "Legacy Influencer Type",
+      influencerVertical: "Gaming",
+      countryRegion: "Croatia",
+      language: "Croatian",
+    });
+
+    expect(update).toEqual({
+      currency: "EUR",
+      dealType: "Flat Fee",
+      activationType: "YTI (Integration)",
+    });
+    expect(update).not.toHaveProperty("hubspotInfluencerType");
+    expect(update).not.toHaveProperty("influencerType");
+  });
+
+  it("normalizes blank run defaults to null", () => {
+    expect(
+      buildHubspotRunDefaultsUpdate({
+        currency: " ",
+        dealType: "",
+        activationType: "\t",
+        influencerType: "Legacy Influencer Type",
+        influencerVertical: "",
+        countryRegion: "",
+        language: "",
+      }),
+    ).toEqual({
+      currency: null,
+      dealType: null,
+      activationType: null,
+    });
   });
 });

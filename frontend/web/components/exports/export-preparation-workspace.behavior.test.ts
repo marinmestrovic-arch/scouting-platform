@@ -151,6 +151,26 @@ function findButtonByText(element: ReactElement, text: string): ButtonElement {
   return button;
 }
 
+function getElementText(element: ReactElement): string {
+  function readText(node: ReactNode): string {
+    if (typeof node === "string") {
+      return node;
+    }
+
+    if (Array.isArray(node)) {
+      return node.map(readText).join("");
+    }
+
+    if (!node || typeof node !== "object" || !("props" in node)) {
+      return "";
+    }
+
+    return readText((node as ReactElement<{ children?: ReactNode }>).props.children);
+  }
+
+  return readText(element);
+}
+
 describe("export preparation workspace behavior", () => {
   beforeEach(() => {
     useMemoMock.mockReset();
@@ -365,6 +385,116 @@ describe("export preparation workspace behavior", () => {
     expect(enrichHubspotExportPreviewMock).toHaveBeenCalledWith(
       "7c5ca8f3-cd0d-42db-b4db-b863bdc3e821",
       expect.any(Object),
+    );
+  });
+
+  it("explains that Google Sheets export waits for pending prep changes to be saved", () => {
+    const preview = createHubspotPreview();
+    const pendingDrafts = {
+      defaults: {
+        currency: "EUR",
+        dealType: "",
+        activationType: "",
+        influencerType: "",
+        influencerVertical: "",
+        countryRegion: "",
+        language: "",
+      },
+      touchedDefaults: new Set(["currency"]),
+      rowValues: {},
+      touchedRowFields: {},
+    };
+
+    useStateMock
+      .mockReturnValueOnce([preview, vi.fn()])
+      .mockReturnValueOnce([pendingDrafts, vi.fn()])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          spreadsheetIdOrUrl: "https://docs.google.com/spreadsheets/d/sheet-id",
+          sheetName: "Prepared rows",
+        },
+        vi.fn(),
+      ])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          open: false,
+          percentage: 0,
+          message: "",
+          status: "idle",
+        },
+        vi.fn(),
+      ]);
+
+    const element = ExportPreparationWorkspace({
+      mode: "hubspot",
+      preview,
+    }) as ReactElement;
+    const googleSheetsButton = findButtonByText(element, "Export to Google Sheets");
+
+    expect(googleSheetsButton.props.disabled).toBe(true);
+    expect(getElementText(element)).toContain(
+      "Save HubSpot preparation before exporting to Google Sheets.",
+    );
+  });
+
+  it("enables Google Sheets export when the target is filled and prep changes are saved", () => {
+    const preview = createHubspotPreview();
+    const savedDrafts = {
+      defaults: {
+        currency: "EUR",
+        dealType: "Flat Fee",
+        activationType: "YTI (Integration)",
+        influencerType: "",
+        influencerVertical: "",
+        countryRegion: "",
+        language: "",
+      },
+      touchedDefaults: new Set<string>(),
+      rowValues: {},
+      touchedRowFields: {},
+    };
+
+    useStateMock
+      .mockReturnValueOnce([preview, vi.fn()])
+      .mockReturnValueOnce([savedDrafts, vi.fn()])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          spreadsheetIdOrUrl: "https://docs.google.com/spreadsheets/d/sheet-id",
+          sheetName: "Prepared rows",
+        },
+        vi.fn(),
+      ])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          open: false,
+          percentage: 0,
+          message: "",
+          status: "idle",
+        },
+        vi.fn(),
+      ]);
+
+    const element = ExportPreparationWorkspace({
+      mode: "hubspot",
+      preview,
+    }) as ReactElement;
+    const googleSheetsButton = findButtonByText(element, "Export to Google Sheets");
+
+    expect(googleSheetsButton.props.disabled).toBe(false);
+    expect(getElementText(element)).not.toContain(
+      "Save HubSpot preparation before exporting to Google Sheets.",
     );
   });
 });
