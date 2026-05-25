@@ -231,7 +231,7 @@ export function ClientsWorkspace({ initialData }: ClientsWorkspaceProps) {
       <div className="database-records__header">
         <div>
           <h2>Clients</h2>
-          <p className="workspace-copy">Browse client records and HubSpot sync state without leaving the table.</p>
+          <p className="workspace-copy">Browse client records.</p>
         </div>
         {initialData.permissions.canCreate ? (
           <button className="database-records__cta" onClick={openCreateClient} type="button">

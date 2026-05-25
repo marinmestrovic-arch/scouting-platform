@@ -296,7 +296,7 @@ export function DashboardWorkspace({
               Refresh
             </button>
             <Link className="workspace-button workspace-button--small" href="/new-scouting">
-              New run
+              New scouting
             </Link>
           </>
         }
@@ -517,7 +517,7 @@ export function DashboardWorkspace({
                                   href={getHubspotPreviewHref(run.id)}
                                   target="_blank"
                                 >
-                                  Export
+                                  Export to Sheets
                                 </Link>
                               </div>
                             </td>
@@ -553,10 +553,10 @@ export function DashboardWorkspace({
                 <EmptyState
                   action={
                     <Link className="workspace-button" href="/new-scouting">
-                      New run
+                      Start scouting
                     </Link>
                   }
-                  description="Create the first run from New scouting to populate the dashboard."
+                  description="Start a scouting run from New Scouting to populate the dashboard."
                   title="No scouting runs yet"
                 />
               )

@@ -312,12 +312,12 @@ describe("export preparation workspace behavior", () => {
     expect(() => enrichButton.props.onClick?.()).not.toThrow();
     expect(setCreatorListEnrichmentState).toHaveBeenCalledWith("error");
     expect(setCreatorListEnrichmentMessage).toHaveBeenCalledWith(
-      "Save HubSpot preparation before starting Creator List enrichment.",
+      "Save your edits before starting Creator List enrichment.",
     );
     expect(setCreatorListEnrichmentProgress).toHaveBeenCalledWith({
       open: true,
       percentage: 0,
-      message: "Save HubSpot preparation before starting Creator List enrichment.",
+      message: "Save your edits before starting Creator List enrichment.",
       status: "error",
     });
   });
@@ -439,7 +439,7 @@ describe("export preparation workspace behavior", () => {
 
     expect(googleSheetsButton.props.disabled).toBe(true);
     expect(getElementText(element)).toContain(
-      "Save HubSpot preparation before exporting to Google Sheets.",
+      "Save your edits before exporting to Google Sheets.",
     );
   });
 
@@ -494,7 +494,7 @@ describe("export preparation workspace behavior", () => {
 
     expect(googleSheetsButton.props.disabled).toBe(false);
     expect(getElementText(element)).not.toContain(
-      "Save HubSpot preparation before exporting to Google Sheets.",
+      "Save your edits before exporting to Google Sheets.",
     );
   });
 });

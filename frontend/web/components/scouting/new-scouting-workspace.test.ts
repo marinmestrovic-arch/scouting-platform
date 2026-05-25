@@ -77,7 +77,6 @@ describe("new scouting workspace", () => {
         initialCountryRegionOptions: ["Germany", "Austria"],
         initialInfluencerVerticalOptions: ["Gaming", "Tech"],
         initialLanguageOptions: ["German", "English"],
-        showLegacyNotice: true,
       }),
     );
 
@@ -92,7 +91,6 @@ describe("new scouting workspace", () => {
     expect(html).toContain("Last post day since");
     expect(html).toContain("Influencer Vertical");
     expect(html).toContain("Niche");
-    expect(html).toContain("Legacy route");
     expect(html).toContain('href="/database?tab=campaigns"');
     expect(html).toContain("Start scouting");
     expect(html).not.toContain("Deal owner");

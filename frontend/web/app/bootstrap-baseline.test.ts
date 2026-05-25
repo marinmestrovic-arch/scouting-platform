@@ -1,25 +1,28 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import nextConfig from "../next.config";
-import { APP_TITLE } from "../lib/shell";
+
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`REDIRECT:${path}`);
+  }),
+}));
+
 import RootLayout, { metadata } from "./layout";
 import HomePage from "./page";
 
 describe("week 0 bootstrap baseline", () => {
-  it("renders the app entry shell", () => {
-    const html = renderToStaticMarkup(HomePage());
-
-    expect(html).toContain(`<h1>${APP_TITLE}</h1>`);
-    expect(html).toContain("The scouting workspace is available behind the authenticated app shell.");
+  it("redirects the home page to the dashboard", () => {
+    expect(() => HomePage()).toThrow("REDIRECT:/dashboard");
   });
 
   it("keeps root layout metadata and language stable", () => {
-    expect(metadata.title).toBe("ARCH. | Internal Scouting Platform");
-    expect(metadata.description).toBe("Internal creator scouting platform.");
+    expect(metadata.title).toBe("Scouting Platform");
+    expect(metadata.description).toBe("Creator scouting workspace.");
 
     const html = renderToStaticMarkup(RootLayout({ children: "bootstrap" }));
 
-    expect(html).toContain('lang="en"');
+    expect(html).toContain(`lang="en"`);
     expect(html).toContain("bootstrap");
   });
 

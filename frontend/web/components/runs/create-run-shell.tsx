@@ -44,7 +44,7 @@ const IDLE_REQUEST_STATE: CreateRunRequestState = {
 
 const SUBMITTING_REQUEST_STATE: CreateRunRequestState = {
   status: "submitting",
-  message: "Opening the Week 7 New Scouting workspace.",
+  message: "Opening New Scouting.",
 };
 
 export function normalizeRunDraft(draft: RunDraft): RunDraft {
@@ -114,28 +114,9 @@ export function CreateRunShellView({
     <div className="run-create">
       <section aria-labelledby="run-create-heading" className="run-create__panel">
         <header className="run-create__header">
-          <p className="run-create__eyebrow">Week 3 discovery</p>
           <h2 id="run-create-heading">Start a scouting run</h2>
-          <p>
-            This legacy shell now forwards to the Week 7 New Scouting workspace, where campaign
-            metadata, Dashboard filters, and Google Sheets handoff readiness are stored together.
-          </p>
+          <p>Submit to open New Scouting and pick a campaign, manager, and targeting filters.</p>
         </header>
-
-        <dl className="run-create__highlights">
-          <div>
-            <dt>Input</dt>
-            <dd>Use New Scouting for the full Week 7 metadata set.</dd>
-          </div>
-          <div>
-            <dt>Primary route</dt>
-            <dd>The live run form now lives at /new-scouting.</dd>
-          </div>
-          <div>
-            <dt>Output</dt>
-            <dd>Dashboard-ready runs plus Google Sheets export-ready HubSpot metadata.</dd>
-          </div>
-        </dl>
       </section>
 
       <form

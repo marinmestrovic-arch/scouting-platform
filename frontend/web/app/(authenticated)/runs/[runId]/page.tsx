@@ -57,9 +57,9 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
       <PageHeader
         crumbs={[
           { label: "Dashboard", href: "/dashboard" },
-          { label: "Run Detail" },
+          { label: "Scouting run" },
         ]}
-        title="Run Detail"
+        title="Scouting run"
       />
       <div className="page-container page-section__body">
         <Suspense fallback={<RunDetailFallback />}>

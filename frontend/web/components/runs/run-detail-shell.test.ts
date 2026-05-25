@@ -199,7 +199,7 @@ describe("run detail shell", () => {
     expect(html).toContain("The worker finished and locked this snapshot so it stays reproducible during review.");
     expect(html).toContain("Open any catalog detail to review");
     expect(html).toContain("run-detail__status--completed");
-    expect(html).toContain("Snapshot results");
+    expect(html).toContain("Matched creators");
     expect(html).toContain("Updated");
     expect(html).toContain("Run Result Channel");
     expect(html).toContain('href="/catalog/24a57b02-3008-4af1-9b3a-340bd0db7d1c"');

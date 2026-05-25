@@ -107,7 +107,7 @@ describe("create run shell behavior", () => {
 
     expect(setRequestState).toHaveBeenCalledWith({
       status: "submitting",
-      message: "Opening the Week 7 New Scouting workspace.",
+      message: "Opening New Scouting.",
     });
     expect(pushMock).toHaveBeenCalledWith("/new-scouting");
   });

@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ARCH. | Internal Scouting Platform",
-  description: "Internal creator scouting platform."
+  title: "Scouting Platform",
+  description: "Creator scouting workspace."
 };
 
 type RootLayoutProps = Readonly<{

@@ -1,15 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test("homepage renders foundation confirmation", async ({ page }) => {
+test("homepage redirects unauthenticated visitors to the login page", async ({ page }) => {
   await page.goto("/");
 
+  await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { level: 1, name: "Scouting Platform" })).toBeVisible();
-  await expect(page.getByRole("main")).toContainText(
-    "The scouting workspace is available behind the authenticated app shell.",
-  );
-  await expect(
-    page.getByRole("link", { name: "the new scouting dashboard" }),
-  ).toHaveAttribute("href", "/dashboard");
+  await expect(page.getByText("Sign in to start a scouting run.")).toBeVisible();
 });
 
 test("login page renders the production sign-in form", async ({ page }) => {
@@ -27,5 +23,5 @@ test("authenticated routes redirect unauthenticated users to login", async ({ pa
   expect(response?.status()).toBe(200);
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { level: 1, name: "Scouting Platform" })).toBeVisible();
-  await expect(page.getByText("Sign in with your assigned work email and password")).toBeVisible();
+  await expect(page.getByText("Sign in to start a scouting run.")).toBeVisible();
 });

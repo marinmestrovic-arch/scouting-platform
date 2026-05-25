@@ -43,10 +43,10 @@ export default async function HubspotPreparePage({ params }: HubspotPreparePageP
     <section className="page-section">
       <PageHeader
         crumbs={[
-          { label: "HubSpot", href: "/hubspot" },
-          { label: "Google Sheets Export" },
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Export to Google Sheets" },
         ]}
-        title="Google Sheets Export"
+        title="Export to Google Sheets"
       />
       <div className="page-container page-section__body">
         <Suspense fallback={<HubspotPrepareFallback />}>

@@ -4,18 +4,17 @@ import { APP_TITLE } from "../../lib/shell";
 import LoginPage from "./page";
 
 describe("login page", () => {
-  it("renders production login copy and form fields", () => {
+  it("renders login copy and form fields without marketing pitch", () => {
     const html = renderToStaticMarkup(LoginPage());
 
-    expect(html).toContain("Internal access");
     expect(html).toContain(`<h1>${APP_TITLE}</h1>`);
-    expect(html).toContain(
-      "Sign in with your assigned work email and password to continue to the catalog."
-    );
-    expect(html).toContain('type="email"');
-    expect(html).toContain('type="password"');
+    expect(html).toContain("Sign in to start a scouting run.");
+    expect(html).toContain(`type="email"`);
+    expect(html).toContain(`type="password"`);
     expect(html).toContain("Sign in");
-    expect(html).not.toContain("Demo credentials:");
-    expect(html).not.toContain("Week 0 Auth.js UI Scaffold");
+    expect(html).not.toContain("Internal access");
+    expect(html).not.toContain("cockpit");
+    expect(html).not.toContain("Plan briefs");
+    expect(html).not.toContain("200k+");
   });
 });

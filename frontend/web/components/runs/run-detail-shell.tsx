@@ -6,6 +6,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchRunStatus } from "../../lib/runs-api";
+import { getHubspotPreviewHref } from "../../lib/navigation";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { StatusPill } from "../ui/StatusPill";
@@ -195,7 +196,7 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
     <>
       <section aria-labelledby="run-detail-heading" className="run-detail__hero">
         <div className="run-detail__hero-copy">
-          <p className="run-detail__eyebrow">Run snapshot</p>
+          <p className="run-detail__eyebrow">Scouting run</p>
           <h2 id="run-detail-heading">{run.name}</h2>
           <p className="run-detail__query">
             {getRunQueryLabel(run.query)}: {run.query}
@@ -242,13 +243,12 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
         className={`run-detail__job-feedback run-detail__job-feedback--${jobFeedback.tone}`}
       >
         <div>
-          <p className="run-detail__eyebrow">Worker feedback</p>
           <h3 id="run-detail-job-feedback-heading">{jobFeedback.title}</h3>
           <p>{jobFeedback.summary}</p>
           <p>{jobFeedback.nextStep}</p>
           {jobFeedback.autoRefresh ? (
             <p className="run-detail__job-feedback-note">
-              Auto-refresh is active while this scouting job is still queued or running.
+              This page refreshes automatically while the run is in progress.
             </p>
           ) : null}
         </div>
@@ -269,15 +269,24 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
       <section aria-labelledby="run-detail-results-heading" className="run-detail__panel">
         <header className="run-detail__panel-header">
           <div>
-            <h2 id="run-detail-results-heading">Snapshot results</h2>
+            <h2 id="run-detail-results-heading">Matched creators</h2>
             <p>
-              Stored in rank order so the run remains reproducible even after catalog data changes.
-              Use the catalog links below to review each channel&apos;s enrichment status.
+              Ranked matches for this run. Review the list, then send it to Google Sheets.
             </p>
           </div>
-          <button className="run-detail__button run-detail__button--secondary" onClick={onRetry} type="button">
-            Refresh now
-          </button>
+          <div className="run-detail__panel-actions">
+            <button className="run-detail__button run-detail__button--secondary" onClick={onRetry} type="button">
+              Refresh now
+            </button>
+            {run.status === "completed" && run.results.length > 0 ? (
+              <Link
+                className="run-detail__button"
+                href={getHubspotPreviewHref(run.id)}
+              >
+                Export to Google Sheets
+              </Link>
+            ) : null}
+          </div>
         </header>
 
         {run.results.length > 0 ? (

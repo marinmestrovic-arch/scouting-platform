@@ -359,7 +359,7 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
       <div className="database-records__header">
         <div>
           <h2>Campaigns</h2>
-          <p className="workspace-copy">View campaigns and HubSpot sync state in the shared database workspace.</p>
+          <p className="workspace-copy">Browse campaigns you can scout for.</p>
         </div>
         {initialData.permissions.canCreate ? (
           <button className="database-records__cta" onClick={openCreateCampaign} type="button">

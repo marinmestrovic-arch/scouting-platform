@@ -31,7 +31,9 @@ export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) 
           <AppNavigation role={role} />
 
           <div className="auth-shell__actions">
-            <span className="auth-shell__role-badge">{role === "admin" ? "Admin" : "User"}</span>
+            {role === "admin" ? (
+              <span className="auth-shell__role-badge">Admin</span>
+            ) : null}
             <SignOutForm />
           </div>
         </div>

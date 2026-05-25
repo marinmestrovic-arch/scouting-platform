@@ -50,7 +50,7 @@ describe("run detail page", () => {
       initialData: { id: "run-123", status: "completed", results: [] },
       runId: "run-123",
     });
-    expect(html).toContain("page-header__title\">Run Detail");
+    expect(html).toContain("page-header__title\">Scouting run");
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain("run-detail-shell:run-123:with-data");
   });

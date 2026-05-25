@@ -115,7 +115,7 @@ function getCreatorListEnrichmentBlockingMessage(input: {
   hasPendingChanges: boolean;
 }): string | null {
   if (input.hasPendingChanges) {
-    return "Save HubSpot preparation before starting Creator List enrichment.";
+    return "Save your edits before starting Creator List enrichment.";
   }
 
   return null;
@@ -236,7 +236,7 @@ export function ExportPreparationWorkspace({
     !hasPendingChanges;
   const googleSheetsBlockingMessage =
     hasGoogleSheetsTarget && hasPendingChanges
-      ? "Save HubSpot preparation before exporting to Google Sheets."
+      ? "Save your edits before exporting to Google Sheets."
       : null;
   const canEnrichCreatorList =
     googleSheetsState !== "saving" &&
@@ -345,17 +345,17 @@ export function ExportPreparationWorkspace({
     };
 
     setRequestState("saving");
-    setRequestMessage("Saving HubSpot preparation...");
+    setRequestMessage("Saving edits...");
 
     try {
       const nextPreview = await updateHubspotExportPreview(currentPreview.run.id, payload);
       setCurrentPreview(nextPreview);
       setDrafts(createEmptyDrafts());
       setRequestState("idle");
-      setRequestMessage("HubSpot preparation saved.");
+      setRequestMessage("Edits saved.");
     } catch (error) {
       setRequestState("error");
-      setRequestMessage(error instanceof Error ? error.message : "Unable to save HubSpot preparation.");
+      setRequestMessage(error instanceof Error ? error.message : "Unable to save edits.");
     }
   }
 
@@ -548,8 +548,8 @@ export function ExportPreparationWorkspace({
             <div>
               <h2>Google Sheets export</h2>
               <p className="workspace-copy">
-                Append these prepared HubSpot rows to an existing sheet tab using its first-row
-                headers. Save any row edits first so the export uses the latest prepared values.
+                Append the prepared rows to an existing sheet tab using its first-row headers.
+                Save any row edits first so the export uses the latest values.
               </p>
             </div>
             <button

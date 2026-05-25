@@ -23,7 +23,6 @@ type NewScoutingWorkspaceProps = Readonly<{
   initialCountryRegionOptions?: string[] | undefined;
   initialLanguageOptions?: string[] | undefined;
   initialInfluencerVerticalOptions?: string[] | undefined;
-  showLegacyNotice?: boolean;
 }>;
 
 type NewScoutingDraft = {
@@ -267,7 +266,6 @@ export function NewScoutingWorkspace({
   initialCountryRegionOptions = [],
   initialLanguageOptions = [],
   initialInfluencerVerticalOptions = [],
-  showLegacyNotice = false,
 }: NewScoutingWorkspaceProps) {
   const router = useRouter();
   const [draft, setDraft] = useState<NewScoutingDraft>({
@@ -405,13 +403,6 @@ export function NewScoutingWorkspace({
 
   return (
     <div className="new-scouting">
-      {showLegacyNotice ? (
-        <section className="workspace-callout">
-          <h3>Legacy route</h3>
-          <p>This page remains available as a shortcut to the campaign-based scouting flow.</p>
-        </section>
-      ) : null}
-
       <form className="new-scouting-form" onSubmit={handleSubmit}>
         <section aria-labelledby="ns-brief-heading" className="new-scouting__panel new-scouting-section">
           <header className="new-scouting-section__header">
