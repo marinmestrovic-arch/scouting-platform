@@ -10634,3 +10634,306 @@ textarea:focus-visible,
   --color-primary-pressed: #02071C;
   --color-primary-soft: rgba(0, 15, 65, 0.06);
 }
+
+/* ============================================================
+   Responsive — Final layer
+   Mobile (≤640px): nav becomes off-canvas drawer, titles shrink,
+                    multi-column grids collapse to 1 column.
+   Tablet (641–1024px): three-column grids reduce to two, padding
+                        tightened, dashboard stats become 2x2.
+   Desktop (>1024px): unchanged.
+   ============================================================ */
+
+/* Make the nav-region wrapper transparent on desktop so existing
+   .app-nav flex/grid behavior in the header is preserved. */
+.auth-shell__nav-region {
+  display: contents;
+}
+
+.auth-shell__menu-toggle,
+.auth-shell__menu-backdrop {
+  display: none;
+}
+
+/* ----- Mobile (≤640px) — drawer + density ----- */
+@media (max-width: 640px) {
+  /* backdrop-filter on header creates a containing block for fixed children
+     which breaks the drawer; drop the frosted-glass effect on mobile. */
+  .auth-shell__header {
+    backdrop-filter: none;
+  }
+
+  .auth-shell--mobile-nav-open .auth-shell__menu-backdrop {
+    display: block;
+  }
+
+  .auth-shell__nav-region {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 22rem);
+    z-index: var(--z-modal);
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 12px 40px rgba(6, 21, 95, 0.24);
+    padding: 4.25rem var(--space-4) var(--space-5);
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+  }
+
+  .auth-shell--mobile-nav-open .auth-shell__nav-region {
+    transform: translateX(0);
+  }
+
+  .auth-shell__menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    border: 0;
+    padding: 0;
+    background: rgba(6, 21, 95, 0.55);
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+  }
+
+  .auth-shell__menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface);
+    color: var(--color-text-strong);
+    padding: 0;
+    cursor: pointer;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .auth-shell__menu-toggle:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-surface-muted);
+  }
+
+  .auth-shell__menu-toggle:focus-visible {
+    outline: 2px solid var(--brand-blue);
+    outline-offset: 2px;
+  }
+
+  .auth-shell__menu-bars {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 1.1rem;
+  }
+
+  .auth-shell__menu-bars > span {
+    display: block;
+    height: 2px;
+    width: 100%;
+    background: currentColor;
+    border-radius: 999px;
+    transition: transform 180ms ease, opacity 180ms ease;
+  }
+
+  .auth-shell--mobile-nav-open .auth-shell__menu-bars > span:nth-child(1) {
+    transform: translateY(5px) rotate(45deg);
+  }
+  .auth-shell--mobile-nav-open .auth-shell__menu-bars > span:nth-child(2) {
+    opacity: 0;
+  }
+  .auth-shell--mobile-nav-open .auth-shell__menu-bars > span:nth-child(3) {
+    transform: translateY(-5px) rotate(-45deg);
+  }
+
+  body.body--mobile-nav-open {
+    overflow: hidden;
+  }
+
+  /* Nav contents inside the drawer */
+  .auth-shell__nav-region .app-nav {
+    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .auth-shell__nav-region .app-nav__list,
+  .auth-shell__nav-region .app-nav__groups {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .auth-shell__nav-region .app-nav__group {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  .auth-shell__nav-region .app-nav__link {
+    display: block;
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text);
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 0.7rem 0.85rem;
+    font-size: var(--font-size-300);
+    font-weight: var(--font-weight-medium);
+    border-radius: var(--radius-md);
+    height: auto;
+  }
+
+  .auth-shell__nav-region .app-nav__link:hover {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent-soft-strong);
+  }
+
+  .auth-shell__nav-region .app-nav__link--active {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent-soft-strong);
+    color: var(--color-accent);
+  }
+
+  /* Header tightening on mobile */
+  .auth-shell__header,
+  .auth-shell__header-inner {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .auth-shell__header-inner {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .auth-shell__actions {
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+  }
+
+  .auth-shell__role-badge {
+    display: none;
+  }
+
+  /* Hide the "sign out" form inside header — it's available from the drawer area / not critical on mobile */
+  .auth-shell__actions .sign-out-form {
+    display: none;
+  }
+
+  /* Title scaling */
+  .page-section__header h1,
+  .page-header__title,
+  .page-hero__title,
+  .login-card h1 {
+    font-size: clamp(1.5rem, 6.5vw, 2rem);
+    line-height: 1.15;
+  }
+
+  /* Collapse multi-column grids that aren't yet covered */
+  .admin-csv-imports__layout,
+  .hubspot-push__layout,
+  .csv-export__layout,
+  .admin-users__form-grid,
+  .user-account-detail__grid,
+  .admin-csv-imports__details {
+    grid-template-columns: 1fr;
+  }
+
+  .csv-export__details,
+  .hubspot-push__details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Action button rows wrap and stretch instead of cramming */
+  .admin-users__header,
+  .admin-users__header-actions,
+  .csv-export__toolbar,
+  .csv-export__toolbar-actions,
+  .hubspot-push__toolbar,
+  .hubspot-push__toolbar-actions,
+  .admin-csv-imports__toolbar,
+  .admin-csv-imports__toolbar-copy,
+  .admin-dashboard__toolbar,
+  .admin-dashboard__toolbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Reduce padding on cards/panels on mobile */
+  .auth-shell__content {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .admin-dashboard__card,
+  .admin-dashboard__panel,
+  .admin-dashboard__section,
+  .admin-csv-imports__panel,
+  .csv-export__panel,
+  .hubspot-push__panel,
+  .run-create__panel,
+  .run-detail__panel,
+  .run-detail__hero {
+    padding: var(--space-4);
+  }
+}
+
+/* ----- Tablet (641–1024px) ----- */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .admin-dashboard__card-grid,
+  .dashboard-workspace__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .new-scouting__grid--three,
+  .csv-export__details,
+  .hubspot-push__details,
+  .admin-csv-imports__details,
+  .admin-dashboard__panel-grid,
+  .admin-dashboard__shortcut-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auth-shell__header,
+  .auth-shell__header-inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .auth-shell__content {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+
+/* Touch-friendly hit targets where the device suggests touch input */
+@media (pointer: coarse) {
+  .auth-shell__signout,
+  .app-nav__link,
+  .workspace-button,
+  .admin-users__button,
+  .admin-csv-imports__button,
+  .admin-dashboard__button,
+  .csv-export__button,
+  .hubspot-push__button {
+    min-height: 2.5rem;
+  }
+}

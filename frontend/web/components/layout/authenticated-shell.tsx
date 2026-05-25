@@ -4,6 +4,7 @@ import React, { type ReactNode } from "react";
 import type { AppRole } from "../../lib/navigation";
 import { SignOutForm } from "../auth/sign-out-form";
 import { AppNavigation } from "./app-navigation";
+import { MobileNavToggle } from "./mobile-nav-toggle";
 
 type AuthenticatedShellProps = Readonly<{
   children: ReactNode;
@@ -28,13 +29,16 @@ export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) 
             </span>
           </Link>
 
-          <AppNavigation role={role} />
+          <div className="auth-shell__nav-region" id="auth-shell-primary-nav">
+            <AppNavigation role={role} />
+          </div>
 
           <div className="auth-shell__actions">
             {role === "admin" ? (
               <span className="auth-shell__role-badge">Admin</span>
             ) : null}
             <SignOutForm />
+            <MobileNavToggle />
           </div>
         </div>
       </header>
