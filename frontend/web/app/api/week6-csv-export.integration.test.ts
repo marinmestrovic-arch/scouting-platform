@@ -218,8 +218,17 @@ integration("week 6 csv export API integration", () => {
     expect(downloadResponse.headers.get("content-type")).toContain("text/csv");
     expect(downloadResponse.headers.get("content-disposition")).toContain(".csv");
     const csvText = await downloadResponse.text();
-    expect(csvText).toContain("channelId,youtubeChannelId,youtubeChannelUrl");
-    expect(csvText).toContain(channel.id);
+    const [headerLine, rowLine] = csvText.trim().split(/\r?\n/);
+    const headers = headerLine?.split(",") ?? [];
+    const values = rowLine?.split(",") ?? [];
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+
+    expect(headers).toContain("Contact Type");
+    expect(headers).toContain("Email");
+    expect(headers).toContain("YouTube URL");
+    expect(row["Contact Type"]).toBe("Influencer");
+    expect(row.Email).toBe("creator@example.com");
+    expect(row["YouTube URL"]).toBe("https://www.youtube.com/channel/UC-WEEK6-API");
   });
 
   it("returns 401 for unauthenticated requests", async () => {
