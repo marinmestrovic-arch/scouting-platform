@@ -35,7 +35,7 @@ test.describe("authenticated launch-readiness flows", () => {
     await expect(seededRunRow).toBeVisible();
 
     const exportLink = seededRunRow.getByRole("link", { name: "Export" });
-    await expect(exportLink).toHaveAttribute("href", /\/hubspot\/prepare\/[0-9a-f-]+$/);
+    await expect(exportLink).toHaveAttribute("href", /\/exports\/prepare\/[0-9a-f-]+$/);
     await expect(exportLink).toHaveAttribute("target", "_blank");
   });
 
@@ -61,7 +61,7 @@ test.describe("authenticated launch-readiness flows", () => {
     await expect(page.getByText("No channels found")).toHaveCount(0);
   });
 
-  test("admin surface exposes CSV Imports, Users, Exports, and HubSpot tabs", async ({ page }) => {
+  test("admin surface exposes CSV Imports, Users, and Exports tabs", async ({ page }) => {
     const seedData = readSeedData();
 
     await login(page, seedData.admin);
@@ -71,7 +71,7 @@ test.describe("authenticated launch-readiness flows", () => {
     await expect(page.getByRole("tab", { name: "CSV Imports" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Users" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Exports" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "HubSpot" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "HubSpot" })).toHaveCount(0);
     await expect(page.getByText("Approvals")).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Exports" }).click();
@@ -79,8 +79,8 @@ test.describe("authenticated launch-readiness flows", () => {
     await expect(page.getByRole("link", { name: "Open /exports" })).toBeVisible();
 
     await page.goto("/admin?tab=hubspot");
-    await expect(page.getByRole("heading", { level: 3, name: "HubSpot workspace" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open /hubspot" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Upload batch" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open /hubspot" })).toHaveCount(0);
 
     await page.goto("/admin?tab=imports");
     await expect(page.getByRole("button", { name: "Upload batch" })).toBeVisible();
