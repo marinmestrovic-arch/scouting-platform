@@ -71,6 +71,7 @@ describe("catalog page", () => {
         influencerVertical: [],
       },
       initialSavedSegments: [],
+      isAdmin: false,
     });
     expect(html).toContain("database-workspace:catalog:undefined");
   });

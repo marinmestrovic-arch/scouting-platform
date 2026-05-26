@@ -283,6 +283,15 @@ export const requestChannelEnrichmentResponseSchema = z.object({
   enrichment: channelEnrichmentDetailSchema,
 });
 
+export const bulkDeleteChannelsRequestSchema = z.object({
+  channelIds: z.array(z.uuid()).min(1).max(100),
+});
+
+export const bulkDeleteChannelsResponseSchema = z.object({
+  requestedCount: z.number().int().nonnegative(),
+  deletedCount: z.number().int().nonnegative(),
+});
+
 export type ListChannelsQuery = z.infer<typeof listChannelsQuerySchema>;
 export type CatalogChannelFilters = z.infer<typeof catalogChannelFiltersSchema>;
 export type ChannelSummary = z.infer<typeof channelSummarySchema>;
@@ -304,3 +313,5 @@ export type PatchChannelManualOverridesResponse = z.infer<
 export type RequestChannelEnrichmentResponse = z.infer<
   typeof requestChannelEnrichmentResponseSchema
 >;
+export type BulkDeleteChannelsRequest = z.infer<typeof bulkDeleteChannelsRequestSchema>;
+export type BulkDeleteChannelsResponse = z.infer<typeof bulkDeleteChannelsResponseSchema>;

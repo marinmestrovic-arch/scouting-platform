@@ -37,6 +37,11 @@ export type BatchEnrichmentActionState = {
   message: string;
 };
 
+export type CatalogDeleteActionState = {
+  type: "idle" | "submitting" | "success" | "error";
+  message: string;
+};
+
 export type CatalogCsvExportBatchState = {
   requestState: "idle" | "loading" | "ready" | "error";
   summary: CsvExportBatchSummary | null;
@@ -241,6 +246,14 @@ export function getCatalogHubspotPushBatchDetailErrorMessage(error: unknown): st
   return "Unable to load HubSpot push batch status. Please try again.";
 }
 
+export function getCatalogChannelDeleteErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to delete selected channels. Please try again.";
+}
+
 function getCatalogPageChannelIds(channels: readonly Pick<ChannelSummary, "id">[]): string[] {
   return [...new Set(channels.map((channel) => channel.id))];
 }
@@ -380,6 +393,10 @@ function ensureTerminalPunctuation(message: string): string {
 
 export function getBatchEnrichmentSubmittingMessage(selectedCount: number): string {
   return `Requesting enrichment for ${formatSelectedChannelCount(selectedCount)}.`;
+}
+
+export function getCatalogChannelDeleteSubmittingMessage(selectedCount: number): string {
+  return `Deleting ${formatSelectedChannelCount(selectedCount)}.`;
 }
 
 function getBatchEnrichmentFailureMessage(messages: readonly string[]): string {

@@ -25,6 +25,7 @@ import { CatalogFilters } from "./CatalogFilters";
 import { CatalogTable } from "./CatalogTable";
 import type {
   BatchEnrichmentActionState,
+  CatalogDeleteActionState,
   CatalogCsvExportBatchState,
   CatalogHubspotPushBatchState,
   CatalogViewMode,
@@ -89,6 +90,7 @@ type CatalogTableShellProps = {
   initialData?: ListChannelsResponse;
   initialSavedSegments?: SegmentResponse[];
   creatorFilterOptions?: CatalogCreatorFilterOptions;
+  isAdmin?: boolean;
 };
 
 type CatalogTableShellViewProps = {
@@ -97,8 +99,10 @@ type CatalogTableShellViewProps = {
   requestState: CatalogTableRequestState;
   selectedChannelIds: readonly string[];
   batchEnrichmentActionState: BatchEnrichmentActionState;
+  deleteActionState: CatalogDeleteActionState;
   latestCsvExportBatch: CatalogCsvExportBatchState;
   latestHubspotPushBatch: CatalogHubspotPushBatchState;
+  isAdmin?: boolean;
   viewMode?: CatalogViewMode;
   onQueryChange: (value: string) => void;
   onNumericFilterChange: (key: CatalogNumericFilterKey, value: string) => void;
@@ -108,6 +112,7 @@ type CatalogTableShellViewProps = {
   onToggleChannelSelection: (channelId: string) => void;
   onTogglePageSelection: () => void;
   onExportSelectedChannels: () => void | Promise<void>;
+  onDeleteSelectedChannels: () => void | Promise<void>;
   onPushSelectedChannelsToHubspot: () => void | Promise<void>;
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onClearSelection: () => void;
@@ -125,8 +130,10 @@ export function CatalogTableShellView({
   requestState,
   selectedChannelIds,
   batchEnrichmentActionState,
+  deleteActionState,
   latestCsvExportBatch,
   latestHubspotPushBatch,
+  isAdmin = false,
   viewMode = "table",
   onQueryChange,
   onNumericFilterChange,
@@ -136,6 +143,7 @@ export function CatalogTableShellView({
   onToggleChannelSelection,
   onTogglePageSelection,
   onExportSelectedChannels,
+  onDeleteSelectedChannels,
   onPushSelectedChannelsToHubspot,
   onRequestSelectedEnrichment,
   onClearSelection,
@@ -189,9 +197,12 @@ export function CatalogTableShellView({
         <CatalogTable
           batchEnrichmentActionState={batchEnrichmentActionState}
           data={requestState.data}
+          deleteActionState={deleteActionState}
+          isAdmin={isAdmin}
           latestCsvExportBatch={latestCsvExportBatch}
           latestHubspotPushBatch={latestHubspotPushBatch}
           onClearSelection={onClearSelection}
+          onDeleteSelectedChannels={onDeleteSelectedChannels}
           onExportSelectedChannels={onExportSelectedChannels}
           onNextPage={onNextPage}
           onPreviousPage={onPreviousPage}
@@ -212,11 +223,13 @@ export function CatalogTableShell({
   pageSize = DEFAULT_PAGE_SIZE,
   initialData,
   initialSavedSegments,
+  isAdmin = false,
 }: CatalogTableShellProps) {
   const model = useCatalogTableShellModel({
     creatorFilterOptions,
     initialData,
     initialSavedSegments,
+    isAdmin,
     pageSize,
   });
 

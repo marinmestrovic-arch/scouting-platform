@@ -173,9 +173,11 @@ function renderView(
       typeof CatalogTableShellView
     >[0]["batchEnrichmentActionState"];
     latestCsvExportBatch?: Parameters<typeof CatalogTableShellView>[0]["latestCsvExportBatch"];
+    deleteActionState?: Parameters<typeof CatalogTableShellView>[0]["deleteActionState"];
     latestHubspotPushBatch?: Parameters<
       typeof CatalogTableShellView
     >[0]["latestHubspotPushBatch"];
+    isAdmin?: boolean;
   },
 ): string {
   return renderToStaticMarkup(
@@ -202,6 +204,10 @@ function renderView(
         type: "idle",
         message: "",
       },
+      deleteActionState: options?.deleteActionState ?? {
+        type: "idle",
+        message: "",
+      },
       latestCsvExportBatch: options?.latestCsvExportBatch ?? {
         requestState: "idle",
         summary: null,
@@ -216,8 +222,10 @@ function renderView(
         error: null,
         isRefreshing: false,
       },
+      isAdmin: options?.isAdmin ?? false,
       requestState,
       onClearSelection: vi.fn(),
+      onDeleteSelectedChannels: vi.fn(),
       onQueryChange: vi.fn(),
       onExportSelectedChannels: vi.fn(),
       onNextPage: vi.fn(),
@@ -754,10 +762,35 @@ describe("catalog table shell view", () => {
     expect(html).toContain("Enrich selected (2)");
     expect(html).toContain("Export selected (2)");
     expect(html).toContain("Push to HubSpot (2)");
+    expect(html).not.toContain("Delete selected");
     expect(html).toContain(
       "Queued 2 channels for enrichment. The table refreshes automatically while jobs run.",
     );
     expect(html).toContain("catalog-table__selection-status--success");
+  });
+
+  it("renders admin-only channel delete action and feedback", () => {
+    const html = renderView(
+      {
+        status: "ready",
+        data: pagedChannels,
+        error: null,
+      },
+      {
+        isAdmin: true,
+        selectedChannelIds: [pagedChannels.items[0]!.id, "sticky-selection"],
+        deleteActionState: {
+          type: "error",
+          message: "One or more selected channels are linked to runs or HubSpot batches and cannot be deleted.",
+        },
+      },
+    );
+
+    expect(html).toContain("Delete selected (2)");
+    expect(html).toContain(
+      "One or more selected channels are linked to runs or HubSpot batches and cannot be deleted.",
+    );
+    expect(html).toContain("catalog-table__selection-status--error");
   });
 
   it("does not render the recent exports cards section", () => {

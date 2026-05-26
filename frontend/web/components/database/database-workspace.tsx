@@ -24,6 +24,7 @@ type DatabaseWorkspaceProps = Readonly<{
   initialCatalogData?: ListChannelsResponse;
   initialSavedSegments?: SegmentResponse[];
   catalogCreatorFilterOptions?: CatalogCreatorFilterOptions;
+  isAdmin?: boolean;
 }>;
 
 export function DatabaseWorkspace({
@@ -32,6 +33,7 @@ export function DatabaseWorkspace({
   showLegacyNotice = false,
   initialCatalogData,
   initialSavedSegments,
+  isAdmin = false,
 }: DatabaseWorkspaceProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -92,6 +94,7 @@ export function DatabaseWorkspace({
             {...(catalogCreatorFilterOptions ? { creatorFilterOptions: catalogCreatorFilterOptions } : {})}
             {...(initialCatalogData ? { initialData: initialCatalogData } : {})}
             {...(initialSavedSegments ? { initialSavedSegments } : {})}
+            isAdmin={isAdmin}
           />
         </section>
       ) : (

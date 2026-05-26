@@ -5,7 +5,7 @@ import type {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { requestChannelEnrichmentBatch, fetchChannels } from "../../lib/channels-api";
+import { deleteChannelsBatch, requestChannelEnrichmentBatch, fetchChannels } from "../../lib/channels-api";
 import {
   DEFAULT_CATALOG_FILTERS,
   buildCatalogSearchParams,
@@ -26,6 +26,7 @@ import { createHubspotPushBatch, fetchHubspotPushBatchDetail } from "../../lib/h
 import { createSavedSegment, deleteSavedSegment, fetchSavedSegments } from "../../lib/segments-api";
 import type {
   BatchEnrichmentActionState,
+  CatalogDeleteActionState,
   CatalogCsvExportBatchState,
   CatalogHubspotPushBatchState,
   CatalogViewMode,
@@ -34,6 +35,8 @@ import type {
 } from "./catalog-table-shared";
 import {
   getBatchEnrichmentSubmittingMessage,
+  getCatalogChannelDeleteErrorMessage,
+  getCatalogChannelDeleteSubmittingMessage,
   getCatalogCsvExportBatchCreateErrorMessage,
   getCatalogCsvExportBatchDetailErrorMessage,
   getCatalogHubspotPushBatchCreateErrorMessage,
@@ -74,6 +77,7 @@ type UseCatalogTableShellInput = Readonly<{
   creatorFilterOptions: CatalogCreatorFilterOptions;
   initialData: ListChannelsResponse | undefined;
   initialSavedSegments: SegmentResponse[] | undefined;
+  isAdmin?: boolean;
   pageSize: number;
 }>;
 
@@ -87,6 +91,11 @@ const IDLE_SAVED_SEGMENT_OPERATION_STATUS: SavedSegmentOperationStatus = {
 };
 
 const IDLE_BATCH_ENRICHMENT_ACTION_STATE: BatchEnrichmentActionState = {
+  type: "idle",
+  message: "",
+};
+
+const IDLE_DELETE_ACTION_STATE: CatalogDeleteActionState = {
   type: "idle",
   message: "",
 };
@@ -133,6 +142,7 @@ export function useCatalogTableShellModel({
   creatorFilterOptions,
   initialData,
   initialSavedSegments,
+  isAdmin = false,
   pageSize,
 }: UseCatalogTableShellInput) {
   const pathname = usePathname();
@@ -221,6 +231,8 @@ export function useCatalogTableShellModel({
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [batchEnrichmentActionState, setBatchEnrichmentActionState] =
     useState<BatchEnrichmentActionState>(IDLE_BATCH_ENRICHMENT_ACTION_STATE);
+  const [deleteActionState, setDeleteActionState] =
+    useState<CatalogDeleteActionState>(IDLE_DELETE_ACTION_STATE);
   const [latestCsvExportBatch, setLatestCsvExportBatch] =
     useState<CatalogCsvExportBatchState>(IDLE_CSV_EXPORT_BATCH_STATE);
   const [latestCsvExportBatchReloadToken, setLatestCsvExportBatchReloadToken] = useState(0);
@@ -721,10 +733,72 @@ export function useCatalogTableShellModel({
     }
   }
 
+  async function handleDeleteSelectedChannels(): Promise<void> {
+    if (!isAdmin || requestState.status !== "ready") {
+      return;
+    }
+
+    const channelIds = [...new Set(selectedChannelIds)];
+
+    if (channelIds.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${channelIds.length} selected channel${channelIds.length === 1 ? "" : "s"}? This cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteActionState({
+      type: "submitting",
+      message: getCatalogChannelDeleteSubmittingMessage(channelIds.length),
+    });
+
+    try {
+      const result = await deleteChannelsBatch(channelIds);
+      const deletedChannelIds = new Set(channelIds);
+
+      setRequestState((current) => {
+        if (current.status !== "ready") {
+          return current;
+        }
+
+        return {
+          status: "ready",
+          data: {
+            ...current.data,
+            items: current.data.items.filter((channel) => !deletedChannelIds.has(channel.id)),
+            total: Math.max(0, current.data.total - result.deletedCount),
+          },
+          error: null,
+        };
+      });
+      setSelectedChannelIds((current) => current.filter((channelId) => !deletedChannelIds.has(channelId)));
+      setDeleteActionState({
+        type: "success",
+        message:
+          result.deletedCount === 1
+            ? "Deleted 1 channel."
+            : `Deleted ${result.deletedCount} channels.`,
+      });
+      setReloadToken((current) => current + 1);
+    } catch (error) {
+      setDeleteActionState({
+        type: "error",
+        message: getCatalogChannelDeleteErrorMessage(error),
+      });
+    }
+  }
+
   return {
     batchEnrichmentActionState,
     creatorFilterOptions,
+    deleteActionState,
     filters: appliedState.filters,
+    isAdmin,
     latestCsvExportBatch,
     latestHubspotPushBatch,
     pendingSegmentAction,
@@ -740,6 +814,7 @@ export function useCatalogTableShellModel({
     },
     onCreateSegment: handleCreateSegment,
     onDeleteSegment: handleDeleteSegment,
+    onDeleteSelectedChannels: handleDeleteSelectedChannels,
     onQueryChange: (value: string) => {
       applyFilters({
         ...appliedState.filters,

@@ -1358,6 +1358,12 @@ a {
   color: var(--color-text);
 }
 
+.catalog-table__button--danger {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+  color: var(--color-surface);
+}
+
 .catalog-table__link {
   color: var(--color-accent);
   font-weight: var(--font-weight-semibold);
@@ -8549,6 +8555,12 @@ body {
   background: var(--color-surface-muted);
   border-color: var(--color-border-strong);
   color: var(--color-text-strong);
+}
+
+.catalog-table__button--danger:hover:not(:disabled) {
+  background: #8f1d15;
+  border-color: #8f1d15;
+  color: var(--color-text-inverse);
 }
 
 /* Highlight CTA button — yellow for marquee actions */

@@ -94,6 +94,7 @@ async function CatalogData({ searchParams }: { searchParams: Promise<Record<stri
   });
   const initialSavedSegments = session?.user?.id ? await getCachedUserSegments(session.user.id) : [];
   const dropdownValuesResponse = await getCachedDropdownValues();
+  const isAdmin = session?.user?.role === "admin";
 
   return (
     <DatabaseWorkspace
@@ -101,6 +102,7 @@ async function CatalogData({ searchParams }: { searchParams: Promise<Record<stri
       forcedTab="catalog"
       initialCatalogData={initialData}
       initialSavedSegments={initialSavedSegments}
+      isAdmin={isAdmin}
     />
   );
 }

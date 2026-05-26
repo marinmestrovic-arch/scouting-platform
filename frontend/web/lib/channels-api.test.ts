@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiRequestError,
+  deleteChannelsBatch,
   fetchChannelDetail,
   fetchChannels,
   requestChannelEnrichment,
@@ -349,6 +350,45 @@ describe("channels api helpers", () => {
     });
     expect(response.channelId).toBe(channelId);
     expect(response.enrichment.summary).toBe("Creator focused on launches and industry analysis.");
+  });
+
+  it("deletes channels through the admin bulk delete endpoint", async () => {
+    const firstChannelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const secondChannelId = "c539c987-dc34-4ef7-9843-b5dba7320e19";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        requestedCount: 2,
+        deletedCount: 2,
+      }),
+    );
+
+    const response = await deleteChannelsBatch([
+      firstChannelId,
+      secondChannelId,
+      firstChannelId,
+    ]);
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/admin/channels/bulk-delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        channelIds: [firstChannelId, secondChannelId],
+      }),
+    });
+    expect(response).toEqual({
+      requestedCount: 2,
+      deletedCount: 2,
+    });
+  });
+
+  it("surfaces admin-only bulk delete authorization errors", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({}, 403));
+
+    await expect(
+      deleteChannelsBatch(["53adac17-f39d-4731-a61f-194150fbc431"]),
+    ).rejects.toThrow("Only admins can delete channels.");
   });
 
 

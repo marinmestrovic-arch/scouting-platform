@@ -10,6 +10,7 @@ const {
   createCsvExportBatchMock,
   createHubspotPushBatchMock,
   createSavedSegmentMock,
+  deleteChannelsBatchMock,
   deleteSavedSegmentMock,
   fetchChannelsMock,
   fetchCsvExportBatchDetailMock,
@@ -27,6 +28,7 @@ const {
   createCsvExportBatchMock: vi.fn(),
   createHubspotPushBatchMock: vi.fn(),
   createSavedSegmentMock: vi.fn(),
+  deleteChannelsBatchMock: vi.fn(),
   deleteSavedSegmentMock: vi.fn(),
   fetchChannelsMock: vi.fn(),
   fetchCsvExportBatchDetailMock: vi.fn(),
@@ -60,6 +62,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../../lib/channels-api", () => ({
+  deleteChannelsBatch: deleteChannelsBatchMock,
   fetchChannels: fetchChannelsMock,
   requestChannelEnrichmentBatch: requestChannelEnrichmentBatchMock,
 }));
@@ -95,6 +98,7 @@ type CatalogShellElement = ReactElement<{
   onClearSelection: () => void;
   onCreateSegment: () => Promise<void> | void;
   onDeleteSegment: (segment: SegmentResponse) => Promise<void> | void;
+  onDeleteSelectedChannels: () => Promise<void> | void;
   onExportSelectedChannels: () => Promise<void> | void;
   onLoadSegment: (segment: SegmentResponse) => void;
   onNextPage: () => void;
@@ -136,6 +140,11 @@ type SavedSegmentOperationStatus = {
 };
 
 type BatchEnrichmentActionState = {
+  type: "idle" | "submitting" | "success" | "error";
+  message: string;
+};
+
+type CatalogDeleteActionState = {
   type: "idle" | "submitting" | "success" | "error";
   message: string;
 };
@@ -340,10 +349,12 @@ function renderShell(options?: {
   pendingSegmentAction?: string | null;
   selectedChannelIds?: string[];
   batchEnrichmentActionState?: BatchEnrichmentActionState;
+  deleteActionState?: CatalogDeleteActionState;
   latestCsvExportBatch?: CatalogCsvExportBatchState;
   latestCsvExportBatchReloadToken?: number;
   latestHubspotPushBatch?: CatalogHubspotPushBatchState;
   latestHubspotPushBatchReloadToken?: number;
+  isAdmin?: boolean;
 }) {
   const setRequestState = vi.fn();
   const setReloadToken = vi.fn();
@@ -355,6 +366,7 @@ function renderShell(options?: {
   const setPendingSegmentAction = vi.fn();
   const setSelectedChannelIds = vi.fn();
   const setBatchEnrichmentActionState = vi.fn();
+  const setDeleteActionState = vi.fn();
   const setLatestCsvExportBatch = vi.fn();
   const setLatestCsvExportBatchReloadToken = vi.fn();
   const setLatestHubspotPushBatch = vi.fn();
@@ -416,6 +428,13 @@ function renderShell(options?: {
       setBatchEnrichmentActionState,
     ])
     .mockReturnValueOnce([
+      options?.deleteActionState ?? {
+        type: "idle",
+        message: "",
+      },
+      setDeleteActionState,
+    ])
+    .mockReturnValueOnce([
       options?.latestCsvExportBatch ?? {
         requestState: "idle",
         summary: null,
@@ -452,7 +471,7 @@ function renderShell(options?: {
     }
   });
 
-  const element = CatalogTableShell({}) as CatalogShellElement;
+  const element = CatalogTableShell({ isAdmin: options?.isAdmin ?? false }) as CatalogShellElement;
 
   return {
     cleanups,
@@ -461,6 +480,7 @@ function renderShell(options?: {
     setReloadToken,
     setRequestState,
     setBatchEnrichmentActionState,
+    setDeleteActionState,
     setLatestCsvExportBatch,
     setLatestCsvExportBatchReloadToken,
     setLatestHubspotPushBatch,
@@ -476,6 +496,7 @@ function renderShell(options?: {
 
 describe("catalog table shell behavior", () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     useDocumentVisibilityMock.mockReturnValue(true);
     fetchChannelsMock.mockResolvedValue({
@@ -489,6 +510,10 @@ describe("catalog table shell behavior", () => {
     fetchSavedSegmentsMock.mockResolvedValue([createSavedSegment()]);
     createHubspotPushBatchMock.mockResolvedValue(createHubspotPushBatchSummary());
     fetchHubspotPushBatchDetailMock.mockResolvedValue(createHubspotPushBatchDetail());
+    deleteChannelsBatchMock.mockResolvedValue({
+      requestedCount: 1,
+      deletedCount: 1,
+    });
     requestChannelEnrichmentBatchMock.mockResolvedValue([]);
   });
 
@@ -979,6 +1004,97 @@ describe("catalog table shell behavior", () => {
     element.props.onClearSelection();
 
     expect(setSelectedChannelIds).toHaveBeenCalledWith([]);
+  });
+
+  it("deletes selected channels for admins after confirmation", async () => {
+    const selectedVisibleChannel = createChannel(
+      "00000000-0000-0000-0000-000000000301",
+      "Cleanup Channel",
+    );
+    const remainingChannel = createChannel(
+      "00000000-0000-0000-0000-000000000302",
+      "Keep Channel",
+    );
+    const selectedHiddenChannelId = "00000000-0000-0000-0000-000000000303";
+    const confirmMock = vi.fn(() => true);
+    const existingWindow = "window" in globalThis ? globalThis.window : undefined;
+
+    vi.stubGlobal("window", {
+      ...(existingWindow ?? {}),
+      confirm: confirmMock,
+    });
+    deleteChannelsBatchMock.mockResolvedValueOnce({
+      requestedCount: 2,
+      deletedCount: 2,
+    });
+
+    const {
+      element,
+      setDeleteActionState,
+      setReloadToken,
+      setRequestState,
+      setSelectedChannelIds,
+    } = renderShell({
+      isAdmin: true,
+      requestState: createReadyState({
+        items: [selectedVisibleChannel, remainingChannel],
+        total: 3,
+        page: 1,
+        pageSize: 20,
+      }),
+      selectedChannelIds: [selectedVisibleChannel.id, selectedHiddenChannelId],
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    setDeleteActionState.mockClear();
+    setReloadToken.mockClear();
+    setRequestState.mockClear();
+    setSelectedChannelIds.mockClear();
+
+    await element.props.onDeleteSelectedChannels();
+
+    expect(confirmMock).toHaveBeenCalledWith("Delete 2 selected channels? This cannot be undone.");
+    expect(deleteChannelsBatchMock).toHaveBeenCalledWith([
+      selectedVisibleChannel.id,
+      selectedHiddenChannelId,
+    ]);
+    expect(setDeleteActionState).toHaveBeenNthCalledWith(1, {
+      type: "submitting",
+      message: "Deleting 2 channels.",
+    });
+    expect(setDeleteActionState).toHaveBeenNthCalledWith(2, {
+      type: "success",
+      message: "Deleted 2 channels.",
+    });
+
+    const updateRequestState = setRequestState.mock.calls[0]?.[0] as
+      | ((current: ReturnType<typeof createReadyState>) => ReturnType<typeof createReadyState>)
+      | undefined;
+    const updatedRequestState = updateRequestState?.(
+      createReadyState({
+        items: [selectedVisibleChannel, remainingChannel],
+        total: 3,
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+    const updateSelectedChannelIds = setSelectedChannelIds.mock.calls[0]?.[0] as
+      | ((current: string[]) => string[])
+      | undefined;
+    const updateReloadToken = setReloadToken.mock.calls[0]?.[0] as
+      | ((current: number) => number)
+      | undefined;
+
+    expect(updatedRequestState?.data.items).toEqual([remainingChannel]);
+    expect(updatedRequestState?.data.total).toBe(1);
+    expect(updateSelectedChannelIds?.([selectedVisibleChannel.id, selectedHiddenChannelId, "sticky"])).toEqual([
+      "sticky",
+    ]);
+    expect(updateReloadToken?.(4)).toBe(5);
+
+    vi.unstubAllGlobals();
   });
 
   it("requests enrichment for all selected channels and refreshes visible rows", async () => {

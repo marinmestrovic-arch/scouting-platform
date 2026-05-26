@@ -3,6 +3,7 @@ import {
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
   ChannelManualOverrideField as PrismaChannelManualOverrideField,
   Prisma,
+  Role,
 } from "@prisma/client";
 import {
   channelAudienceCountrySchema,
@@ -17,6 +18,7 @@ import {
   type ChannelInsights as ContractChannelInsights,
   type ChannelManualOverrideField,
   type ChannelManualOverrideOperation,
+  type BulkDeleteChannelsResponse,
   type LatestCompletedAdvancedReport,
   type PatchChannelManualOverridesResponse,
   type StructuredChannelProfile,
@@ -82,6 +84,10 @@ function isYoutubeChannelIdUniqueConflict(error: unknown): boolean {
   }
 
   return typeof target === "string" && target.includes("youtube_channel_id");
+}
+
+function isForeignKeyConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003";
 }
 
 export type ChannelSummary = {
@@ -1153,6 +1159,93 @@ export async function getChannelByYoutubeId(youtubeChannelId: string): Promise<C
   const lastCompletedReport = await getLatestCompletedAdvancedReport(prisma, channel.id);
 
   return toChannelDetail(channel, lastCompletedReport);
+}
+
+export async function bulkDeleteChannels(input: {
+  actorUserId: string;
+  channelIds: string[];
+}): Promise<BulkDeleteChannelsResponse> {
+  const uniqueChannelIds = [...new Set(input.channelIds)];
+
+  const actor = await prisma.user.findFirst({
+    where: {
+      id: input.actorUserId,
+      role: Role.ADMIN,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!actor) {
+    throw new ServiceError("FORBIDDEN", 403, "Only admins can delete channels");
+  }
+
+  const channels = await prisma.channel.findMany({
+    where: {
+      id: {
+        in: uniqueChannelIds,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      youtubeChannelId: true,
+    },
+  });
+
+  if (channels.length === 0) {
+    return {
+      requestedCount: uniqueChannelIds.length,
+      deletedCount: 0,
+    };
+  }
+
+  const deletableChannelIds = channels.map((channel) => channel.id);
+
+  try {
+    const deletedCount = await withDbTransaction(async (tx) => {
+      const deleted = await tx.channel.deleteMany({
+        where: {
+          id: {
+            in: deletableChannelIds,
+          },
+        },
+      });
+
+      await tx.auditEvent.createMany({
+        data: channels.map((channel) => ({
+          actorUserId: input.actorUserId,
+          action: "channel.deleted",
+          entityType: "channel",
+          entityId: channel.id,
+          metadata: {
+            title: channel.title,
+            youtubeChannelId: channel.youtubeChannelId,
+            bulkDeleteRequestedCount: uniqueChannelIds.length,
+          },
+        })),
+      });
+
+      return deleted.count;
+    });
+
+    return {
+      requestedCount: uniqueChannelIds.length,
+      deletedCount,
+    };
+  } catch (error) {
+    if (isForeignKeyConstraintError(error)) {
+      throw new ServiceError(
+        "CHANNEL_DELETE_BLOCKED",
+        409,
+        "One or more selected channels are linked to runs or HubSpot batches and cannot be deleted.",
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function upsertChannelSkeleton(input: {

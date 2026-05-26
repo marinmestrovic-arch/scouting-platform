@@ -10,6 +10,7 @@ import { DataTable } from "../ui/DataTable";
 import { EmptyState } from "../ui/EmptyState";
 import type {
   BatchEnrichmentActionState,
+  CatalogDeleteActionState,
   CatalogCsvExportBatchState,
   CatalogHubspotPushBatchState,
   CatalogViewMode,
@@ -154,11 +155,14 @@ function CatalogCard({
 type CatalogTableProps = Readonly<{
   batchEnrichmentActionState: BatchEnrichmentActionState;
   data: ListChannelsResponse;
+  deleteActionState: CatalogDeleteActionState;
+  isAdmin?: boolean;
   latestCsvExportBatch: CatalogCsvExportBatchState;
   latestHubspotPushBatch: CatalogHubspotPushBatchState;
   selectedChannelIds: readonly string[];
   viewMode?: CatalogViewMode;
   onClearSelection: () => void;
+  onDeleteSelectedChannels: () => void | Promise<void>;
   onExportSelectedChannels: () => void | Promise<void>;
   onNextPage: () => void;
   onPreviousPage: () => void;
@@ -171,11 +175,14 @@ type CatalogTableProps = Readonly<{
 export function CatalogTable({
   batchEnrichmentActionState,
   data,
+  deleteActionState,
+  isAdmin = false,
   latestCsvExportBatch,
   latestHubspotPushBatch,
   selectedChannelIds,
   viewMode = "table",
   onClearSelection,
+  onDeleteSelectedChannels,
   onExportSelectedChannels,
   onNextPage,
   onPreviousPage,
@@ -191,6 +198,7 @@ export function CatalogTable({
   const allRowsSelected = areAllCatalogPageRowsSelected(selectedChannelIds, data.items);
   const hasSelection = selectedChannelIds.length > 0;
   const isRequestingBatchEnrichment = batchEnrichmentActionState.type === "submitting";
+  const isDeletingChannels = deleteActionState.type === "submitting";
   const isCreatingCsvExportBatch =
     latestCsvExportBatch.requestState === "loading" &&
     latestCsvExportBatch.summary === null &&
@@ -267,6 +275,19 @@ export function CatalogTable({
           >
             {isCreatingHubspotPushBatch ? "Starting push..." : `Push to HubSpot (${selectedChannelIds.length})`}
           </button>
+          {isAdmin ? (
+            <button
+              className="catalog-table__button catalog-table__button--danger"
+              disabled={isDeletingChannels}
+              onClick={() => {
+                void onDeleteSelectedChannels();
+              }}
+              suppressHydrationWarning
+              type="button"
+            >
+              {isDeletingChannels ? "Deleting..." : `Delete selected (${selectedChannelIds.length})`}
+            </button>
+          ) : null}
           <button
             className="catalog-table__button catalog-table__button--secondary"
             onClick={onClearSelection}
@@ -298,6 +319,16 @@ export function CatalogTable({
           role={batchEnrichmentActionState.type === "error" ? "alert" : undefined}
         >
           {batchEnrichmentActionState.message}
+        </p>
+      ) : null}
+
+      {deleteActionState.message ? (
+        <p
+          aria-live="polite"
+          className={`catalog-table__selection-status catalog-table__selection-status--${deleteActionState.type}`}
+          role={deleteActionState.type === "error" ? "alert" : undefined}
+        >
+          {deleteActionState.message}
         </p>
       ) : null}
 

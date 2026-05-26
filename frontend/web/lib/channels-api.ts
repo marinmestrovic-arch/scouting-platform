@@ -1,8 +1,11 @@
 import {
+  bulkDeleteChannelsRequestSchema,
+  bulkDeleteChannelsResponseSchema,
   channelDetailSchema,
   listChannelsQuerySchema,
   listChannelsResponseSchema,
   requestChannelEnrichmentResponseSchema,
+  type BulkDeleteChannelsResponse,
   type CatalogChannelFilters,
   type ChannelEnrichmentDetail,
   type ChannelDetail,
@@ -16,12 +19,16 @@ const GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE =
   "Unable to load channel details. Please try again.";
 const GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE =
   "Unable to request channel enrichment. Please try again.";
+const GENERIC_CHANNEL_DELETE_REQUEST_ERROR_MESSAGE =
+  "Unable to delete selected channels. Please try again.";
 const BATCH_CHANNEL_ENRICHMENT_CONCURRENCY_LIMIT = 4;
 const INVALID_CHANNELS_RESPONSE_ERROR_MESSAGE = "Received an invalid response from the server.";
 const INVALID_CHANNEL_DETAIL_RESPONSE_ERROR_MESSAGE =
   "Received an invalid channel detail response from the server.";
 const INVALID_CHANNEL_ENRICHMENT_RESPONSE_ERROR_MESSAGE =
   "Received an invalid channel enrichment response from the server.";
+const INVALID_CHANNEL_DELETE_RESPONSE_ERROR_MESSAGE =
+  "Received an invalid channel delete response from the server.";
 
 type ApiErrorBody = {
   error?: string;
@@ -301,6 +308,45 @@ export async function requestChannelEnrichmentBatch(
       }
     },
   );
+}
+
+export async function deleteChannelsBatch(
+  channelIds: readonly string[],
+): Promise<BulkDeleteChannelsResponse> {
+  const requestPayload = bulkDeleteChannelsRequestSchema.parse({
+    channelIds: [...new Set(channelIds)],
+  });
+
+  try {
+    const response = await fetch("/api/admin/channels/bulk-delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getApiErrorMessage(response, payload, {
+          authorizationErrorMessage: "Only admins can delete channels.",
+          fallbackMessage: GENERIC_CHANNEL_DELETE_REQUEST_ERROR_MESSAGE,
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = bulkDeleteChannelsResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_CHANNEL_DELETE_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error, GENERIC_CHANNEL_DELETE_REQUEST_ERROR_MESSAGE);
+  }
 }
 
 function appendCatalogFilters(
