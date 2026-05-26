@@ -1800,6 +1800,18 @@ async function requestEnrichmentForImportedUrlOnlyChannels(input: {
   }
 }
 
+// PostgreSQL caps a single statement at 65,535 bind parameters. Each csvImportRow
+// inserted has ~70 columns, so 800 rows per chunk (~56,000 params) stays safely
+// under the limit while keeping the number of round-trips small for big imports.
+const CSV_IMPORT_ROW_INSERT_CHUNK_SIZE = 800;
+
+// Prisma's default interactive transaction timeout is 5s, which is too tight
+// for large imports (10k rows × multiple chunked INSERTs can exceed that on
+// modest hardware). 60s leaves plenty of headroom for the documented 10k-row
+// upper bound while still failing fast on truly stuck transactions.
+const CSV_IMPORT_TRANSACTION_TIMEOUT_MS = 60_000;
+const CSV_IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
+
 export async function createCsvImportBatch(input: {
   requestedByUserId: string;
   fileName: string;
@@ -1814,7 +1826,23 @@ export async function createCsvImportBatch(input: {
     );
   }
 
-  const parsedImport = await buildParsedRows(input.csvText);
+  let parsedImport;
+  try {
+    parsedImport = await buildParsedRows(input.csvText);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      throw error;
+    }
+
+    // Unexpected parse failure — surface a clean error code and keep the
+    // underlying message for server-side logs via formatErrorMessage.
+    throw new ServiceError(
+      "CSV_IMPORT_PARSE_FAILED",
+      400,
+      `CSV could not be parsed: ${formatErrorMessage(error)}`,
+    );
+  }
+
   const parsedRows = parsedImport.rows;
   const templateVersion = parsedImport.templateVersion;
   let importBatchId = "";
@@ -1825,7 +1853,8 @@ export async function createCsvImportBatch(input: {
   const completesImmediately = pendingRowCount === 0;
   const createdAt = new Date();
 
-  await withDbTransaction(async (tx) => {
+  try {
+    await withDbTransaction(async (tx) => {
     const batch = await tx.csvImportBatch.create({
       data: {
         requestedByUserId: input.requestedByUserId,
@@ -1845,81 +1874,87 @@ export async function createCsvImportBatch(input: {
     });
     importBatchId = batch.id;
 
-    await tx.csvImportRow.createMany({
-      data: parsedRows.map((row) => ({
-        batchId: batch.id,
-        rowNumber: row.rowNumber,
-        status: row.status,
-        youtubeChannelId: row.youtubeChannelId,
-        channelTitle: row.channelTitle,
-        hubspotRecordId: row.hubspotRecordId,
-        timestampImported: row.timestampImported,
-        channelUrl: row.channelUrl,
-        campaignName: row.campaignName,
-        dealOwner: row.dealOwner,
-        handoffStatus: row.handoffStatus,
-        contactEmail: row.contactEmail,
-        phoneNumber: row.phoneNumber,
-        currency: row.currency,
-        dealType: row.dealType,
-        contactType: row.contactType,
-        month: row.month,
-        year: row.year,
-        clientName: row.clientName,
-        dealName: row.dealName,
-        activationName: row.activationName,
-        pipeline: row.pipeline,
-        dealStage: row.dealStage,
-        firstName: row.firstName,
-        lastName: row.lastName,
-        youtubeHandle: row.youtubeHandle,
-        youtubeUrl: row.youtubeUrl,
-        subscriberCount: row.subscriberCount,
-        viewCount: row.viewCount,
-        videoCount: row.videoCount,
-        youtubeVideoMedianViews: row.youtubeVideoMedianViews,
-        youtubeShortsMedianViews: row.youtubeShortsMedianViews,
-        youtubeEngagementRate: row.youtubeEngagementRate,
-        youtubeFollowers: row.youtubeFollowers,
-        instagramHandle: row.instagramHandle,
-        instagramUrl: row.instagramUrl,
-        instagramPostAverageViews: row.instagramPostAverageViews,
-        instagramReelAverageViews: row.instagramReelAverageViews,
-        instagramStory7DayAverageViews: row.instagramStory7DayAverageViews,
-        instagramStory30DayAverageViews: row.instagramStory30DayAverageViews,
-        instagramEngagementRate: row.instagramEngagementRate,
-        instagramFollowers: row.instagramFollowers,
-        tiktokHandle: row.tiktokHandle,
-        tiktokUrl: row.tiktokUrl,
-        tiktokAverageViews: row.tiktokAverageViews,
-        tiktokEngagementRate: row.tiktokEngagementRate,
-        tiktokFollowers: row.tiktokFollowers,
-        twitchHandle: row.twitchHandle,
-        twitchUrl: row.twitchUrl,
-        twitchAverageViews: row.twitchAverageViews,
-        twitchEngagementRate: row.twitchEngagementRate,
-        twitchFollowers: row.twitchFollowers,
-        kickHandle: row.kickHandle,
-        kickUrl: row.kickUrl,
-        kickAverageViews: row.kickAverageViews,
-        kickEngagementRate: row.kickEngagementRate,
-        kickFollowers: row.kickFollowers,
-        xHandle: row.xHandle,
-        xUrl: row.xUrl,
-        xAverageViews: row.xAverageViews,
-        xEngagementRate: row.xEngagementRate,
-        xFollowers: row.xFollowers,
-        notes: row.notes,
-        sourceLabel: row.sourceLabel,
-        influencerType: row.influencerType,
-        influencerVertical: row.influencerVertical,
-        countryRegion: row.countryRegion,
-        language: row.language,
-        errorMessage: row.errorMessage,
-        createdAt,
-        updatedAt: createdAt,
-      })),
-    });
+    const csvImportRowData = parsedRows.map((row) => ({
+      batchId: batch.id,
+      rowNumber: row.rowNumber,
+      status: row.status,
+      youtubeChannelId: row.youtubeChannelId,
+      channelTitle: row.channelTitle,
+      hubspotRecordId: row.hubspotRecordId,
+      timestampImported: row.timestampImported,
+      channelUrl: row.channelUrl,
+      campaignName: row.campaignName,
+      dealOwner: row.dealOwner,
+      handoffStatus: row.handoffStatus,
+      contactEmail: row.contactEmail,
+      phoneNumber: row.phoneNumber,
+      currency: row.currency,
+      dealType: row.dealType,
+      contactType: row.contactType,
+      month: row.month,
+      year: row.year,
+      clientName: row.clientName,
+      dealName: row.dealName,
+      activationName: row.activationName,
+      pipeline: row.pipeline,
+      dealStage: row.dealStage,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      youtubeHandle: row.youtubeHandle,
+      youtubeUrl: row.youtubeUrl,
+      subscriberCount: row.subscriberCount,
+      viewCount: row.viewCount,
+      videoCount: row.videoCount,
+      youtubeVideoMedianViews: row.youtubeVideoMedianViews,
+      youtubeShortsMedianViews: row.youtubeShortsMedianViews,
+      youtubeEngagementRate: row.youtubeEngagementRate,
+      youtubeFollowers: row.youtubeFollowers,
+      instagramHandle: row.instagramHandle,
+      instagramUrl: row.instagramUrl,
+      instagramPostAverageViews: row.instagramPostAverageViews,
+      instagramReelAverageViews: row.instagramReelAverageViews,
+      instagramStory7DayAverageViews: row.instagramStory7DayAverageViews,
+      instagramStory30DayAverageViews: row.instagramStory30DayAverageViews,
+      instagramEngagementRate: row.instagramEngagementRate,
+      instagramFollowers: row.instagramFollowers,
+      tiktokHandle: row.tiktokHandle,
+      tiktokUrl: row.tiktokUrl,
+      tiktokAverageViews: row.tiktokAverageViews,
+      tiktokEngagementRate: row.tiktokEngagementRate,
+      tiktokFollowers: row.tiktokFollowers,
+      twitchHandle: row.twitchHandle,
+      twitchUrl: row.twitchUrl,
+      twitchAverageViews: row.twitchAverageViews,
+      twitchEngagementRate: row.twitchEngagementRate,
+      twitchFollowers: row.twitchFollowers,
+      kickHandle: row.kickHandle,
+      kickUrl: row.kickUrl,
+      kickAverageViews: row.kickAverageViews,
+      kickEngagementRate: row.kickEngagementRate,
+      kickFollowers: row.kickFollowers,
+      xHandle: row.xHandle,
+      xUrl: row.xUrl,
+      xAverageViews: row.xAverageViews,
+      xEngagementRate: row.xEngagementRate,
+      xFollowers: row.xFollowers,
+      notes: row.notes,
+      sourceLabel: row.sourceLabel,
+      influencerType: row.influencerType,
+      influencerVertical: row.influencerVertical,
+      countryRegion: row.countryRegion,
+      language: row.language,
+      errorMessage: row.errorMessage,
+      createdAt,
+      updatedAt: createdAt,
+    }));
+
+    // Chunk the insert to stay under PostgreSQL's 65,535 bind parameter limit.
+    // Each row has ~70 columns, so 800 rows/chunk ≈ 56,000 params — comfortably below the limit.
+    for (let i = 0; i < csvImportRowData.length; i += CSV_IMPORT_ROW_INSERT_CHUNK_SIZE) {
+      await tx.csvImportRow.createMany({
+        data: csvImportRowData.slice(i, i + CSV_IMPORT_ROW_INSERT_CHUNK_SIZE),
+      });
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -1953,7 +1988,25 @@ export async function createCsvImportBatch(input: {
         },
       });
     }
-  });
+    }, {
+      timeout: CSV_IMPORT_TRANSACTION_TIMEOUT_MS,
+      maxWait: CSV_IMPORT_TRANSACTION_MAX_WAIT_MS,
+    });
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      throw error;
+    }
+
+    // Persist failure (DB outage, constraint violation, transaction timeout,
+    // etc.). Surface a clear ServiceError so the route returns a labelled
+    // 500 instead of a bare "Internal server error". The transaction rolled
+    // back, so no partial batch was created.
+    throw new ServiceError(
+      "CSV_IMPORT_PERSIST_FAILED",
+      500,
+      `CSV import could not be saved: ${formatErrorMessage(error)}`,
+    );
+  }
 
   if (!completesImmediately) {
     try {

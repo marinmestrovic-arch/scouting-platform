@@ -26,14 +26,22 @@ export function cachedJson(
   });
 }
 
-export function toRouteErrorResponse(error: unknown): NextResponse {
+export function toRouteErrorResponse(error: unknown, context?: Record<string, unknown>): NextResponse {
   if (error instanceof ServiceError) {
     return jsonError(error.message, error.status);
   }
 
-  if (error instanceof Error) {
-    return jsonError("Internal server error", 500);
-  }
+  // Unexpected error — log it so the generic 500 isn't silent in server logs.
+  // Keep the client response generic to avoid leaking implementation details.
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+
+  console.error("[route-error]", {
+    timestamp: new Date().toISOString(),
+    message,
+    stack,
+    ...(context ?? {}),
+  });
 
   return jsonError("Internal server error", 500);
 }

@@ -31,6 +31,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     return admin.response;
   }
 
+  let fileContext: { fileName?: string; fileSize?: number; mimeType?: string } = {};
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");
@@ -38,6 +40,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "CSV file is required" }, { status: 400 });
     }
+
+    fileContext = { fileName: file.name, fileSize: file.size, mimeType: file.type };
 
     const parsedFile = csvImportUploadFileSchema.safeParse({
       fileName: file.name,
@@ -65,6 +69,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json(payload, { status: 202 });
   } catch (error) {
-    return toRouteErrorResponse(error);
+    return toRouteErrorResponse(error, {
+      route: "POST /api/admin/csv-import-batches",
+      userId: admin.userId,
+      ...fileContext,
+    });
   }
 }
