@@ -10655,10 +10655,12 @@ textarea:focus-visible,
   display: none;
 }
 
-/* ----- Mobile (≤640px) — drawer + density ----- */
-@media (max-width: 640px) {
+/* ----- Drawer + hamburger nav (≤900px) — keeps header compact through
+   tablet widths where the inline nav would otherwise wrap to 3 rows. */
+@media (max-width: 900px) {
   /* backdrop-filter on header creates a containing block for fixed children
-     which breaks the drawer; drop the frosted-glass effect on mobile. */
+     which breaks the drawer; drop the frosted-glass effect when drawer mode
+     is active. */
   .auth-shell__header {
     backdrop-filter: none;
   }
@@ -10809,31 +10811,45 @@ textarea:focus-visible,
     color: var(--color-accent);
   }
 
-  /* Header tightening on mobile */
+  /* Header: single row through drawer breakpoint (overrides the older
+     880px rule that split the header into two rows). */
   .auth-shell__header,
   .auth-shell__header-inner {
-    padding-left: 0.85rem;
-    padding-right: 0.85rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 
   .auth-shell__header-inner {
-    display: flex !important;
-    flex-direction: row !important;
+    display: flex;
+    flex-direction: row;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
+    grid-template-columns: none;
+    grid-template-rows: none;
+    height: auto;
+    gap: var(--space-3);
   }
 
   .auth-shell__actions {
     flex-wrap: nowrap;
     gap: 0.4rem;
   }
+}
+
+/* ----- Mobile (≤640px) — extra density ----- */
+@media (max-width: 640px) {
+  .auth-shell__header,
+  .auth-shell__header-inner {
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
 
   .auth-shell__role-badge {
     display: none;
   }
 
-  /* Hide the "sign out" form inside header — it's available from the drawer area / not critical on mobile */
+  /* Hide "sign out" in header on phones; reachable via the drawer
+     once the drawer surfaces it. */
   .auth-shell__actions .sign-out-form {
     display: none;
   }
@@ -10896,26 +10912,16 @@ textarea:focus-visible,
   }
 }
 
-/* ----- Tablet (641–1024px) ----- */
+/* ----- Tablet (641–1024px) — only collapse what actually needs it ----- */
 @media (min-width: 641px) and (max-width: 1024px) {
-  .admin-dashboard__card-grid,
-  .dashboard-workspace__summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+  /* Three-column form/detail grids drop to two; stat-card grids keep
+     their auto-fit behavior so a 1000px viewport can still show 4
+     cards in a row when there's room. */
   .new-scouting__grid--three,
   .csv-export__details,
   .hubspot-push__details,
-  .admin-csv-imports__details,
-  .admin-dashboard__panel-grid,
-  .admin-dashboard__shortcut-grid {
+  .admin-csv-imports__details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .auth-shell__header,
-  .auth-shell__header-inner {
-    padding-left: 1rem;
-    padding-right: 1rem;
   }
 
   .auth-shell__content {
@@ -11321,22 +11327,18 @@ textarea:focus-visible,
   .csv-export__details,
   .hubspot-push__details,
   .admin-csv-imports__details,
-  .admin-dashboard__card-grid,
-  .admin-dashboard__panel-grid,
-  .admin-dashboard__shortcut-grid,
-  .dashboard-workspace__summary,
-  .dashboard-workspace__filters,
   .channel-detail-shell__details--compact,
   .channel-detail-shell__manual-edit-list,
-  .creator-profile__kpis,
-  .creator-profile__hero-meta,
-  .creator-detail-list,
   .creator-detail-list--inline,
   .campaigns-workspace__filters,
   .export-prep__defaults-grid,
   .admin-users__form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  /* Stat card grids, dashboard filters, and KPI rows keep their natural
+     auto-fit. At wider tablet widths (≥900px) they show 3-4 cards
+     across; below, they collapse on their own. */
 
   /* Toolbars that were absolutely justified — let them stack neatly */
   .admin-csv-imports__toolbar,
@@ -11350,5 +11352,56 @@ textarea:focus-visible,
   .creator-profile__rail {
     position: static;
     width: 100%;
+  }
+}
+
+/* ============================================================
+   Intermediate-width refinements — fixes pre-existing layout
+   awkwardness at 640–1100px where the original CSS would wrap
+   the header into rows or leave the Status chips orphaned next
+   to Search Runs.
+   ============================================================ */
+
+/* Dashboard "quick filters" row (Search Runs + Status chips) stacks
+   vertically as soon as the panel is too narrow to fit the full chip
+   row beside the input. At wider screens they sit side-by-side. */
+@media (max-width: 1180px) {
+  .dashboard-workspace__quick-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-workspace__status-field {
+    align-items: flex-start;
+  }
+}
+
+/* On real tablets and below, also let the upper filter row (Campaign
+   Manager, Client, Markets) auto-fit instead of forcing a fixed
+   column count, so it adapts cleanly to the viewport. */
+@media (max-width: 900px) {
+  .dashboard-workspace__filters {
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  }
+}
+
+/* Stat-card auto-fit lower bound: at 640–900px, 13rem (208px) cards
+   give 2 across; at 900–1100px they give 3-4. Keep this intact by NOT
+   forcing a column count from any tablet override above. */
+
+/* The historical 880px media query splits the auth-shell header into
+   a 2-row grid. We render the drawer up to 900px now, so neutralize
+   the row layout from that block. */
+@media (max-width: 880px) {
+  .auth-shell__header-inner {
+    grid-template-rows: none;
+    height: auto;
+  }
+
+  .auth-shell__nav-region .app-nav {
+    grid-column: auto;
+  }
+
+  .auth-shell__nav-region .app-nav__list {
+    height: auto;
   }
 }
