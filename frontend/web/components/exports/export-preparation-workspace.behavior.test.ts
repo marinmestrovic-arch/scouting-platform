@@ -18,7 +18,6 @@ vi.mock("react", async () => {
 });
 
 vi.mock("../../lib/export-previews-api", () => ({
-  enrichHubspotExportPreview: vi.fn(),
   updateHubspotExportPreview: vi.fn(),
 }));
 
@@ -26,7 +25,6 @@ vi.mock("../../lib/google-sheets-export-api", () => ({
   exportRunToGoogleSheets: vi.fn(),
 }));
 
-import { enrichHubspotExportPreview } from "../../lib/export-previews-api";
 import { ExportPreparationWorkspace } from "./export-preparation-workspace";
 
 type InputChangeEvent = {
@@ -176,7 +174,6 @@ describe("export preparation workspace behavior", () => {
     useMemoMock.mockReset();
     useMemoMock.mockImplementation((factory: () => unknown) => factory());
     useStateMock.mockReset();
-    vi.mocked(enrichHubspotExportPreview).mockReset();
   });
 
   it("keeps Google Sheets input changes when React runs the state updater after the event is cleared", () => {
@@ -222,21 +219,9 @@ describe("export preparation workspace behavior", () => {
       .mockReturnValueOnce(["", vi.fn()])
       .mockReturnValueOnce([googleSheetsRequest, setGoogleSheetsRequest])
       .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          open: false,
-          percentage: 0,
-          message: "",
-          status: "idle",
-        },
-        vi.fn(),
-      ]);
+      .mockReturnValueOnce(["", vi.fn()]);
 
     const element = ExportPreparationWorkspace({
-      mode: "hubspot",
       preview,
     }) as ReactElement;
     const spreadsheetInput = findInputByPlaceholder(
@@ -254,138 +239,6 @@ describe("export preparation workspace behavior", () => {
     activeEvent = { currentTarget: { value: "Prepared rows" } };
     expect(() => sheetNameInput.props.onChange?.(activeEvent!)).not.toThrow();
     expect(googleSheetsRequest.sheetName).toBe("Prepared rows");
-  });
-
-  it("shows a blocking enrichment state instead of silently doing nothing", () => {
-    const preview = createHubspotPreview();
-    const pendingDrafts = {
-      defaults: {
-        currency: "",
-        dealType: "",
-        activationType: "",
-        influencerType: "",
-        influencerVertical: "",
-        countryRegion: "",
-        language: "",
-      },
-      touchedDefaults: new Set(["currency"]),
-      rowValues: {},
-      touchedRowFields: {},
-    };
-    const setCreatorListEnrichmentState = vi.fn();
-    const setCreatorListEnrichmentMessage = vi.fn();
-    const setCreatorListEnrichmentProgress = vi.fn();
-
-    useStateMock
-      .mockReturnValueOnce([preview, vi.fn()])
-      .mockReturnValueOnce([pendingDrafts, vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          spreadsheetIdOrUrl: "",
-          sheetName: "",
-        },
-        vi.fn(),
-      ])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce(["idle", setCreatorListEnrichmentState])
-      .mockReturnValueOnce(["", setCreatorListEnrichmentMessage])
-      .mockReturnValueOnce([
-        {
-          open: false,
-          percentage: 0,
-          message: "",
-          status: "idle",
-        },
-        setCreatorListEnrichmentProgress,
-      ]);
-
-    const element = ExportPreparationWorkspace({
-      mode: "hubspot",
-      preview,
-    }) as ReactElement;
-    const enrichButton = findButtonByText(element, "Enrich Creator List");
-
-    expect(enrichButton.props.disabled).toBe(false);
-    expect(() => enrichButton.props.onClick?.()).not.toThrow();
-    expect(setCreatorListEnrichmentState).toHaveBeenCalledWith("error");
-    expect(setCreatorListEnrichmentMessage).toHaveBeenCalledWith(
-      "Save your edits before starting Creator List enrichment.",
-    );
-    expect(setCreatorListEnrichmentProgress).toHaveBeenCalledWith({
-      open: true,
-      percentage: 0,
-      message: "Save your edits before starting Creator List enrichment.",
-      status: "error",
-    });
-  });
-
-  it("starts workspace enrichment without requiring Google Sheets fields", async () => {
-    const preview = createHubspotPreview();
-    const emptyDrafts = {
-      defaults: {
-        currency: "",
-        dealType: "",
-        activationType: "",
-        influencerType: "",
-        influencerVertical: "",
-        countryRegion: "",
-        language: "",
-      },
-      touchedDefaults: new Set(),
-      rowValues: {},
-      touchedRowFields: {},
-    };
-    const enrichHubspotExportPreviewMock = vi.mocked(enrichHubspotExportPreview);
-    enrichHubspotExportPreviewMock.mockResolvedValue({
-      preview,
-      processedChannelCount: 0,
-      updatedRowCount: 0,
-      updatedFieldCount: 0,
-      failedChannelCount: 0,
-    });
-
-    useStateMock
-      .mockReturnValueOnce([preview, vi.fn()])
-      .mockReturnValueOnce([emptyDrafts, vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          spreadsheetIdOrUrl: "",
-          sheetName: "",
-        },
-        vi.fn(),
-      ])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          open: false,
-          percentage: 0,
-          message: "",
-          status: "idle",
-        },
-        vi.fn(),
-      ]);
-
-    const element = ExportPreparationWorkspace({
-      mode: "hubspot",
-      preview,
-    }) as ReactElement;
-    const enrichButton = findButtonByText(element, "Enrich Creator List");
-
-    enrichButton.props.onClick?.();
-    await Promise.resolve();
-
-    expect(enrichHubspotExportPreviewMock).toHaveBeenCalledWith(
-      "7c5ca8f3-cd0d-42db-b4db-b863bdc3e821",
-      expect.any(Object),
-    );
   });
 
   it("explains that Google Sheets export waits for pending prep changes to be saved", () => {
@@ -418,21 +271,9 @@ describe("export preparation workspace behavior", () => {
         vi.fn(),
       ])
       .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          open: false,
-          percentage: 0,
-          message: "",
-          status: "idle",
-        },
-        vi.fn(),
-      ]);
+      .mockReturnValueOnce(["", vi.fn()]);
 
     const element = ExportPreparationWorkspace({
-      mode: "hubspot",
       preview,
     }) as ReactElement;
     const googleSheetsButton = findButtonByText(element, "Export to Google Sheets");
@@ -473,21 +314,9 @@ describe("export preparation workspace behavior", () => {
         vi.fn(),
       ])
       .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce(["idle", vi.fn()])
-      .mockReturnValueOnce(["", vi.fn()])
-      .mockReturnValueOnce([
-        {
-          open: false,
-          percentage: 0,
-          message: "",
-          status: "idle",
-        },
-        vi.fn(),
-      ]);
+      .mockReturnValueOnce(["", vi.fn()]);
 
     const element = ExportPreparationWorkspace({
-      mode: "hubspot",
       preview,
     }) as ReactElement;
     const googleSheetsButton = findButtonByText(element, "Export to Google Sheets");
@@ -496,5 +325,45 @@ describe("export preparation workspace behavior", () => {
     expect(getElementText(element)).not.toContain(
       "Save your edits before exporting to Google Sheets.",
     );
+  });
+
+  it("renders a CSV Download button left of Save in the run defaults header", () => {
+    const preview = createHubspotPreview();
+    const emptyDrafts = {
+      defaults: {
+        currency: "",
+        dealType: "",
+        activationType: "",
+        influencerType: "",
+        influencerVertical: "",
+        countryRegion: "",
+        language: "",
+      },
+      touchedDefaults: new Set(),
+      rowValues: {},
+      touchedRowFields: {},
+    };
+
+    useStateMock
+      .mockReturnValueOnce([preview, vi.fn()])
+      .mockReturnValueOnce([emptyDrafts, vi.fn()])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()])
+      .mockReturnValueOnce([
+        { spreadsheetIdOrUrl: "", sheetName: "" },
+        vi.fn(),
+      ])
+      .mockReturnValueOnce(["idle", vi.fn()])
+      .mockReturnValueOnce(["", vi.fn()]);
+
+    const element = ExportPreparationWorkspace({
+      preview,
+    }) as ReactElement;
+
+    const csvButton = findButtonByText(element, "CSV Download");
+    const saveButton = findButtonByText(element, "Save");
+
+    expect(csvButton).toBeDefined();
+    expect(saveButton).toBeDefined();
   });
 });

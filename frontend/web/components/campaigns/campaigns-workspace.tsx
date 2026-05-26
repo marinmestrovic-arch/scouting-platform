@@ -19,6 +19,7 @@ type CampaignFormState = {
   name: string;
   clientId: string;
   marketId: string;
+  briefLink: string;
   month: RunMonth;
   year: string;
   isActive: boolean;
@@ -68,6 +69,7 @@ function createEmptyCampaignForm(): CampaignFormState {
     name: "",
     clientId: "",
     marketId: "",
+    briefLink: "",
     month: "january",
     year: String(new Date().getUTCFullYear()),
     isActive: true,
@@ -79,6 +81,7 @@ function toCampaignForm(campaign: CampaignSummary): CampaignFormState {
     name: campaign.name,
     clientId: campaign.client?.id ?? "",
     marketId: campaign.market?.id ?? "",
+    briefLink: campaign.briefLink ?? "",
     month: campaign.month ?? "january",
     year: String(campaign.year ?? new Date().getUTCFullYear()),
     isActive: campaign.isActive,
@@ -211,6 +214,7 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
         name: form.name,
         clientId: form.clientId,
         marketId: form.marketId || undefined,
+        briefLink: form.briefLink.trim() || undefined,
         month: form.month,
         year,
         isActive: form.isActive,
@@ -256,6 +260,7 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
         name: editForm.name,
         clientId: editForm.clientId,
         marketId: editForm.marketId || undefined,
+        briefLink: editForm.briefLink.trim() || undefined,
         month: editForm.month,
         year,
         isActive: editForm.isActive,
@@ -443,6 +448,15 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                     value={form.year}
                   />
                 </label>
+                <label className="new-scouting__field">
+                  <span>Brief Link</span>
+                  <input
+                    onChange={(event) => updateFormField("briefLink", event.currentTarget.value)}
+                    placeholder="https://docs.google.com/..."
+                    type="url"
+                    value={form.briefLink}
+                  />
+                </label>
               </div>
 
               <div className="campaigns-workspace__form-actions">
@@ -540,6 +554,17 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                   />
                 </label>
               </div>
+              <div className="new-scouting__grid new-scouting__grid--three">
+                <label className="new-scouting__field">
+                  <span>Brief Link</span>
+                  <input
+                    onChange={(event) => updateEditFormField("briefLink", event.currentTarget.value)}
+                    placeholder="https://docs.google.com/..."
+                    type="url"
+                    value={editForm.briefLink}
+                  />
+                </label>
+              </div>
 
               <div className="campaigns-workspace__form-actions">
                 <button className="database-admin__cta" disabled={isSubmitting} type="submit">
@@ -559,6 +584,7 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
               <th>Campaign Name</th>
               <th>Client</th>
               <th>Markets</th>
+              <th>Brief Link</th>
               <th>Month</th>
               <th>Year</th>
               <th>Status</th>
@@ -588,6 +614,20 @@ export function CampaignsWorkspace({ initialData }: CampaignsWorkspaceProps) {
                   </td>
                   <td>{campaign.client?.name ?? "—"}</td>
                   <td>{campaign.market?.name ?? "—"}</td>
+                  <td>
+                    {campaign.briefLink ? (
+                      <a
+                        className="database-records__link"
+                        href={campaign.briefLink}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open brief
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>{campaign.month ? MONTH_LABELS[campaign.month] : "—"}</td>
                   <td>{campaign.year ?? "—"}</td>
                   <td>

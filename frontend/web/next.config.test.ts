@@ -7,12 +7,12 @@ describe("next config", () => {
     expect(nextConfig.serverExternalPackages).toContain("argon2");
   });
 
-  it("allows YouTube-hosted channel thumbnails for next/image", () => {
+  it("permits next/image to load thumbnails from any remote host", () => {
     expect(nextConfig.images?.remotePatterns).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           protocol: "https",
-          hostname: "yt3.ggpht.com"
+          hostname: "**"
         })
       ])
     );

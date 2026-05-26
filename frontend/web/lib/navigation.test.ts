@@ -3,7 +3,7 @@ import {
   APP_ROLES,
   APP_NAVIGATION_ITEMS,
   getCsvExportBatchResultHref,
-  getHubspotPushBatchResultHref,
+  getExportPreviewHref,
   getNavigationForRole,
   isAppRole,
   isNavItemVisibleToRole,
@@ -89,8 +89,8 @@ describe("navigation config", () => {
     expect(newScoutingEntry?.label).toBe("New Scouting");
   });
 
-  it("builds detail routes for export and HubSpot batches", () => {
+  it("builds detail routes for exports", () => {
     expect(getCsvExportBatchResultHref("batch-1")).toBe("/exports/batch-1");
-    expect(getHubspotPushBatchResultHref("batch 2")).toBe("/hubspot/batch%202");
+    expect(getExportPreviewHref("run 2")).toBe("/exports/prepare/run%202");
   });
 });

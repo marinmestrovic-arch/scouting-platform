@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { redirect } from "next/navigation";
 
-import { getCsvExportPreview } from "@scouting-platform/core";
+import { getHubspotExportPreview } from "@scouting-platform/core";
 import { getSession } from "../../../../../lib/cached-auth";
 import { ExportPreparationWorkspace } from "../../../../../components/exports/export-preparation-workspace";
 import { PageHeader } from "../../../../../components/layout/PageHeader";
@@ -19,13 +19,13 @@ async function ExportPrepareData({ runId }: { runId: string }) {
     redirect("/login");
   }
 
-  const preview = await getCsvExportPreview({
+  const preview = await getHubspotExportPreview({
     runId,
     userId: session.user.id,
     role: getRoleFromSession(session),
   });
 
-  return <ExportPreparationWorkspace mode="csv" preview={preview} />;
+  return <ExportPreparationWorkspace preview={preview} />;
 }
 
 function ExportPrepareFallback() {
@@ -43,10 +43,10 @@ export default async function ExportPreparePage({ params }: ExportPreparePagePro
     <section className="page-section">
       <PageHeader
         crumbs={[
-          { label: "Exports", href: "/exports" },
-          { label: "CSV Preparation" },
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Export to Google Sheets" },
         ]}
-        title="CSV Preparation"
+        title="Export to Google Sheets"
       />
       <div className="page-container page-section__body">
         <Suspense fallback={<ExportPrepareFallback />}>

@@ -7,10 +7,10 @@ export default function ExportPrepareLoading() {
     <section className="page-section">
       <PageHeader
         crumbs={[
-          { label: "Exports", href: "/exports" },
-          { label: "CSV Preparation" },
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Export to Google Sheets" },
         ]}
-        title="CSV Preparation"
+        title="Export to Google Sheets"
       />
       <div className="page-container page-section__body">
         <SkeletonPageBody>

@@ -2,8 +2,6 @@ import type {
   ChannelEnrichmentStatus,
   CsvExportBatchDetail,
   CsvExportBatchSummary,
-  HubspotPushBatchDetail,
-  HubspotPushBatchSummary,
   ListChannelsResponse,
 } from "@scouting-platform/contracts";
 import { createElement, type ReactNode } from "react";
@@ -68,7 +66,6 @@ import {
   parseCatalogUrlState,
   shouldPollCatalogCsvExportBatch,
   shouldPollCatalogEnrichmentRows,
-  shouldPollCatalogHubspotPushBatch,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
   toggleCatalogMultiValueFilter,
@@ -174,9 +171,6 @@ function renderView(
     >[0]["batchEnrichmentActionState"];
     latestCsvExportBatch?: Parameters<typeof CatalogTableShellView>[0]["latestCsvExportBatch"];
     deleteActionState?: Parameters<typeof CatalogTableShellView>[0]["deleteActionState"];
-    latestHubspotPushBatch?: Parameters<
-      typeof CatalogTableShellView
-    >[0]["latestHubspotPushBatch"];
     isAdmin?: boolean;
   },
 ): string {
@@ -215,13 +209,6 @@ function renderView(
         error: null,
         isRefreshing: false,
       },
-      latestHubspotPushBatch: options?.latestHubspotPushBatch ?? {
-        requestState: "idle",
-        summary: null,
-        detail: null,
-        error: null,
-        isRefreshing: false,
-      },
       isAdmin: options?.isAdmin ?? false,
       requestState,
       onClearSelection: vi.fn(),
@@ -230,7 +217,6 @@ function renderView(
       onExportSelectedChannels: vi.fn(),
       onNextPage: vi.fn(),
       onPreviousPage: vi.fn(),
-      onPushSelectedChannelsToHubspot: vi.fn(),
       onRequestSelectedEnrichment: vi.fn(),
       onResetFilters: vi.fn(),
       onRetry: vi.fn(),
@@ -511,17 +497,6 @@ describe("catalog table shell view", () => {
         isRefreshing: false,
       }),
     ).toBe(true);
-    expect(
-      shouldPollCatalogHubspotPushBatch({
-        requestState: "ready",
-        summary: buildHubspotBatchSummaryPayloadForCatalogTests({
-          status: "completed",
-        }),
-        detail: null,
-        error: null,
-        isRefreshing: false,
-      }),
-    ).toBe(false);
   });
 
   it("round-trips saved segment filters into catalog filter state", () => {
@@ -761,8 +736,8 @@ describe("catalog table shell view", () => {
 
     expect(html).toContain("Enrich selected (2)");
     expect(html).toContain("Export selected (2)");
-    expect(html).toContain("Push to HubSpot (2)");
     expect(html).not.toContain("Delete selected");
+    expect(html).not.toContain("Push to HubSpot");
     expect(html).toContain(
       "Queued 2 channels for enrichment. The table refreshes automatically while jobs run.",
     );
@@ -828,55 +803,6 @@ describe("catalog table shell view", () => {
           error: null,
           isRefreshing: false,
         },
-        latestHubspotPushBatch: {
-          requestState: "ready",
-          summary: buildHubspotBatchSummaryPayloadForCatalogTests({
-            id: "dc605f9b-0cd3-41f5-ad85-969255759293",
-            status: "completed",
-            totalRowCount: 2,
-            pushedRowCount: 1,
-            failedRowCount: 1,
-          }),
-          detail: {
-            ...buildHubspotBatchSummaryPayloadForCatalogTests({
-              id: "dc605f9b-0cd3-41f5-ad85-969255759293",
-              status: "completed",
-              totalRowCount: 2,
-              pushedRowCount: 1,
-              failedRowCount: 1,
-            }),
-            scope: {
-              channelIds: [
-                "50cb8343-229e-4f4c-9d8d-c17297f91288",
-                "e11e5184-79a2-42bf-bceb-345f30611c39",
-              ],
-            },
-            rows: [
-              {
-                id: "d1da8870-3dad-454c-b6ad-49620ef94969",
-                channelId: "50cb8343-229e-4f4c-9d8d-c17297f91288",
-                contactEmail: "creator@example.com",
-                status: "pushed",
-                hubspotObjectId: "hubspot-contact-1",
-                errorMessage: null,
-                createdAt: "2026-03-13T09:00:00.000Z",
-                updatedAt: "2026-03-13T09:01:00.000Z",
-              },
-              {
-                id: "f04c6039-a0a6-4116-97dd-e7494b47bb8a",
-                channelId: "e11e5184-79a2-42bf-bceb-345f30611c39",
-                contactEmail: null,
-                status: "failed",
-                hubspotObjectId: null,
-                errorMessage: "Channel has no contact email",
-                createdAt: "2026-03-13T09:00:00.000Z",
-                updatedAt: "2026-03-13T09:01:00.000Z",
-              },
-            ],
-          } satisfies HubspotPushBatchDetail,
-          error: null,
-          isRefreshing: true,
-        },
       },
     );
 
@@ -884,7 +810,7 @@ describe("catalog table shell view", () => {
     expect(html).not.toContain("CSV export");
     expect(html).not.toContain("Download CSV");
     expect(html).not.toContain("Failed rows");
-    expect(html).not.toContain("Refreshing HubSpot status...");
+    expect(html).not.toContain("Push to HubSpot");
   });
 });
 
@@ -898,29 +824,6 @@ function buildBatchSummaryPayloadForCatalogTests(
     schemaVersion: "v1",
     status: "queued" as const,
     rowCount: 0,
-    lastError: null,
-    requestedBy: {
-      id: "58825d8b-f806-4480-b23d-b23773cde596",
-      email: "manager@example.com",
-      name: "Manager",
-    },
-    createdAt: "2026-03-13T09:00:00.000Z",
-    updatedAt: "2026-03-13T09:00:00.000Z",
-    startedAt: null,
-    completedAt: null,
-    ...overrides,
-  };
-}
-
-function buildHubspotBatchSummaryPayloadForCatalogTests(
-  overrides?: Partial<HubspotPushBatchSummary>,
-): HubspotPushBatchSummary {
-  return {
-    id: "dc605f9b-0cd3-41f5-ad85-969255759293",
-    status: "queued" as const,
-    totalRowCount: 2,
-    pushedRowCount: 0,
-    failedRowCount: 0,
     lastError: null,
     requestedBy: {
       id: "58825d8b-f806-4480-b23d-b23773cde596",

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { useDocumentVisibility } from "../../lib/document-visibility";
-import { getHubspotPreviewHref } from "../../lib/navigation";
+import { getExportPreviewHref } from "../../lib/navigation";
 import {
   formatCampaignManagerLabel,
   formatNullableMetadataValue,
@@ -514,7 +514,7 @@ export function DashboardWorkspace({
                               <div className="dashboard-workspace__row-actions">
                                 <Link
                                   className="workspace-button workspace-button--small"
-                                  href={getHubspotPreviewHref(run.id)}
+                                  href={getExportPreviewHref(run.id)}
                                   target="_blank"
                                 >
                                   Export to Sheets

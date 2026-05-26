@@ -6,7 +6,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import { ApiRequestError, fetchRunStatus } from "../../lib/runs-api";
-import { getHubspotPreviewHref } from "../../lib/navigation";
+import { getExportPreviewHref } from "../../lib/navigation";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { StatusPill } from "../ui/StatusPill";
@@ -281,7 +281,7 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
             {run.status === "completed" && run.results.length > 0 ? (
               <Link
                 className="run-detail__button"
-                href={getHubspotPreviewHref(run.id)}
+                href={getExportPreviewHref(run.id)}
               >
                 Export to Google Sheets
               </Link>

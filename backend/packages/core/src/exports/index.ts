@@ -1,14 +1,10 @@
 import {
-  AdvancedReportRequestStatus as PrismaAdvancedReportRequestStatus,
-  ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
   CsvExportBatchStatus as PrismaCsvExportBatchStatus,
   CsvExportScopeType as PrismaCsvExportScopeType,
   type Prisma,
 } from "@prisma/client";
 import type {
   CatalogChannelFilters,
-  ChannelAdvancedReportStatus,
-  ChannelEnrichmentStatus,
   CreateCsvExportBatchRequest,
   CsvExportBatchDetail,
   CsvExportBatchScope,
@@ -20,32 +16,78 @@ import { createCsvExportBatchRequestSchema } from "@scouting-platform/contracts"
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { recordAuditEvent } from "../audit";
-import { resolveChannelAdvancedReportStatus } from "../approvals/status";
 import { listChannels } from "../channels";
-import { resolveChannelEnrichmentStatus } from "../enrichment/status";
 import { ServiceError } from "../errors";
 import { enqueueCsvExportJob } from "./queue";
 
 export { stopCsvExportsQueue } from "./queue";
 
-export const CSV_EXPORT_SCHEMA_VERSION = "v1";
-export const CSV_EXPORT_HEADER = [
-  "channelId",
-  "youtubeChannelId",
-  "youtubeChannelUrl",
-  "title",
-  "handle",
-  "contactEmails",
-  "subscriberCount",
-  "viewCount",
-  "videoCount",
-  "enrichmentStatus",
-  "enrichmentSummary",
-  "enrichmentTopics",
-  "brandFitNotes",
-  "advancedReportStatus",
-  "advancedReportCompletedAt",
-] as const;
+export const CSV_EXPORT_SCHEMA_VERSION = "v2";
+
+type CsvExportColumn = {
+  readonly key: string;
+  readonly label: string;
+};
+
+export const CSV_EXPORT_COLUMNS: readonly CsvExportColumn[] = [
+  { key: "contactType", label: "Contact Type" },
+  { key: "campaignName", label: "Campaign Name" },
+  { key: "month", label: "Month" },
+  { key: "year", label: "Year" },
+  { key: "clientName", label: "Client name" },
+  { key: "dealOwner", label: "Deal owner" },
+  { key: "dealName", label: "Deal name" },
+  { key: "activationName", label: "Activation name" },
+  { key: "pipeline", label: "Pipeline" },
+  { key: "dealStage", label: "Deal stage" },
+  { key: "currency", label: "Currency" },
+  { key: "dealType", label: "Deal Type" },
+  { key: "activationType", label: "Activation Type" },
+  { key: "firstName", label: "First Name" },
+  { key: "lastName", label: "Last Name" },
+  { key: "email", label: "Email" },
+  { key: "phoneNumber", label: "Phone Number" },
+  { key: "influencerType", label: "Influencer Type" },
+  { key: "influencerVertical", label: "Influencer Vertical" },
+  { key: "countryRegion", label: "Country/Region" },
+  { key: "language", label: "Language" },
+  { key: "youtubeHandle", label: "YouTube Handle" },
+  { key: "youtubeUrl", label: "YouTube URL" },
+  { key: "youtubeVideoMedianViews", label: "YouTube Video Median Views" },
+  { key: "youtubeShortsMedianViews", label: "YouTube Shorts Median Views" },
+  { key: "youtubeEngagementRate", label: "YouTube Engagement Rate" },
+  { key: "youtubeFollowers", label: "YouTube Followers" },
+  { key: "instagramHandle", label: "Instagram Handle" },
+  { key: "instagramUrl", label: "Instagram URL" },
+  { key: "instagramPostAverageViews", label: "Instagram Post Average Views" },
+  { key: "instagramReelAverageViews", label: "Instagram Reel Average Views" },
+  { key: "instagramStory7DayAverageViews", label: "Instagram Story 7-day Average Views" },
+  { key: "instagramStory30DayAverageViews", label: "Instagram Story 30-day Average Views" },
+  { key: "instagramEngagementRate", label: "Instagram Engagement Rate" },
+  { key: "instagramFollowers", label: "Instagram Followers" },
+  { key: "tiktokHandle", label: "TikTok Handle" },
+  { key: "tiktokUrl", label: "TikTok URL" },
+  { key: "tiktokAverageViews", label: "TikTok Average Views" },
+  { key: "tiktokEngagementRate", label: "TikTok Engagement Rate" },
+  { key: "tiktokFollowers", label: "TikTok Followers" },
+  { key: "twitchHandle", label: "Twitch Handle" },
+  { key: "twitchUrl", label: "Twitch URL" },
+  { key: "twitchAverageViews", label: "Twitch Average Views" },
+  { key: "twitchEngagementRate", label: "Twitch Engagement Rate" },
+  { key: "twitchFollowers", label: "Twitch Followers" },
+  { key: "kickHandle", label: "Kick Handle" },
+  { key: "kickUrl", label: "Kick URL" },
+  { key: "kickAverageViews", label: "Kick Average Views" },
+  { key: "kickEngagementRate", label: "Kick Engagement Rate" },
+  { key: "kickFollowers", label: "Kick Followers" },
+  { key: "xHandle", label: "X Handle" },
+  { key: "xUrl", label: "X URL" },
+  { key: "xAverageViews", label: "X Average Views" },
+  { key: "xEngagementRate", label: "X Engagement Rate" },
+  { key: "xFollowers", label: "X Followers" },
+];
+
+export const CSV_EXPORT_HEADER = CSV_EXPORT_COLUMNS.map((column) => column.key);
 const CSV_EXPORT_CHANNEL_PAGE_SIZE = 500;
 
 const csvExportBatchActorSelect = {
@@ -81,6 +123,21 @@ const exportChannelSelect = {
   youtubeChannelId: true,
   title: true,
   handle: true,
+  youtubeUrl: true,
+  instagramHandle: true,
+  instagramUrl: true,
+  tiktokHandle: true,
+  tiktokUrl: true,
+  twitchHandle: true,
+  twitchUrl: true,
+  kickHandle: true,
+  kickUrl: true,
+  xHandle: true,
+  xUrl: true,
+  influencerType: true,
+  influencerVertical: true,
+  countryRegion: true,
+  contentLanguage: true,
   updatedAt: true,
   contacts: {
     orderBy: {
@@ -88,13 +145,35 @@ const exportChannelSelect = {
     },
     select: {
       email: true,
+      firstName: true,
+      lastName: true,
+      phoneNumber: true,
     },
   },
   metrics: {
     select: {
-      subscriberCount: true,
-      viewCount: true,
-      videoCount: true,
+      youtubeEngagementRate: true,
+      youtubeFollowers: true,
+      youtubeVideoMedianViews: true,
+      youtubeShortsMedianViews: true,
+      instagramPostAverageViews: true,
+      instagramReelAverageViews: true,
+      instagramStory7DayAverageViews: true,
+      instagramStory30DayAverageViews: true,
+      instagramEngagementRate: true,
+      instagramFollowers: true,
+      tiktokAverageViews: true,
+      tiktokEngagementRate: true,
+      tiktokFollowers: true,
+      twitchAverageViews: true,
+      twitchEngagementRate: true,
+      twitchFollowers: true,
+      kickAverageViews: true,
+      kickEngagementRate: true,
+      kickFollowers: true,
+      xAverageViews: true,
+      xEngagementRate: true,
+      xFollowers: true,
     },
   },
   enrichment: {
@@ -136,7 +215,7 @@ type CsvExportDownload = {
   csvContent: string;
 };
 
-type ExportRow = Record<(typeof CSV_EXPORT_HEADER)[number], string>;
+type ExportRow = Record<string, string>;
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -323,80 +402,101 @@ function toCsvExportBatchDetail(batch: CsvExportBatchDetailRecord): CsvExportBat
   };
 }
 
-function toTopics(topics: Prisma.JsonValue | null): string[] {
-  if (!Array.isArray(topics)) {
-    return [];
-  }
-
-  const values: string[] = [];
-
-  for (const value of topics) {
-    if (typeof value !== "string") {
-      continue;
-    }
-
-    const trimmed = value.trim();
-
-    if (trimmed) {
-      values.push(trimmed);
-    }
-  }
-
-  return values;
-}
-
 function toNullableString(value: bigint | null | undefined): string {
   return value === null || value === undefined ? "" : value.toString();
 }
 
-function resolveStatuses(channel: ExportChannelRecord): {
-  enrichmentStatus: ChannelEnrichmentStatus;
-  advancedReportStatus: ChannelAdvancedReportStatus;
-} {
+function toNullableNumber(value: number | null | undefined): string {
+  return value === null || value === undefined ? "" : value.toString();
+}
+
+function buildYoutubeUrl(channel: ExportChannelRecord): string {
+  const directUrl = channel.youtubeUrl?.trim() ?? "";
+
+  if (directUrl) {
+    return directUrl;
+  }
+
+  const handle = channel.handle?.trim() ?? "";
+
+  if (handle) {
+    return `https://www.youtube.com/${handle.startsWith("@") ? handle : `@${handle}`}`;
+  }
+
+  return `https://www.youtube.com/channel/${channel.youtubeChannelId}`;
+}
+
+function buildExportRowForContact(
+  channel: ExportChannelRecord,
+  contact: ExportChannelRecord["contacts"][number] | null,
+): ExportRow {
+  const metrics = channel.metrics;
+
   return {
-    enrichmentStatus: resolveChannelEnrichmentStatus({
-      channelUpdatedAt: channel.updatedAt,
-      enrichment: channel.enrichment
-        ? {
-            status: channel.enrichment.status as PrismaChannelEnrichmentStatus,
-            completedAt: channel.enrichment.completedAt,
-            lastEnrichedAt: channel.enrichment.lastEnrichedAt,
-          }
-        : null,
-    }),
-    advancedReportStatus: resolveChannelAdvancedReportStatus({
-      request: channel.advancedReportRequests[0]
-        ? {
-            status: channel.advancedReportRequests[0].status as PrismaAdvancedReportRequestStatus,
-            completedAt: channel.advancedReportRequests[0].completedAt,
-          }
-        : null,
-    }),
+    contactType: "Influencer",
+    campaignName: "",
+    month: "",
+    year: "",
+    clientName: "",
+    dealOwner: "",
+    dealName: "",
+    activationName: "",
+    pipeline: "",
+    dealStage: "",
+    currency: "",
+    dealType: "",
+    activationType: "",
+    firstName: contact?.firstName ?? "",
+    lastName: contact?.lastName ?? "",
+    email: contact?.email ?? "",
+    phoneNumber: contact?.phoneNumber ?? "",
+    influencerType: channel.influencerType ?? "",
+    influencerVertical: channel.influencerVertical ?? "",
+    countryRegion: channel.countryRegion ?? "",
+    language: channel.contentLanguage ?? "",
+    youtubeHandle: channel.handle ?? "",
+    youtubeUrl: buildYoutubeUrl(channel),
+    youtubeVideoMedianViews: toNullableString(metrics?.youtubeVideoMedianViews),
+    youtubeShortsMedianViews: toNullableString(metrics?.youtubeShortsMedianViews),
+    youtubeEngagementRate: toNullableNumber(metrics?.youtubeEngagementRate),
+    youtubeFollowers: toNullableString(metrics?.youtubeFollowers),
+    instagramHandle: channel.instagramHandle ?? "",
+    instagramUrl: channel.instagramUrl ?? "",
+    instagramPostAverageViews: toNullableString(metrics?.instagramPostAverageViews),
+    instagramReelAverageViews: toNullableString(metrics?.instagramReelAverageViews),
+    instagramStory7DayAverageViews: toNullableString(metrics?.instagramStory7DayAverageViews),
+    instagramStory30DayAverageViews: toNullableString(metrics?.instagramStory30DayAverageViews),
+    instagramEngagementRate: toNullableNumber(metrics?.instagramEngagementRate),
+    instagramFollowers: toNullableString(metrics?.instagramFollowers),
+    tiktokHandle: channel.tiktokHandle ?? "",
+    tiktokUrl: channel.tiktokUrl ?? "",
+    tiktokAverageViews: toNullableString(metrics?.tiktokAverageViews),
+    tiktokEngagementRate: toNullableNumber(metrics?.tiktokEngagementRate),
+    tiktokFollowers: toNullableString(metrics?.tiktokFollowers),
+    twitchHandle: channel.twitchHandle ?? "",
+    twitchUrl: channel.twitchUrl ?? "",
+    twitchAverageViews: toNullableString(metrics?.twitchAverageViews),
+    twitchEngagementRate: toNullableNumber(metrics?.twitchEngagementRate),
+    twitchFollowers: toNullableString(metrics?.twitchFollowers),
+    kickHandle: channel.kickHandle ?? "",
+    kickUrl: channel.kickUrl ?? "",
+    kickAverageViews: toNullableString(metrics?.kickAverageViews),
+    kickEngagementRate: toNullableNumber(metrics?.kickEngagementRate),
+    kickFollowers: toNullableString(metrics?.kickFollowers),
+    xHandle: channel.xHandle ?? "",
+    xUrl: channel.xUrl ?? "",
+    xAverageViews: toNullableString(metrics?.xAverageViews),
+    xEngagementRate: toNullableNumber(metrics?.xEngagementRate),
+    xFollowers: toNullableString(metrics?.xFollowers),
   };
 }
 
-function toExportRow(channel: ExportChannelRecord): ExportRow {
-  const statuses = resolveStatuses(channel);
-  const contactEmails = uniquePreservingOrder(channel.contacts.map((contact) => contact.email));
-  const topics = uniquePreservingOrder(toTopics(channel.enrichment?.topics ?? null));
+function toExportRows(channel: ExportChannelRecord): ExportRow[] {
+  if (channel.contacts.length === 0) {
+    return [buildExportRowForContact(channel, null)];
+  }
 
-  return {
-    channelId: channel.id,
-    youtubeChannelId: channel.youtubeChannelId,
-    youtubeChannelUrl: `https://www.youtube.com/channel/${channel.youtubeChannelId}`,
-    title: channel.title,
-    handle: channel.handle ?? "",
-    contactEmails: contactEmails.join(";"),
-    subscriberCount: toNullableString(channel.metrics?.subscriberCount),
-    viewCount: toNullableString(channel.metrics?.viewCount),
-    videoCount: toNullableString(channel.metrics?.videoCount),
-    enrichmentStatus: statuses.enrichmentStatus,
-    enrichmentSummary: channel.enrichment?.summary ?? "",
-    enrichmentTopics: topics.join(";"),
-    brandFitNotes: channel.enrichment?.brandFitNotes ?? "",
-    advancedReportStatus: statuses.advancedReportStatus,
-    advancedReportCompletedAt: channel.advancedReportRequests[0]?.completedAt?.toISOString() ?? "",
-  };
+  return channel.contacts.map((contact) => buildExportRowForContact(channel, contact));
 }
 
 function escapeCsvCell(value: string): string {
@@ -466,7 +566,9 @@ async function loadSelectedChannels(channelIds: string[]): Promise<ExportChannel
 
 function buildCsvRowsContent(rows: readonly ExportRow[]): string {
   return rows
-    .map((row) => CSV_EXPORT_HEADER.map((column) => escapeCsvCell(row[column])).join(","))
+    .map((row) =>
+      CSV_EXPORT_COLUMNS.map((column) => escapeCsvCell(row[column.key] ?? "")).join(","),
+    )
     .join("\n");
 }
 
@@ -474,14 +576,14 @@ async function buildCsvExport(scope: CsvExportBatchScope): Promise<{
   csvContent: string;
   rowCount: number;
 }> {
-  const chunks = [CSV_EXPORT_HEADER.join(",")];
+  const chunks = [CSV_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.label)).join(",")];
   let rowCount = 0;
 
   if (scope.type === "selected") {
     for (let start = 0; start < scope.channelIds.length; start += CSV_EXPORT_CHANNEL_PAGE_SIZE) {
       const channelIds = scope.channelIds.slice(start, start + CSV_EXPORT_CHANNEL_PAGE_SIZE);
       const channels = await loadSelectedChannels(channelIds);
-      const rows = channels.map(toExportRow);
+      const rows = channels.flatMap(toExportRows);
 
       if (rows.length === 0) {
         continue;
@@ -536,7 +638,7 @@ async function buildCsvExport(scope: CsvExportBatchScope): Promise<{
       }
 
       const channels = await loadSelectedChannels(summaryPage.items.map((channel) => channel.id));
-      const rows = channels.map(toExportRow);
+      const rows = channels.flatMap(toExportRows);
 
       if (rows.length > 0) {
         chunks.push(buildCsvRowsContent(rows));

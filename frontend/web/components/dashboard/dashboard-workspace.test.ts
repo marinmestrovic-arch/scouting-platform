@@ -105,8 +105,8 @@ describe("dashboard workspace", () => {
     expect(html).toContain(">2026-03-15 12:01 UTC<");
     expect(html.match(/>Export to Sheets</g)).toHaveLength(1);
     expect(html).toContain('class="data-table data-table--compact"');
-    expect(html).toContain('href="/hubspot/prepare/run-1"');
-    expect(html).not.toContain('href="/exports/prepare/run-1"');
+    expect(html).toContain('href="/exports/prepare/run-1"');
+    expect(html).not.toContain('href="/hubspot/prepare/run-1"');
     expect(html).toContain("All campaign managers");
     expect(html).toContain("All clients");
     expect(html).toContain("All markets");

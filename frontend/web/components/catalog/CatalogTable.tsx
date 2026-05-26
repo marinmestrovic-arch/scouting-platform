@@ -12,7 +12,6 @@ import type {
   BatchEnrichmentActionState,
   CatalogDeleteActionState,
   CatalogCsvExportBatchState,
-  CatalogHubspotPushBatchState,
   CatalogViewMode,
 } from "./catalog-table-shared";
 import {
@@ -158,7 +157,6 @@ type CatalogTableProps = Readonly<{
   deleteActionState: CatalogDeleteActionState;
   isAdmin?: boolean;
   latestCsvExportBatch: CatalogCsvExportBatchState;
-  latestHubspotPushBatch: CatalogHubspotPushBatchState;
   selectedChannelIds: readonly string[];
   viewMode?: CatalogViewMode;
   onClearSelection: () => void;
@@ -166,7 +164,6 @@ type CatalogTableProps = Readonly<{
   onExportSelectedChannels: () => void | Promise<void>;
   onNextPage: () => void;
   onPreviousPage: () => void;
-  onPushSelectedChannelsToHubspot: () => void | Promise<void>;
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onToggleChannelSelection: (channelId: string) => void;
   onTogglePageSelection: () => void;
@@ -178,7 +175,6 @@ export function CatalogTable({
   deleteActionState,
   isAdmin = false,
   latestCsvExportBatch,
-  latestHubspotPushBatch,
   selectedChannelIds,
   viewMode = "table",
   onClearSelection,
@@ -186,7 +182,6 @@ export function CatalogTable({
   onExportSelectedChannels,
   onNextPage,
   onPreviousPage,
-  onPushSelectedChannelsToHubspot,
   onRequestSelectedEnrichment,
   onToggleChannelSelection,
   onTogglePageSelection,
@@ -203,10 +198,6 @@ export function CatalogTable({
     latestCsvExportBatch.requestState === "loading" &&
     latestCsvExportBatch.summary === null &&
     latestCsvExportBatch.detail === null;
-  const isCreatingHubspotPushBatch =
-    latestHubspotPushBatch.requestState === "loading" &&
-    latestHubspotPushBatch.summary === null &&
-    latestHubspotPushBatch.detail === null;
 
   return (
     <>
@@ -263,17 +254,6 @@ export function CatalogTable({
             type="button"
           >
             {isCreatingCsvExportBatch ? "Exporting..." : `Export selected (${selectedChannelIds.length})`}
-          </button>
-          <button
-            className="catalog-table__button catalog-table__button--secondary"
-            disabled={isCreatingHubspotPushBatch}
-            onClick={() => {
-              void onPushSelectedChannelsToHubspot();
-            }}
-            suppressHydrationWarning
-            type="button"
-          >
-            {isCreatingHubspotPushBatch ? "Starting push..." : `Push to HubSpot (${selectedChannelIds.length})`}
           </button>
           {isAdmin ? (
             <button

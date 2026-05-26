@@ -430,6 +430,7 @@ function StatusPopoverTag({
     <div className="channel-detail-shell__status-popover" ref={rootRef}>
       <button
         aria-expanded={isOpen}
+        aria-haspopup="dialog"
         className={statusClassName}
         onClick={() => {
           setIsOpen((current) => !current);
@@ -440,28 +441,65 @@ function StatusPopoverTag({
       </button>
 
       {isOpen ? (
-        <div className="channel-detail-shell__status-popover-panel">
-          <h3 className="channel-detail-shell__subheading">{title}</h3>
-          <p className="channel-detail-shell__body-copy">{body}</p>
-          <button
-            className="channel-detail-shell__button channel-detail-shell__button--tag"
-            disabled={disabled}
-            onClick={() => {
-              onAction();
-              setIsOpen(false);
-            }}
-            type="button"
+        <div
+          className="database-admin__modal-backdrop"
+          onClick={() => setIsOpen(false)}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="channel-detail-shell-status-modal-title"
+            aria-modal="true"
+            className="database-admin__modal channel-detail-shell__status-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
           >
-            {actionState.type === "submitting" ? actionBusyLabel : actionLabel}
-          </button>
-          {actionState.message ? (
-            <p
-              className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionState.type} channel-detail-shell__action-status--inline`}
-              role={actionState.type === "error" ? "alert" : "status"}
-            >
-              {actionState.message}
-            </p>
-          ) : null}
+            <div className="database-admin__modal-header">
+              <h3
+                className="channel-detail-shell__subheading"
+                id="channel-detail-shell-status-modal-title"
+              >
+                {title}
+              </h3>
+              <button
+                aria-label="Close enrichment dialog"
+                className="database-admin__modal-close"
+                onClick={() => setIsOpen(false)}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+            <div className="channel-detail-shell__status-modal-body">
+              <p className="channel-detail-shell__body-copy">{body}</p>
+              <div className="channel-detail-shell__status-modal-actions">
+                <button
+                  className="workspace-button workspace-button--secondary"
+                  onClick={() => setIsOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="workspace-button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onAction();
+                  }}
+                  type="button"
+                >
+                  {actionState.type === "submitting" ? actionBusyLabel : actionLabel}
+                </button>
+              </div>
+              {actionState.message ? (
+                <p
+                  className={`channel-detail-shell__action-status channel-detail-shell__action-status--${actionState.type} channel-detail-shell__action-status--inline`}
+                  role={actionState.type === "error" ? "alert" : "status"}
+                >
+                  {actionState.message}
+                </p>
+              ) : null}
+            </div>
+          </section>
         </div>
       ) : null}
     </div>

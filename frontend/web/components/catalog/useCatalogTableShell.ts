@@ -22,13 +22,12 @@ import {
 } from "../../lib/catalog-filters";
 import { createCsvExportBatch, fetchCsvExportBatchDetail } from "../../lib/csv-export-batches-api";
 import { useDocumentVisibility } from "../../lib/document-visibility";
-import { createHubspotPushBatch, fetchHubspotPushBatchDetail } from "../../lib/hubspot-push-batches-api";
+import { getCsvExportBatchResultHref } from "../../lib/navigation";
 import { createSavedSegment, deleteSavedSegment, fetchSavedSegments } from "../../lib/segments-api";
 import type {
   BatchEnrichmentActionState,
   CatalogDeleteActionState,
   CatalogCsvExportBatchState,
-  CatalogHubspotPushBatchState,
   CatalogViewMode,
   SavedSegmentOperationStatus,
   SavedSegmentsRequestState,
@@ -39,8 +38,6 @@ import {
   getCatalogChannelDeleteSubmittingMessage,
   getCatalogCsvExportBatchCreateErrorMessage,
   getCatalogCsvExportBatchDetailErrorMessage,
-  getCatalogHubspotPushBatchCreateErrorMessage,
-  getCatalogHubspotPushBatchDetailErrorMessage,
   getNextCatalogPage,
   getPreviousCatalogPage,
   getSavedSegmentErrorMessage,
@@ -48,7 +45,6 @@ import {
   mergeCatalogBatchEnrichmentResults,
   shouldPollCatalogCsvExportBatch,
   shouldPollCatalogEnrichmentRows,
-  shouldPollCatalogHubspotPushBatch,
   sortSavedSegments,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
@@ -101,14 +97,6 @@ const IDLE_DELETE_ACTION_STATE: CatalogDeleteActionState = {
 };
 
 const IDLE_CSV_EXPORT_BATCH_STATE: CatalogCsvExportBatchState = {
-  requestState: "idle",
-  summary: null,
-  detail: null,
-  error: null,
-  isRefreshing: false,
-};
-
-const IDLE_HUBSPOT_PUSH_BATCH_STATE: CatalogHubspotPushBatchState = {
   requestState: "idle",
   summary: null,
   detail: null,
@@ -236,9 +224,6 @@ export function useCatalogTableShellModel({
   const [latestCsvExportBatch, setLatestCsvExportBatch] =
     useState<CatalogCsvExportBatchState>(IDLE_CSV_EXPORT_BATCH_STATE);
   const [latestCsvExportBatchReloadToken, setLatestCsvExportBatchReloadToken] = useState(0);
-  const [latestHubspotPushBatch, setLatestHubspotPushBatch] =
-    useState<CatalogHubspotPushBatchState>(IDLE_HUBSPOT_PUSH_BATCH_STATE);
-  const [latestHubspotPushBatchReloadToken, setLatestHubspotPushBatchReloadToken] = useState(0);
   const isDocumentVisible = useDocumentVisibility();
 
   useEffect(() => {
@@ -438,90 +423,20 @@ export function useCatalogTableShellModel({
   ]);
 
   useEffect(() => {
-    const batchId = latestHubspotPushBatch.summary?.id ?? latestHubspotPushBatch.detail?.id;
-
-    if (!batchId) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    const keepCurrentDetailVisible =
-      latestHubspotPushBatch.requestState === "ready" &&
-      latestHubspotPushBatch.detail?.id === batchId;
-
-    if (!keepCurrentDetailVisible) {
-      setLatestHubspotPushBatch((current) => ({
-        ...current,
-        requestState: "loading",
-        error: null,
-        isRefreshing: false,
-      }));
-    } else {
-      setLatestHubspotPushBatch((current) => ({
-        ...current,
-        isRefreshing: true,
-      }));
-    }
-
-    void fetchHubspotPushBatchDetail(batchId, abortController.signal)
-      .then((detail) => {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        setLatestHubspotPushBatch((current) => ({
-          requestState: "ready",
-          summary: current.summary && current.summary.id === detail.id ? current.summary : detail,
-          detail,
-          error: null,
-          isRefreshing: false,
-        }));
-      })
-      .catch((error: unknown) => {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        setLatestHubspotPushBatch((current) => ({
-          ...current,
-          requestState: "error",
-          error: getCatalogHubspotPushBatchDetailErrorMessage(error),
-          isRefreshing: false,
-        }));
-      });
-
-    return () => {
-      abortController.abort();
-    };
-  }, [
-    latestHubspotPushBatch.detail?.id,
-    latestHubspotPushBatch.requestState,
-    latestHubspotPushBatch.summary?.id,
-    latestHubspotPushBatchReloadToken,
-  ]);
-
-  useEffect(() => {
     const shouldPollCsvExportBatch = shouldPollCatalogCsvExportBatch(latestCsvExportBatch);
-    const shouldPollHubspotBatch = shouldPollCatalogHubspotPushBatch(latestHubspotPushBatch);
 
-    if (!isDocumentVisible || (!shouldPollCsvExportBatch && !shouldPollHubspotBatch)) {
+    if (!isDocumentVisible || !shouldPollCsvExportBatch) {
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      if (shouldPollCsvExportBatch) {
-        setLatestCsvExportBatchReloadToken((current) => current + 1);
-      }
-
-      if (shouldPollHubspotBatch) {
-        setLatestHubspotPushBatchReloadToken((current) => current + 1);
-      }
+      setLatestCsvExportBatchReloadToken((current) => current + 1);
     }, CATALOG_BATCH_STATUS_POLL_INTERVAL_MS);
 
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [isDocumentVisible, latestCsvExportBatch, latestHubspotPushBatch]);
+  }, [isDocumentVisible, latestCsvExportBatch]);
 
   function replaceCatalogState(state: CatalogUrlState): void {
     router.replace(buildCatalogNavigationHref(pathname, state, viewMode));
@@ -633,54 +548,13 @@ export function useCatalogTableShellModel({
         error: null,
         isRefreshing: false,
       });
+      router.push(getCsvExportBatchResultHref(batch.id));
     } catch (error) {
       setLatestCsvExportBatch({
         requestState: "error",
         summary: null,
         detail: null,
         error: getCatalogCsvExportBatchCreateErrorMessage(error),
-        isRefreshing: false,
-      });
-    }
-  }
-
-  async function handlePushSelectedChannelsToHubspot(): Promise<void> {
-    if (requestState.status !== "ready") {
-      return;
-    }
-
-    const channelIds = [...new Set(selectedChannelIds)];
-
-    if (channelIds.length === 0) {
-      return;
-    }
-
-    setLatestHubspotPushBatch({
-      requestState: "loading",
-      summary: null,
-      detail: null,
-      error: null,
-      isRefreshing: false,
-    });
-
-    try {
-      const batch = await createHubspotPushBatch({
-        channelIds,
-      });
-
-      setLatestHubspotPushBatch({
-        requestState: "loading",
-        summary: batch,
-        detail: null,
-        error: null,
-        isRefreshing: false,
-      });
-    } catch (error) {
-      setLatestHubspotPushBatch({
-        requestState: "error",
-        summary: null,
-        detail: null,
-        error: getCatalogHubspotPushBatchCreateErrorMessage(error),
         isRefreshing: false,
       });
     }
@@ -800,7 +674,6 @@ export function useCatalogTableShellModel({
     filters: appliedState.filters,
     isAdmin,
     latestCsvExportBatch,
-    latestHubspotPushBatch,
     pendingSegmentAction,
     requestState,
     savedSegmentName,
@@ -855,7 +728,6 @@ export function useCatalogTableShellModel({
         filters: appliedState.filters,
       });
     },
-    onPushSelectedChannelsToHubspot: handlePushSelectedChannelsToHubspot,
     onRequestSelectedEnrichment: handleRequestSelectedEnrichment,
     onResetFilters: () => {
       replaceCatalogState({

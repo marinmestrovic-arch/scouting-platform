@@ -77,10 +77,6 @@ export function getCsvExportBatchResultHref(batchId: string): string {
   return `/exports/${encodeURIComponent(batchId)}`;
 }
 
-export function getHubspotPushBatchResultHref(batchId: string): string {
-  return `/hubspot/${encodeURIComponent(batchId)}`;
-}
-
-export function getHubspotPreviewHref(runId: string): string {
-  return `/hubspot/prepare/${encodeURIComponent(runId)}`;
+export function getExportPreviewHref(runId: string): string {
+  return `/exports/prepare/${encodeURIComponent(runId)}`;
 }

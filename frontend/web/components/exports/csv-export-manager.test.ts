@@ -35,71 +35,30 @@ function buildSummary(overrides?: Partial<CsvExportBatchSummary>): CsvExportBatc
   };
 }
 
-function buildFilters(
-  overrides?: Partial<Parameters<typeof CsvExportManagerView>[0]["filters"]>,
-): Parameters<typeof CsvExportManagerView>[0]["filters"] {
-  return {
-    query: "",
-    countryRegion: [],
-    influencerVertical: [],
-    influencerType: [],
-    youtubeVideoMedianViewsMin: "",
-    youtubeVideoMedianViewsMax: "",
-    youtubeShortsMedianViewsMin: "",
-    youtubeShortsMedianViewsMax: "",
-    youtubeFollowersMin: "",
-    youtubeFollowersMax: "",
-    ...overrides,
-  };
-}
-
 describe("csv export manager view", () => {
-  it("renders loading history and filter creation controls", () => {
+  it("renders the loading state with a user-facing copy block", () => {
     const html = renderToStaticMarkup(
       createElement(CsvExportManagerView, {
-        catalogHref: "/catalog?page=1&query=space&countryRegion=Croatia",
-        createState: {
-          type: "idle",
-          message: "",
-        },
-        filters: buildFilters({
-          query: "space",
-          countryRegion: ["Croatia"],
-        }),
-        hasActiveFilters: true,
         historyState: {
           status: "loading",
           items: [],
           error: null,
         },
         isRefreshing: false,
-        onCreateFilteredExport: vi.fn(),
-        onMultiValueFilterTextChange: vi.fn(),
-        onNumericFilterChange: vi.fn(),
-        onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
-        onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
       }),
     );
 
-    expect(html).toContain("Create filtered export");
-    expect(html).toContain("Loading CSV export history...");
-    expect(html).toContain(
-      'href="/catalog?page=1&amp;query=space&amp;countryRegion=Croatia"',
-    );
+    expect(html).toContain("Your exports");
+    expect(html).toContain("Loading exports...");
+    expect(html).not.toContain("Week 6 workspace");
+    expect(html).not.toContain("Create filtered export");
   });
 
   it("renders completed downloads and failed history feedback", () => {
     const html = renderToStaticMarkup(
       createElement(CsvExportManagerView, {
-        catalogHref: "/catalog?page=1",
-        createState: {
-          type: "success",
-          message: "Filtered CSV export queued. History refreshes automatically while processing continues.",
-        },
-        filters: buildFilters(),
-        hasActiveFilters: false,
         historyState: {
           status: "ready",
           items: [
@@ -119,20 +78,15 @@ describe("csv export manager view", () => {
           error: null,
         },
         isRefreshing: true,
-        onCreateFilteredExport: vi.fn(),
-        onMultiValueFilterTextChange: vi.fn(),
-        onNumericFilterChange: vi.fn(),
-        onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
-        onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
       }),
     );
 
-    expect(html).toContain("Refreshing export history...");
+    expect(html).toContain("Refreshing exports...");
     expect(html).toContain("Filtered export");
     expect(html).toContain("Selected export");
-    expect(html).toContain("Open batch result");
+    expect(html).toContain("Open export");
     expect(html).toContain('href="/exports/99d39ccb-3cf5-4f09-a647-a0e1387d31cb"');
     expect(html).toContain("Download CSV");
     expect(html).toContain("Export queue unavailable");
@@ -141,34 +95,22 @@ describe("csv export manager view", () => {
     );
   });
 
-  it("renders empty history state when no export batches exist", () => {
+  it("renders empty history state pointing users at run exports", () => {
     const html = renderToStaticMarkup(
       createElement(CsvExportManagerView, {
-        catalogHref: "/catalog",
-        createState: {
-          type: "error",
-          message: "Choose at least one filter before creating a filtered export.",
-        },
-        filters: buildFilters(),
-        hasActiveFilters: false,
         historyState: {
           status: "ready",
           items: [],
           error: null,
         },
         isRefreshing: false,
-        onCreateFilteredExport: vi.fn(),
-        onMultiValueFilterTextChange: vi.fn(),
-        onNumericFilterChange: vi.fn(),
-        onQueryChange: vi.fn(),
         onReloadHistory: vi.fn(),
-        onResetFilters: vi.fn(),
         onRetryHistory: vi.fn(),
       }),
     );
 
-    expect(html).toContain("No export history yet");
-    expect(html).toContain("Choose at least one filter before creating a filtered export.");
+    expect(html).toContain("No exports yet");
+    expect(html).toContain("Export to Google Sheets");
   });
 });
 

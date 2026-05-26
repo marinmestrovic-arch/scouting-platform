@@ -8,15 +8,14 @@ import type {
 
 const {
   createCsvExportBatchMock,
-  createHubspotPushBatchMock,
   createSavedSegmentMock,
   deleteChannelsBatchMock,
   deleteSavedSegmentMock,
   fetchChannelsMock,
   fetchCsvExportBatchDetailMock,
   fetchSavedSegmentsMock,
-  fetchHubspotPushBatchDetailMock,
   requestChannelEnrichmentBatchMock,
+  routerPushMock,
   replaceMock,
   useDocumentVisibilityMock,
   useEffectMock,
@@ -26,15 +25,14 @@ const {
   useStateMock,
 } = vi.hoisted(() => ({
   createCsvExportBatchMock: vi.fn(),
-  createHubspotPushBatchMock: vi.fn(),
   createSavedSegmentMock: vi.fn(),
   deleteChannelsBatchMock: vi.fn(),
   deleteSavedSegmentMock: vi.fn(),
   fetchChannelsMock: vi.fn(),
   fetchCsvExportBatchDetailMock: vi.fn(),
   fetchSavedSegmentsMock: vi.fn(),
-  fetchHubspotPushBatchDetailMock: vi.fn(),
   requestChannelEnrichmentBatchMock: vi.fn(),
+  routerPushMock: vi.fn(),
   replaceMock: vi.fn(),
   useDocumentVisibilityMock: vi.fn(),
   useEffectMock: vi.fn(),
@@ -73,11 +71,6 @@ vi.mock("../../lib/csv-export-batches-api", () => ({
   getCsvExportBatchDownloadUrl: vi.fn((batchId: string) => `/api/csv-export-batches/${batchId}/download`),
 }));
 
-vi.mock("../../lib/hubspot-push-batches-api", () => ({
-  createHubspotPushBatch: createHubspotPushBatchMock,
-  fetchHubspotPushBatchDetail: fetchHubspotPushBatchDetailMock,
-}));
-
 vi.mock("../../lib/segments-api", () => ({
   createSavedSegment: createSavedSegmentMock,
   deleteSavedSegment: deleteSavedSegmentMock,
@@ -103,7 +96,6 @@ type CatalogShellElement = ReactElement<{
   onLoadSegment: (segment: SegmentResponse) => void;
   onNextPage: () => void;
   onPreviousPage: () => void;
-  onPushSelectedChannelsToHubspot: () => Promise<void> | void;
   onRequestSelectedEnrichment: () => Promise<void> | void;
   onResetFilters: () => void;
   onRetry: () => void;
@@ -150,14 +142,6 @@ type CatalogDeleteActionState = {
 };
 
 type CatalogCsvExportBatchState = {
-  requestState: "idle" | "loading" | "ready" | "error";
-  summary: Record<string, unknown> | null;
-  detail: Record<string, unknown> | null;
-  error: string | null;
-  isRefreshing: boolean;
-};
-
-type CatalogHubspotPushBatchState = {
   requestState: "idle" | "loading" | "ready" | "error";
   summary: Record<string, unknown> | null;
   detail: Record<string, unknown> | null;
@@ -286,49 +270,6 @@ function createCsvExportBatchDetail(overrides?: Record<string, unknown>) {
   };
 }
 
-function createHubspotPushBatchSummary(overrides?: Record<string, unknown>) {
-  return {
-    id: "fdd240f2-ef31-43fe-b1d2-a584951654a8",
-    status: "queued",
-    totalRowCount: 2,
-    pushedRowCount: 0,
-    failedRowCount: 0,
-    lastError: null,
-    requestedBy: {
-      id: "8c1136b4-1c95-4e8c-aefe-0e58df0a39d5",
-      email: "manager@example.com",
-      name: "Manager",
-    },
-    createdAt: "2026-03-13T09:00:00.000Z",
-    updatedAt: "2026-03-13T09:00:00.000Z",
-    startedAt: null,
-    completedAt: null,
-    ...overrides,
-  };
-}
-
-function createHubspotPushBatchDetail(overrides?: Record<string, unknown>) {
-  return {
-    ...createHubspotPushBatchSummary(),
-    scope: {
-      channelIds: ["14e40450-71c2-4e0e-a160-b787d21843fd"],
-    },
-    rows: [
-      {
-        id: "28ada809-e597-483e-9a7f-f568fc2f80dd",
-        channelId: "14e40450-71c2-4e0e-a160-b787d21843fd",
-        contactEmail: "creator@example.com",
-        status: "pushed",
-        hubspotObjectId: "hubspot-contact-1",
-        errorMessage: null,
-        createdAt: "2026-03-13T09:00:00.000Z",
-        updatedAt: "2026-03-13T09:01:00.000Z",
-      },
-    ],
-    ...overrides,
-  };
-}
-
 function renderShell(options?: {
   requestState?: ReturnType<typeof createReadyState> | {
     status: "loading";
@@ -352,8 +293,6 @@ function renderShell(options?: {
   deleteActionState?: CatalogDeleteActionState;
   latestCsvExportBatch?: CatalogCsvExportBatchState;
   latestCsvExportBatchReloadToken?: number;
-  latestHubspotPushBatch?: CatalogHubspotPushBatchState;
-  latestHubspotPushBatchReloadToken?: number;
   isAdmin?: boolean;
 }) {
   const setRequestState = vi.fn();
@@ -369,16 +308,16 @@ function renderShell(options?: {
   const setDeleteActionState = vi.fn();
   const setLatestCsvExportBatch = vi.fn();
   const setLatestCsvExportBatchReloadToken = vi.fn();
-  const setLatestHubspotPushBatch = vi.fn();
-  const setLatestHubspotPushBatchReloadToken = vi.fn();
   const cleanups: Array<() => void> = [];
 
   useStateMock.mockReset();
   useEffectMock.mockReset();
   replaceMock.mockReset();
+  routerPushMock.mockReset();
   usePathnameMock.mockReturnValue("/catalog");
   useRouterMock.mockReturnValue({
     replace: replaceMock,
+    push: routerPushMock,
   });
   useSearchParamsMock.mockReturnValue(
     options?.searchParams ??
@@ -447,20 +386,6 @@ function renderShell(options?: {
     .mockReturnValueOnce([
       options?.latestCsvExportBatchReloadToken ?? 0,
       setLatestCsvExportBatchReloadToken,
-    ])
-    .mockReturnValueOnce([
-      options?.latestHubspotPushBatch ?? {
-        requestState: "idle",
-        summary: null,
-        detail: null,
-        error: null,
-        isRefreshing: false,
-      },
-      setLatestHubspotPushBatch,
-    ])
-    .mockReturnValueOnce([
-      options?.latestHubspotPushBatchReloadToken ?? 0,
-      setLatestHubspotPushBatchReloadToken,
     ]);
 
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
@@ -483,8 +408,6 @@ function renderShell(options?: {
     setDeleteActionState,
     setLatestCsvExportBatch,
     setLatestCsvExportBatchReloadToken,
-    setLatestHubspotPushBatch,
-    setLatestHubspotPushBatchReloadToken,
     setSavedSegmentName,
     setSavedSegmentOperationStatus,
     setSelectedChannelIds,
@@ -508,8 +431,6 @@ describe("catalog table shell behavior", () => {
     createCsvExportBatchMock.mockResolvedValue(createCsvExportBatchSummary());
     fetchCsvExportBatchDetailMock.mockResolvedValue(createCsvExportBatchDetail());
     fetchSavedSegmentsMock.mockResolvedValue([createSavedSegment()]);
-    createHubspotPushBatchMock.mockResolvedValue(createHubspotPushBatchSummary());
-    fetchHubspotPushBatchDetailMock.mockResolvedValue(createHubspotPushBatchDetail());
     deleteChannelsBatchMock.mockResolvedValue({
       requestedCount: 1,
       deletedCount: 1,
@@ -1308,52 +1229,31 @@ describe("catalog table shell behavior", () => {
     });
   });
 
-  it("creates a selected HubSpot push batch with deduped channel ids", async () => {
-    const firstChannel = createChannel(
-      "00000000-0000-0000-0000-000000000701",
-      "Push One",
+  it("navigates to the export batch result after a successful selected export", async () => {
+    const selectedChannel = createChannel(
+      "00000000-0000-0000-0000-000000000901",
+      "Routed Channel",
     );
-    const secondChannel = createChannel(
-      "00000000-0000-0000-0000-000000000702",
-      "Push Two",
-    );
-    const batchSummary = createHubspotPushBatchSummary({
+    const batchSummary = createCsvExportBatchSummary({
       id: "b85ee0f6-bd02-4285-86eb-2d3d489ef48a",
-      totalRowCount: 2,
     });
-    createHubspotPushBatchMock.mockResolvedValueOnce(batchSummary);
+    createCsvExportBatchMock.mockResolvedValueOnce(batchSummary);
 
-    const { element, setLatestHubspotPushBatch } = renderShell({
+    const { element } = renderShell({
       requestState: createReadyState({
-        items: [firstChannel, secondChannel],
-        total: 2,
+        items: [selectedChannel],
+        total: 1,
         page: 1,
         pageSize: 20,
       }),
-      selectedChannelIds: [firstChannel.id, secondChannel.id, firstChannel.id],
+      selectedChannelIds: [selectedChannel.id],
     });
 
-    setLatestHubspotPushBatch.mockClear();
+    routerPushMock.mockClear();
 
-    await element.props.onPushSelectedChannelsToHubspot();
+    await element.props.onExportSelectedChannels();
 
-    expect(createHubspotPushBatchMock).toHaveBeenCalledWith({
-      channelIds: [firstChannel.id, secondChannel.id],
-    });
-    expect(setLatestHubspotPushBatch).toHaveBeenNthCalledWith(1, {
-      requestState: "loading",
-      summary: null,
-      detail: null,
-      error: null,
-      isRefreshing: false,
-    });
-    expect(setLatestHubspotPushBatch).toHaveBeenNthCalledWith(2, {
-      requestState: "loading",
-      summary: batchSummary,
-      detail: null,
-      error: null,
-      isRefreshing: false,
-    });
+    expect(routerPushMock).toHaveBeenCalledWith(`/exports/${batchSummary.id}`);
   });
 
   it("keeps the current selection intact when export creation fails", async () => {
@@ -1388,24 +1288,15 @@ describe("catalog table shell behavior", () => {
     expect(setSelectedChannelIds).not.toHaveBeenCalled();
   });
 
-  it("polls latest export and HubSpot batches while they remain queued or running", () => {
+  it("polls the latest export batch while it remains queued or running", () => {
     vi.useFakeTimers();
 
     try {
-      const { setLatestCsvExportBatchReloadToken, setLatestHubspotPushBatchReloadToken } = renderShell({
+      const { setLatestCsvExportBatchReloadToken } = renderShell({
         latestCsvExportBatch: {
           requestState: "ready",
           summary: createCsvExportBatchSummary({
             status: "running",
-          }),
-          detail: null,
-          error: null,
-          isRefreshing: false,
-        },
-        latestHubspotPushBatch: {
-          requestState: "ready",
-          summary: createHubspotPushBatchSummary({
-            status: "queued",
           }),
           detail: null,
           error: null,
@@ -1418,13 +1309,8 @@ describe("catalog table shell behavior", () => {
       const updateCsvReloadToken = setLatestCsvExportBatchReloadToken.mock.calls[0]?.[0] as
         | ((current: number) => number)
         | undefined;
-      const updateHubspotReloadToken =
-        setLatestHubspotPushBatchReloadToken.mock.calls[0]?.[0] as
-          | ((current: number) => number)
-          | undefined;
 
       expect(updateCsvReloadToken?.(0)).toBe(1);
-      expect(updateHubspotReloadToken?.(4)).toBe(5);
     } finally {
       vi.useRealTimers();
     }

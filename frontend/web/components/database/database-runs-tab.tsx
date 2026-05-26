@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 
-import { getCsvExportBatchResultHref, getHubspotPreviewHref } from "../../lib/navigation";
+import { getCsvExportBatchResultHref, getExportPreviewHref } from "../../lib/navigation";
 import {
   createCsvExportBatchFromRun,
   RunBatchActionError,
@@ -297,7 +297,7 @@ export function DatabaseRunsTab({
         return;
       }
 
-      router.push(getHubspotPreviewHref(runId));
+      router.push(getExportPreviewHref(runId));
     } catch (error) {
       setActionState({
         action,

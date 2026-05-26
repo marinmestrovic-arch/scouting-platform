@@ -1,7 +1,6 @@
 "use client";
 
 import type {
-  CsvExportPreview,
   ExportPreviewColumn,
   ExportPreviewRow,
   ExportRunToGoogleSheetsRequest,
@@ -13,16 +12,12 @@ import type {
 } from "@scouting-platform/contracts";
 import React, { useMemo, useState } from "react";
 
-import {
-  enrichHubspotExportPreview,
-  updateHubspotExportPreview,
-} from "../../lib/export-previews-api";
+import { updateHubspotExportPreview } from "../../lib/export-previews-api";
 import { exportRunToGoogleSheets } from "../../lib/google-sheets-export-api";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type ExportPreparationWorkspaceProps = Readonly<{
-  mode: "csv" | "hubspot";
-  preview: CsvExportPreview | HubspotExportPreview;
+  preview: HubspotExportPreview;
 }>;
 
 const RUN_DEFAULT_COLUMN_KEYS = new Set<keyof HubspotPrepUpdateDefaults>([
@@ -36,13 +31,6 @@ type HubspotDrafts = {
   touchedDefaults: Set<keyof HubspotPrepUpdateDefaults>;
   rowValues: Record<string, Record<string, string>>;
   touchedRowFields: Record<string, Set<HubspotPrepClearField["field"]>>;
-};
-
-type CreatorListEnrichmentProgressState = {
-  open: boolean;
-  percentage: number;
-  message: string;
-  status: "idle" | "saving" | "success" | "error";
 };
 
 function escapeCsvCell(value: string): string {
@@ -72,12 +60,6 @@ function downloadCsv(fileName: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-function isHubspotPreview(
-  preview: CsvExportPreview | HubspotExportPreview,
-): preview is HubspotExportPreview {
-  return "dropdownOptions" in preview;
-}
-
 function createEmptyDrafts(): HubspotDrafts {
   return {
     defaults: {
@@ -100,25 +82,6 @@ function createEmptyGoogleSheetsRequest(): ExportRunToGoogleSheetsRequest {
     spreadsheetIdOrUrl: "",
     sheetName: "",
   };
-}
-
-function createEmptyCreatorListEnrichmentProgressState(): CreatorListEnrichmentProgressState {
-  return {
-    open: false,
-    percentage: 0,
-    message: "",
-    status: "idle",
-  };
-}
-
-function getCreatorListEnrichmentBlockingMessage(input: {
-  hasPendingChanges: boolean;
-}): string | null {
-  if (input.hasPendingChanges) {
-    return "Save your edits before starting Creator List enrichment.";
-  }
-
-  return null;
 }
 
 function getCurrentRowValue(drafts: HubspotDrafts, rowKey: string, field: string): string {
@@ -177,28 +140,10 @@ function buildRowDropdownOptions(input: {
 }
 
 export function ExportPreparationWorkspace({
-  mode,
   preview,
 }: ExportPreparationWorkspaceProps) {
   const [currentPreview, setCurrentPreview] = useState(preview);
-  const [drafts, setDrafts] = useState<HubspotDrafts>(
-    isHubspotPreview(preview)
-      ? createEmptyDrafts()
-      : {
-          defaults: {
-            currency: "",
-            dealType: "",
-            activationType: "",
-            influencerType: "",
-            influencerVertical: "",
-            countryRegion: "",
-            language: "",
-          },
-          touchedDefaults: new Set(),
-          rowValues: {},
-          touchedRowFields: {},
-        },
-  );
+  const [drafts, setDrafts] = useState<HubspotDrafts>(() => createEmptyDrafts());
   const [requestState, setRequestState] = useState<"idle" | "saving" | "error">("idle");
   const [requestMessage, setRequestMessage] = useState("");
   const [googleSheetsRequest, setGoogleSheetsRequest] = useState<ExportRunToGoogleSheetsRequest>(
@@ -208,40 +153,26 @@ export function ExportPreparationWorkspace({
     "idle" | "saving" | "success" | "error"
   >("idle");
   const [googleSheetsMessage, setGoogleSheetsMessage] = useState("");
-  const [creatorListEnrichmentState, setCreatorListEnrichmentState] = useState<
-    "idle" | "saving" | "success" | "error"
-  >("idle");
-  const [creatorListEnrichmentMessage, setCreatorListEnrichmentMessage] = useState("");
-  const [creatorListEnrichmentProgress, setCreatorListEnrichmentProgress] =
-    useState<CreatorListEnrichmentProgressState>(
-      createEmptyCreatorListEnrichmentProgressState(),
-    );
   const fileName = useMemo(() => {
-    const suffix = mode === "hubspot" ? "hubspot-prep" : "csv-export";
-    return `${currentPreview.run.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${suffix}.csv`;
-  }, [currentPreview.run.name, mode]);
-  const validationIssues = isHubspotPreview(currentPreview) ? currentPreview.validationIssues : [];
+    return `${currentPreview.run.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-export.csv`;
+  }, [currentPreview.run.name]);
+  const validationIssues = currentPreview.validationIssues;
   const hasPendingChanges =
-    isHubspotPreview(currentPreview) &&
-    (Object.values(drafts.touchedRowFields).some((fields) => fields.size > 0) ||
-      drafts.touchedDefaults.size > 0);
+    Object.values(drafts.touchedRowFields).some((fields) => fields.size > 0) ||
+    drafts.touchedDefaults.size > 0;
   const hasGoogleSheetsTarget =
     googleSheetsRequest.spreadsheetIdOrUrl.trim().length > 0 &&
     googleSheetsRequest.sheetName.trim().length > 0;
   const canExportToGoogleSheets =
     hasGoogleSheetsTarget &&
     googleSheetsState !== "saving" &&
-    creatorListEnrichmentState !== "saving" &&
     requestState !== "saving" &&
     !hasPendingChanges;
   const googleSheetsBlockingMessage =
     hasGoogleSheetsTarget && hasPendingChanges
       ? "Save your edits before exporting to Google Sheets."
       : null;
-  const canEnrichCreatorList =
-    googleSheetsState !== "saving" &&
-    creatorListEnrichmentState !== "saving" &&
-    requestState !== "saving";
+  const canDownloadCsv = googleSheetsState !== "saving" && requestState !== "saving";
 
   function updateDefault(field: keyof HubspotPrepUpdateDefaults, value: string) {
     setDrafts((current) => ({
@@ -278,10 +209,6 @@ export function ExportPreparationWorkspace({
   }
 
   async function handleSave() {
-    if (!isHubspotPreview(currentPreview)) {
-      return;
-    }
-
     const rowOverrides = Object.entries(drafts.touchedRowFields)
       .map(([rowKey, fields]) => {
         const values = [...fields].reduce<HubspotPrepRowOverrideValues>((current, field) => {
@@ -360,10 +287,6 @@ export function ExportPreparationWorkspace({
   }
 
   async function handleGoogleSheetsExport() {
-    if (!isHubspotPreview(currentPreview)) {
-      return;
-    }
-
     setGoogleSheetsState("saving");
     setGoogleSheetsMessage("Exporting prepared rows to Google Sheets...");
 
@@ -386,145 +309,71 @@ export function ExportPreparationWorkspace({
     }
   }
 
-  async function handleCreatorListEnrichment() {
-    if (!isHubspotPreview(currentPreview)) {
-      return;
-    }
-
-    const blockingMessage = getCreatorListEnrichmentBlockingMessage({
-      hasPendingChanges,
-    });
-
-    if (blockingMessage) {
-      setCreatorListEnrichmentState("error");
-      setCreatorListEnrichmentMessage(blockingMessage);
-      setCreatorListEnrichmentProgress({
-        open: true,
-        percentage: 0,
-        message: blockingMessage,
-        status: "error",
-      });
-      return;
-    }
-
-    setCreatorListEnrichmentState("saving");
-    setCreatorListEnrichmentMessage("Enriching Creator List rows in the workspace...");
-    setCreatorListEnrichmentProgress({
-      open: true,
-      percentage: 2,
-      message: "Starting Creator List enrichment...",
-      status: "saving",
-    });
-
-    try {
-      const result = await enrichHubspotExportPreview(currentPreview.run.id, {
-        onProgress(progress) {
-          setCreatorListEnrichmentProgress({
-            open: true,
-            percentage: progress.percentage,
-            message: progress.message,
-            status: "saving",
-          });
-        },
-      });
-
-      const successMessage =
-        result.updatedFieldCount > 0
-          ? `Enriched ${result.updatedRowCount} row${result.updatedRowCount === 1 ? "" : "s"} in the workspace. Filled ${result.updatedFieldCount} field${result.updatedFieldCount === 1 ? "" : "s"} across ${result.processedChannelCount} refreshed channel${result.processedChannelCount === 1 ? "" : "s"}${result.failedChannelCount > 0 ? `. ${result.failedChannelCount} channel${result.failedChannelCount === 1 ? "" : "s"} could not be refreshed.` : "."}`
-          : result.failedChannelCount > 0
-            ? `Creator List enrichment finished, but ${result.failedChannelCount} channel${result.failedChannelCount === 1 ? "" : "s"} could not be refreshed and no additional fields were filled.`
-            : "Creator List enrichment finished. No additional fields were filled.";
-
-      setCurrentPreview(result.preview);
-      setDrafts(createEmptyDrafts());
-      setCreatorListEnrichmentState("success");
-      setCreatorListEnrichmentMessage(successMessage);
-      setCreatorListEnrichmentProgress({
-        open: true,
-        percentage: 100,
-        message: successMessage,
-        status: "success",
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Unable to enrich this creator list in the workspace.";
-
-      setCreatorListEnrichmentState("error");
-      setCreatorListEnrichmentMessage(errorMessage);
-      setCreatorListEnrichmentProgress((current) => ({
-        open: true,
-        percentage: current.percentage,
-        message: errorMessage,
-        status: "error",
-      }));
-    }
+  function handleCsvDownload() {
+    downloadCsv(fileName, buildCsv(currentPreview.columns, currentPreview.rows));
   }
 
   return (
     <div className="export-prep">
-      {isHubspotPreview(currentPreview) ? (
-        <section className="export-prep__defaults">
-          <div className="database-records__header export-prep__defaults-header">
-            <div>
-              <h2>Run defaults</h2>
-              <p className="workspace-copy">Set shared dropdown defaults, then review row-level overrides below.</p>
-            </div>
-            <button
-              className="workspace-button export-prep__defaults-save"
-              disabled={!hasPendingChanges || requestState === "saving"}
-              onClick={() => void handleSave()}
-              type="button"
-            >
-              {requestState === "saving" ? "Saving..." : "Save"}
-            </button>
+      <section className="export-prep__defaults">
+        <div className="database-records__header export-prep__defaults-header">
+          <div>
+            <h2>Run defaults</h2>
+            <p className="workspace-copy">Set shared dropdown defaults, then review row-level overrides below.</p>
           </div>
+          <button
+            className="workspace-button export-prep__defaults-save"
+            disabled={!hasPendingChanges || requestState === "saving"}
+            onClick={() => void handleSave()}
+            type="button"
+          >
+            {requestState === "saving" ? "Saving..." : "Save"}
+          </button>
+        </div>
 
-          <div className="export-prep__defaults-grid">
-            {currentPreview.columns
-              .filter((column) => {
-                if (!column.dropdownFieldKey) {
-                  return false;
-                }
+        <div className="export-prep__defaults-grid">
+          {currentPreview.columns
+            .filter((column) => {
+              if (!column.dropdownFieldKey) {
+                return false;
+              }
 
-                const fieldKey = column.key as keyof HubspotPrepUpdateDefaults;
-                return (
-                  drafts.defaults[fieldKey] !== undefined &&
-                  RUN_DEFAULT_COLUMN_KEYS.has(fieldKey)
-                );
-              })
-              .map((column) => {
-                const fieldKey = column.key as keyof HubspotPrepUpdateDefaults;
-                const currentValue = currentPreview.defaults[column.key] ?? "";
-                const options: SearchableSelectOption[] = [
-                  {
-                    value: "",
-                    label: currentValue || `Select ${column.label}`,
-                  },
-                  ...currentPreview.dropdownOptions[column.dropdownFieldKey!].map((option) => ({
-                    value: option,
-                    label: option,
-                  })),
-                ];
-                return (
-                  <label className="new-scouting__field export-prep__default-field" key={column.key}>
-                    <span>{column.label}</span>
-                    <SearchableSelect
-                      ariaLabel={column.label}
-                      disabled={requestState === "saving"}
-                      onChange={(value) => updateDefault(fieldKey, value)}
-                      options={options}
-                      placeholder={currentValue || `Select ${column.label}`}
-                      searchPlaceholder={`Search ${column.label}...`}
-                      value={drafts.defaults[fieldKey]}
-                    />
-                  </label>
-                );
-              })}
-          </div>
-        </section>
-      ) : null}
+              const fieldKey = column.key as keyof HubspotPrepUpdateDefaults;
+              return (
+                drafts.defaults[fieldKey] !== undefined &&
+                RUN_DEFAULT_COLUMN_KEYS.has(fieldKey)
+              );
+            })
+            .map((column) => {
+              const fieldKey = column.key as keyof HubspotPrepUpdateDefaults;
+              const currentValue = currentPreview.defaults[column.key] ?? "";
+              const options: SearchableSelectOption[] = [
+                {
+                  value: "",
+                  label: currentValue || `Select ${column.label}`,
+                },
+                ...currentPreview.dropdownOptions[column.dropdownFieldKey!].map((option) => ({
+                  value: option,
+                  label: option,
+                })),
+              ];
+              return (
+                <label className="new-scouting__field export-prep__default-field" key={column.key}>
+                  <span>{column.label}</span>
+                  <SearchableSelect
+                    ariaLabel={column.label}
+                    disabled={requestState === "saving"}
+                    onChange={(value) => updateDefault(fieldKey, value)}
+                    options={options}
+                    placeholder={currentValue || `Select ${column.label}`}
+                    searchPlaceholder={`Search ${column.label}...`}
+                    value={drafts.defaults[fieldKey]}
+                  />
+                </label>
+              );
+            })}
+        </div>
+      </section>
 
       {requestMessage ? (
         <p
@@ -542,129 +391,100 @@ export function ExportPreparationWorkspace({
         </section>
       ) : null}
 
-      {isHubspotPreview(currentPreview) ? (
-        <section className="export-prep__defaults">
-          <div className="database-records__header export-prep__defaults-header">
-            <div>
-              <h2>Google Sheets export</h2>
-              <p className="workspace-copy">
-                Append the prepared rows to an existing sheet tab using its first-row headers.
-                Save any row edits first so the export uses the latest values.
-              </p>
-            </div>
-            <button
-              className="workspace-button export-prep__defaults-save"
-              disabled={!canExportToGoogleSheets}
-              onClick={() => void handleGoogleSheetsExport()}
-              type="button"
-            >
-              {googleSheetsState === "saving" ? "Exporting..." : "Export to Google Sheets"}
-            </button>
-          </div>
-
-          <div className="export-prep__defaults-grid">
-            <label className="new-scouting__field export-prep__default-field">
-              <span>Spreadsheet URL or ID</span>
-              <input
-                disabled={
-                  googleSheetsState === "saving" || creatorListEnrichmentState === "saving"
-                }
-                onChange={(event) => {
-                  const { value } = event.currentTarget;
-
-                  setGoogleSheetsRequest((current) => ({
-                    ...current,
-                    spreadsheetIdOrUrl: value,
-                  }));
-                  setGoogleSheetsState("idle");
-                  setGoogleSheetsMessage("");
-                }}
-                placeholder="https://docs.google.com/spreadsheets/d/... or spreadsheet id"
-                value={googleSheetsRequest.spreadsheetIdOrUrl}
-              />
-            </label>
-
-            <label className="new-scouting__field export-prep__default-field">
-              <span>Sheet name</span>
-              <input
-                disabled={
-                  googleSheetsState === "saving" || creatorListEnrichmentState === "saving"
-                }
-                onChange={(event) => {
-                  const { value } = event.currentTarget;
-
-                  setGoogleSheetsRequest((current) => ({
-                    ...current,
-                    sheetName: value,
-                  }));
-                  setGoogleSheetsState("idle");
-                  setGoogleSheetsMessage("");
-                }}
-                placeholder="Sheet1"
-                value={googleSheetsRequest.sheetName}
-              />
-            </label>
-          </div>
-
-          {googleSheetsBlockingMessage ? (
-            <p className="workspace-copy" role="status">
-              {googleSheetsBlockingMessage}
+      <section className="export-prep__defaults">
+        <div className="database-records__header export-prep__defaults-header">
+          <div>
+            <h2>Google Sheets export</h2>
+            <p className="workspace-copy">
+              Append the prepared rows to an existing sheet tab using its first-row headers.
+              Save any row edits first so the export uses the latest values.
             </p>
-          ) : null}
+          </div>
+          <button
+            className="workspace-button export-prep__defaults-save"
+            disabled={!canExportToGoogleSheets}
+            onClick={() => void handleGoogleSheetsExport()}
+            type="button"
+          >
+            {googleSheetsState === "saving" ? "Exporting..." : "Export to Google Sheets"}
+          </button>
+        </div>
 
-          {googleSheetsMessage ? (
-            <p
-              className={`new-scouting__status new-scouting__status--${
-                googleSheetsState === "success" ? "idle" : googleSheetsState
-              }`}
-              role={googleSheetsState === "error" ? "alert" : "status"}
-            >
-              {googleSheetsMessage}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
+        <div className="export-prep__defaults-grid">
+          <label className="new-scouting__field export-prep__default-field">
+            <span>Spreadsheet URL or ID</span>
+            <input
+              disabled={googleSheetsState === "saving"}
+              onChange={(event) => {
+                const { value } = event.currentTarget;
 
-      {creatorListEnrichmentMessage ? (
-        <p
-          className={`new-scouting__status new-scouting__status--${
-            creatorListEnrichmentState === "success" ? "idle" : creatorListEnrichmentState
-          }`}
-          role={creatorListEnrichmentState === "error" ? "alert" : "status"}
-        >
-          {creatorListEnrichmentMessage}
-        </p>
-      ) : null}
+                setGoogleSheetsRequest((current) => ({
+                  ...current,
+                  spreadsheetIdOrUrl: value,
+                }));
+                setGoogleSheetsState("idle");
+                setGoogleSheetsMessage("");
+              }}
+              placeholder="https://docs.google.com/spreadsheets/d/... or spreadsheet id"
+              value={googleSheetsRequest.spreadsheetIdOrUrl}
+            />
+          </label>
+
+          <label className="new-scouting__field export-prep__default-field">
+            <span>Sheet name</span>
+            <input
+              disabled={googleSheetsState === "saving"}
+              onChange={(event) => {
+                const { value } = event.currentTarget;
+
+                setGoogleSheetsRequest((current) => ({
+                  ...current,
+                  sheetName: value,
+                }));
+                setGoogleSheetsState("idle");
+                setGoogleSheetsMessage("");
+              }}
+              placeholder="Sheet1"
+              value={googleSheetsRequest.sheetName}
+            />
+          </label>
+        </div>
+
+        {googleSheetsBlockingMessage ? (
+          <p className="workspace-copy" role="status">
+            {googleSheetsBlockingMessage}
+          </p>
+        ) : null}
+
+        {googleSheetsMessage ? (
+          <p
+            className={`new-scouting__status new-scouting__status--${
+              googleSheetsState === "success" ? "idle" : googleSheetsState
+            }`}
+            role={googleSheetsState === "error" ? "alert" : "status"}
+          >
+            {googleSheetsMessage}
+          </p>
+        ) : null}
+      </section>
 
       <div className="export-prep__actions">
-        {mode === "csv" ? (
-          <button
-            className="workspace-button workspace-button--secondary"
-            onClick={() => downloadCsv(fileName, buildCsv(currentPreview.columns, currentPreview.rows))}
-            type="button"
-          >
-            Download CSV file
-          </button>
-        ) : (
-          <button
-            className="workspace-button workspace-button--secondary"
-            disabled={!canEnrichCreatorList}
-            onClick={() => void handleCreatorListEnrichment()}
-            type="button"
-          >
-            {creatorListEnrichmentState === "saving" ? "Enriching..." : "Enrich Creator List"}
-          </button>
-        )}
-        {isHubspotPreview(currentPreview) ? (
-          <button
-            className="database-records__cta"
-            disabled={!hasPendingChanges || requestState === "saving"}
-            onClick={() => void handleSave()}
-            type="button"
-          >
-            {requestState === "saving" ? "Saving..." : "Save"}
-          </button>
-        ) : null}
+        <button
+          className="workspace-button workspace-button--secondary"
+          disabled={!canDownloadCsv}
+          onClick={handleCsvDownload}
+          type="button"
+        >
+          CSV Download
+        </button>
+        <button
+          className="database-records__cta"
+          disabled={!hasPendingChanges || requestState === "saving"}
+          onClick={() => void handleSave()}
+          type="button"
+        >
+          {requestState === "saving" ? "Saving..." : "Save"}
+        </button>
       </div>
 
       <div className="export-prep__table-shell">
@@ -689,7 +509,7 @@ export function ExportPreparationWorkspace({
                     <td key={column.key}>
                       {!column.editable ? (
                         <span className="export-prep__readonly">{placeholderValue}</span>
-                      ) : isHubspotPreview(currentPreview) && column.fieldType === "dropdown" && column.dropdownFieldKey ? (
+                      ) : column.fieldType === "dropdown" && column.dropdownFieldKey ? (
                         <div className="export-prep__cell-editor">
                           <SearchableSelect
                             ariaLabel={column.label}
@@ -723,16 +543,12 @@ export function ExportPreparationWorkspace({
                               )
                             }
                             placeholder={placeholderValue ? "" : `Enter ${column.label}`}
-                            value={
-                              isHubspotPreview(currentPreview)
-                                ? getDisplayRowValue({
-                                    drafts,
-                                    rowKey: row.rowKey,
-                                    field: column.key as HubspotPrepClearField["field"],
-                                    currentValue: placeholderValue,
-                                  })
-                                : (row.values[column.key] ?? "")
-                            }
+                            value={getDisplayRowValue({
+                              drafts,
+                              rowKey: row.rowKey,
+                              field: column.key as HubspotPrepClearField["field"],
+                              currentValue: placeholderValue,
+                            })}
                           />
                         </div>
                       )}
@@ -744,78 +560,6 @@ export function ExportPreparationWorkspace({
           </tbody>
         </table>
       </div>
-
-      {creatorListEnrichmentProgress.open ? (
-        <div
-          className="database-admin__modal-backdrop"
-          onClick={() => {
-            if (creatorListEnrichmentProgress.status === "saving") {
-              return;
-            }
-
-            setCreatorListEnrichmentProgress(createEmptyCreatorListEnrichmentProgressState());
-          }}
-          role="presentation"
-        >
-          <section
-            aria-labelledby="creator-list-enrichment-progress-title"
-            aria-modal="true"
-            className="database-admin__modal export-prep__progress-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <div className="database-admin__modal-header">
-              <div>
-                <h3 id="creator-list-enrichment-progress-title">Creator List Enrichment</h3>
-                <p className="workspace-copy">
-                  Keep this window open while the workspace enrichment runs.
-                </p>
-              </div>
-              <button
-                className="database-admin__modal-close"
-                disabled={creatorListEnrichmentProgress.status === "saving"}
-                onClick={() =>
-                  setCreatorListEnrichmentProgress(
-                    createEmptyCreatorListEnrichmentProgressState(),
-                  )
-                }
-                type="button"
-              >
-                {creatorListEnrichmentProgress.status === "saving" ? "Running..." : "Close"}
-              </button>
-            </div>
-
-            <div className="export-prep__progress-meta" aria-live="polite">
-              <span className="export-prep__progress-percent">
-                {Math.min(100, Math.max(0, creatorListEnrichmentProgress.percentage))}%
-              </span>
-              <p className="export-prep__progress-message">
-                {creatorListEnrichmentProgress.message}
-              </p>
-            </div>
-
-            <div
-              aria-hidden="true"
-              className="export-prep__progress-track"
-            >
-              <span
-                className="export-prep__progress-fill"
-                style={{
-                  width: `${Math.min(100, Math.max(0, creatorListEnrichmentProgress.percentage))}%`,
-                }}
-              />
-            </div>
-
-            <p className="export-prep__progress-copy">
-              {creatorListEnrichmentProgress.status === "saving"
-                ? "Enrichment is running."
-                : creatorListEnrichmentProgress.status === "error"
-                  ? "Enrichment stopped before completion."
-                  : "Enrichment finished."}
-            </p>
-          </section>
-        </div>
-      ) : null}
     </div>
   );
 }

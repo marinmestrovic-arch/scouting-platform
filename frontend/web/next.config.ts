@@ -12,7 +12,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "yt3.ggpht.com",
+        hostname: "**",
+      },
+      {
+        protocol: "http",
+        hostname: "**",
       },
     ],
   },

@@ -7386,6 +7386,23 @@ button:disabled,
   max-width: 42rem;
 }
 
+.channel-detail-shell__status-modal {
+  width: min(90vw, 32rem);
+}
+
+.channel-detail-shell__status-modal-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.25rem 0 0;
+}
+
+.channel-detail-shell__status-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .channel-detail-shell__profile-grid {
   display: grid;
   gap: 1rem;

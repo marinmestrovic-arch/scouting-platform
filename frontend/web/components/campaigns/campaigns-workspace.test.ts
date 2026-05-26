@@ -30,7 +30,7 @@ describe("CampaignsWorkspace", () => {
                 hubspotSyncedAt: "2026-04-22T10:00:00.000Z",
               },
               market: null,
-              briefLink: null,
+              briefLink: "https://example.com/local-brief",
               month: "april",
               year: 2026,
               isActive: true,
@@ -117,7 +117,9 @@ describe("CampaignsWorkspace", () => {
 
     expect(html).toContain("HubSpot");
     expect(html).toContain("Markets");
-    expect(html).not.toContain("Brief Link");
+    expect(html).toContain("Brief Link");
+    expect(html).toContain('href="https://example.com/local-brief"');
+    expect(html).toContain("Open brief");
     expect(html).toContain("Local Campaign");
     expect(html).toContain(">Delete</button>");
     expect(html).toContain("Active Launch");

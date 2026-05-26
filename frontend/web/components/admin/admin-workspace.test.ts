@@ -56,7 +56,7 @@ describe("admin workspace", () => {
     expect(html).toContain("CSV Imports");
     expect(html).toContain("Users");
     expect(html).toContain("Exports");
-    expect(html).toContain("HubSpot");
+    expect(html).not.toContain("HubSpot");
     expect(html).toContain("csv-import-manager");
     expect(html).not.toContain("Approvals");
   });
@@ -83,18 +83,7 @@ describe("admin workspace", () => {
     expect(html).not.toContain("admin-users-manager");
   });
 
-  it("renders the hubspot placeholder when the hubspot tab is active", () => {
-    useSearchParamsMock.mockReturnValue(new URLSearchParams("tab=hubspot"));
-
-    const html = renderToStaticMarkup(createElement(AdminWorkspace));
-
-    expect(html).toContain("HubSpot workspace");
-    expect(html).toContain('href="/hubspot"');
-    expect(html).not.toContain("csv-import-manager");
-    expect(html).not.toContain("admin-users-manager");
-  });
-
-  it.each(["approvals", "invalid"])(
+  it.each(["approvals", "invalid", "hubspot"])(
     "falls back to imports for old or invalid %s tab URLs",
     (tab) => {
       useSearchParamsMock.mockReturnValue(new URLSearchParams(`tab=${tab}`));

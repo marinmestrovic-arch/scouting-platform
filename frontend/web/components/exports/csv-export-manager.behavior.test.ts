@@ -2,23 +2,9 @@ import type { CsvExportBatchSummary } from "@scouting-platform/contracts";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  createCsvExportBatchMock,
-  fetchCsvExportBatchesMock,
-  replaceMock,
-  useEffectMock,
-  usePathnameMock,
-  useRouterMock,
-  useSearchParamsMock,
-  useStateMock,
-} = vi.hoisted(() => ({
-  createCsvExportBatchMock: vi.fn(),
+const { fetchCsvExportBatchesMock, useEffectMock, useStateMock } = vi.hoisted(() => ({
   fetchCsvExportBatchesMock: vi.fn(),
-  replaceMock: vi.fn(),
   useEffectMock: vi.fn(),
-  usePathnameMock: vi.fn(),
-  useRouterMock: vi.fn(),
-  useSearchParamsMock: vi.fn(),
   useStateMock: vi.fn(),
 }));
 
@@ -32,12 +18,6 @@ vi.mock("react", async () => {
   };
 });
 
-vi.mock("next/navigation", () => ({
-  usePathname: usePathnameMock,
-  useRouter: useRouterMock,
-  useSearchParams: useSearchParamsMock,
-}));
-
 vi.mock("../../lib/csv-export-batches-api", () => ({
   CsvExportBatchesApiError: class CsvExportBatchesApiError extends Error {
     readonly status: number;
@@ -48,12 +28,10 @@ vi.mock("../../lib/csv-export-batches-api", () => ({
       this.status = status;
     }
   },
-  createCsvExportBatch: createCsvExportBatchMock,
   fetchCsvExportBatches: fetchCsvExportBatchesMock,
   getCsvExportBatchDownloadUrl: vi.fn((batchId: string) => `/api/csv-export-batches/${batchId}/download`),
 }));
 
-import { CsvExportBatchesApiError } from "../../lib/csv-export-batches-api";
 import {
   CSV_EXPORT_HISTORY_POLL_INTERVAL_MS,
   CsvExportManager,
@@ -85,80 +63,24 @@ function buildSummary(overrides?: Partial<CsvExportBatchSummary>): CsvExportBatc
   };
 }
 
-function createSearchParams(
-  input: Record<string, string | string[] | undefined>,
-): URLSearchParams {
-  const searchParams = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(input)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        searchParams.append(key, item);
-      }
-      continue;
-    }
-
-    if (value !== undefined) {
-      searchParams.set(key, value);
-    }
-  }
-
-  return searchParams;
-}
-
-function buildFilters(
-  overrides?: Partial<CsvExportManagerViewProps["filters"]>,
-): CsvExportManagerViewProps["filters"] {
-  return {
-    query: "",
-    countryRegion: [],
-    influencerVertical: [],
-    influencerType: [],
-    youtubeVideoMedianViewsMin: "",
-    youtubeVideoMedianViewsMax: "",
-    youtubeShortsMedianViewsMin: "",
-    youtubeShortsMedianViewsMax: "",
-    youtubeFollowersMin: "",
-    youtubeFollowersMax: "",
-    ...overrides,
-  };
-}
-
-function createShellState(options?: {
-  filters?: CsvExportManagerViewProps["filters"];
+function renderShell(options?: {
   historyState?: CsvExportManagerViewProps["historyState"];
-  createState?: CsvExportManagerViewProps["createState"];
   reloadToken?: number;
   isRefreshing?: boolean;
+  runEffects?: boolean;
 }) {
-  return {
-    filters:
-      options?.filters ??
-      buildFilters(),
-    historyState:
-      options?.historyState ??
-      {
-        status: "loading" as const,
-        items: [],
-        error: null,
-      },
-    createState:
-      options?.createState ??
-      {
-        type: "idle" as const,
-        message: "",
-      },
-    reloadToken: options?.reloadToken ?? 0,
-    isRefreshing: options?.isRefreshing ?? false,
-  };
-}
+  const historyState =
+    options?.historyState ??
+    {
+      status: "loading" as const,
+      items: [],
+      error: null,
+    };
+  const reloadToken = options?.reloadToken ?? 0;
+  const isRefreshing = options?.isRefreshing ?? false;
 
-function renderShell(options?: Parameters<typeof createShellState>[0] & { runEffects?: boolean; searchParams?: URLSearchParams }) {
-  const state = createShellState(options);
   const setters = {
-    setFilters: vi.fn(),
     setHistoryState: vi.fn(),
-    setCreateState: vi.fn(),
     setReloadToken: vi.fn(),
     setIsRefreshing: vi.fn(),
   };
@@ -166,24 +88,10 @@ function renderShell(options?: Parameters<typeof createShellState>[0] & { runEff
 
   useStateMock.mockReset();
   useEffectMock.mockReset();
-  replaceMock.mockReset();
-  usePathnameMock.mockReturnValue("/exports");
-  useRouterMock.mockReturnValue({
-    replace: replaceMock,
-  });
-  useSearchParamsMock.mockReturnValue(
-    options?.searchParams ??
-      createSearchParams({
-        query: "space",
-        countryRegion: ["Croatia"],
-      }),
-  );
   useStateMock
-    .mockReturnValueOnce([state.filters, setters.setFilters])
-    .mockReturnValueOnce([state.historyState, setters.setHistoryState])
-    .mockReturnValueOnce([state.createState, setters.setCreateState])
-    .mockReturnValueOnce([state.reloadToken, setters.setReloadToken])
-    .mockReturnValueOnce([state.isRefreshing, setters.setIsRefreshing]);
+    .mockReturnValueOnce([historyState, setters.setHistoryState])
+    .mockReturnValueOnce([reloadToken, setters.setReloadToken])
+    .mockReturnValueOnce([isRefreshing, setters.setIsRefreshing]);
   useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
     if (options?.runEffects === false) {
       return;
@@ -209,12 +117,6 @@ describe("csv export manager behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchCsvExportBatchesMock.mockResolvedValue([buildSummary()]);
-    createCsvExportBatchMock.mockResolvedValue(
-      buildSummary({
-        id: "2f1d3721-6ed4-4ae5-a711-3ad7f71b4195",
-        status: "queued",
-      }),
-    );
   });
 
   it("loads export history on mount", async () => {
@@ -230,83 +132,6 @@ describe("csv export manager behavior", () => {
       items: [buildSummary()],
       error: null,
     });
-  });
-
-  it("requires at least one filter before creating a filtered export", async () => {
-    const { element, setters } = renderShell({
-      runEffects: false,
-      filters: buildFilters(),
-    });
-
-    await element.props.onCreateFilteredExport();
-
-    expect(createCsvExportBatchMock).not.toHaveBeenCalled();
-    expect(setters.setCreateState).toHaveBeenCalledWith({
-      type: "error",
-      message: "Choose at least one filter before creating a filtered export.",
-    });
-  });
-
-  it("creates a filtered export batch with the current URL-backed filters", async () => {
-    const createdBatch = buildSummary({
-      id: "2f1d3721-6ed4-4ae5-a711-3ad7f71b4195",
-      status: "queued",
-    });
-    createCsvExportBatchMock.mockResolvedValueOnce(createdBatch);
-    const { element, setters } = renderShell({
-      runEffects: false,
-      filters: buildFilters({
-        query: "space",
-        countryRegion: ["Croatia"],
-        influencerVertical: ["Gaming"],
-      }),
-      historyState: {
-        status: "ready",
-        items: [buildSummary()],
-        error: null,
-      },
-    });
-
-    await element.props.onCreateFilteredExport();
-
-    expect(createCsvExportBatchMock).toHaveBeenCalledWith({
-      type: "filtered",
-      filters: {
-        query: "space",
-        countryRegion: ["Croatia"],
-        influencerVertical: ["Gaming"],
-      },
-    });
-    expect(setters.setCreateState).toHaveBeenNthCalledWith(1, {
-      type: "submitting",
-      message: "",
-    });
-    expect(setters.setCreateState).toHaveBeenNthCalledWith(2, {
-      type: "success",
-      message: "Filtered CSV export queued. History refreshes automatically while processing continues.",
-    });
-    expect(setters.setHistoryState).toHaveBeenCalledWith(expect.any(Function));
-    expect(setters.setReloadToken).toHaveBeenCalledWith(expect.any(Function));
-
-    const historyUpdater = setters.setHistoryState.mock.calls[0]?.[0] as
-      | ((value: CsvExportManagerViewProps["historyState"]) => CsvExportManagerViewProps["historyState"])
-      | undefined;
-    const reloadUpdater = setters.setReloadToken.mock.calls[0]?.[0] as
-      | ((value: number) => number)
-      | undefined;
-
-    expect(
-      historyUpdater?.({
-        status: "ready",
-        items: [buildSummary()],
-        error: null,
-      }),
-    ).toEqual({
-      status: "ready",
-      items: [createdBatch, buildSummary()],
-      error: null,
-    });
-    expect(reloadUpdater?.(0)).toBe(1);
   });
 
   it("polls export history while queued or running batches remain", () => {
@@ -377,53 +202,5 @@ describe("csv export manager behavior", () => {
       | undefined;
 
     expect(retryReloadUpdater?.(1)).toBe(2);
-  });
-
-  it("updates the export URL when filters change and resets filter state", () => {
-    const { element, setters } = renderShell({
-      runEffects: false,
-      filters: buildFilters({
-        query: "space",
-        countryRegion: ["Croatia"],
-      }),
-    });
-
-    element.props.onQueryChange("mars");
-    element.props.onResetFilters();
-
-    expect(setters.setFilters).toHaveBeenNthCalledWith(1, {
-      query: "mars",
-      countryRegion: ["Croatia"],
-      influencerVertical: [],
-      influencerType: [],
-      youtubeVideoMedianViewsMin: "",
-      youtubeVideoMedianViewsMax: "",
-      youtubeShortsMedianViewsMin: "",
-      youtubeShortsMedianViewsMax: "",
-      youtubeFollowersMin: "",
-      youtubeFollowersMax: "",
-    });
-    expect(replaceMock).toHaveBeenNthCalledWith(1, "/exports?query=mars&countryRegion=Croatia");
-    expect(setters.setFilters).toHaveBeenNthCalledWith(2, buildFilters());
-    expect(replaceMock).toHaveBeenNthCalledWith(2, "/exports");
-  });
-
-  it("surfaces session-specific create failures", async () => {
-    createCsvExportBatchMock.mockRejectedValueOnce(
-      new CsvExportBatchesApiError("Forbidden", 403),
-    );
-    const { element, setters } = renderShell({
-      runEffects: false,
-      filters: buildFilters({
-        query: "space",
-      }),
-    });
-
-    await element.props.onCreateFilteredExport();
-
-    expect(setters.setCreateState).toHaveBeenLastCalledWith({
-      type: "error",
-      message: "Your session does not allow CSV export creation anymore. Sign in again and retry.",
-    });
   });
 });

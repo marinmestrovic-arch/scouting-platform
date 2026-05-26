@@ -12,7 +12,7 @@ const AdminUsersManager = dynamic(
   () => import("./admin-users-manager").then((mod) => mod.AdminUsersManager),
 );
 
-type AdminWorkspaceTab = "imports" | "users" | "exports" | "hubspot";
+type AdminWorkspaceTab = "imports" | "users" | "exports";
 
 const ADMIN_TABS: ReadonlyArray<{
   value: AdminWorkspaceTab;
@@ -21,7 +21,6 @@ const ADMIN_TABS: ReadonlyArray<{
   { value: "imports", label: "CSV Imports" },
   { value: "users", label: "Users" },
   { value: "exports", label: "Exports" },
-  { value: "hubspot", label: "HubSpot" },
 ];
 
 function resolveAdminTab(value: string | null): AdminWorkspaceTab {
@@ -29,7 +28,6 @@ function resolveAdminTab(value: string | null): AdminWorkspaceTab {
     case "users":
     case "imports":
     case "exports":
-    case "hubspot":
       return value;
     default:
       return "imports";
@@ -137,19 +135,6 @@ export function AdminWorkspace() {
         </div>
       ) : null}
 
-      {activeTab === "hubspot" ? (
-        <div
-          aria-labelledby="admin-workspace-tab-hubspot"
-          className="admin-workspace__panel"
-          id={activePanelId}
-          key={`hubspot-${refreshKey}`}
-          role="tabpanel"
-        >
-          <h3>HubSpot workspace</h3>
-          <p>HubSpot sync operations are available in the dedicated workspace.</p>
-          <Link href="/hubspot">Open /hubspot</Link>
-        </div>
-      ) : null}
     </div>
   );
 }

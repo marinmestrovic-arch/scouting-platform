@@ -27,7 +27,6 @@ import type {
   BatchEnrichmentActionState,
   CatalogDeleteActionState,
   CatalogCsvExportBatchState,
-  CatalogHubspotPushBatchState,
   CatalogViewMode,
 } from "./catalog-table-shared";
 import {
@@ -44,7 +43,6 @@ import {
   mergeCatalogBatchEnrichmentResults,
   shouldPollCatalogCsvExportBatch,
   shouldPollCatalogEnrichmentRows,
-  shouldPollCatalogHubspotPushBatch,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
   toggleCatalogPageSelection,
@@ -78,7 +76,6 @@ export {
   parseCatalogUrlState,
   shouldPollCatalogCsvExportBatch,
   shouldPollCatalogEnrichmentRows,
-  shouldPollCatalogHubspotPushBatch,
   summarizeCatalogBatchEnrichmentResults,
   toggleCatalogChannelSelection,
   toggleCatalogMultiValueFilter,
@@ -101,7 +98,6 @@ type CatalogTableShellViewProps = {
   batchEnrichmentActionState: BatchEnrichmentActionState;
   deleteActionState: CatalogDeleteActionState;
   latestCsvExportBatch: CatalogCsvExportBatchState;
-  latestHubspotPushBatch: CatalogHubspotPushBatchState;
   isAdmin?: boolean;
   viewMode?: CatalogViewMode;
   onQueryChange: (value: string) => void;
@@ -113,7 +109,6 @@ type CatalogTableShellViewProps = {
   onTogglePageSelection: () => void;
   onExportSelectedChannels: () => void | Promise<void>;
   onDeleteSelectedChannels: () => void | Promise<void>;
-  onPushSelectedChannelsToHubspot: () => void | Promise<void>;
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onClearSelection: () => void;
   onResetFilters: () => void;
@@ -132,7 +127,6 @@ export function CatalogTableShellView({
   batchEnrichmentActionState,
   deleteActionState,
   latestCsvExportBatch,
-  latestHubspotPushBatch,
   isAdmin = false,
   viewMode = "table",
   onQueryChange,
@@ -144,7 +138,6 @@ export function CatalogTableShellView({
   onTogglePageSelection,
   onExportSelectedChannels,
   onDeleteSelectedChannels,
-  onPushSelectedChannelsToHubspot,
   onRequestSelectedEnrichment,
   onClearSelection,
   onResetFilters,
@@ -200,13 +193,11 @@ export function CatalogTableShellView({
           deleteActionState={deleteActionState}
           isAdmin={isAdmin}
           latestCsvExportBatch={latestCsvExportBatch}
-          latestHubspotPushBatch={latestHubspotPushBatch}
           onClearSelection={onClearSelection}
           onDeleteSelectedChannels={onDeleteSelectedChannels}
           onExportSelectedChannels={onExportSelectedChannels}
           onNextPage={onNextPage}
           onPreviousPage={onPreviousPage}
-          onPushSelectedChannelsToHubspot={onPushSelectedChannelsToHubspot}
           onRequestSelectedEnrichment={onRequestSelectedEnrichment}
           onToggleChannelSelection={onToggleChannelSelection}
           onTogglePageSelection={onTogglePageSelection}
