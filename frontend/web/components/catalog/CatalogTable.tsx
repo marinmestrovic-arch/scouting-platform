@@ -164,6 +164,7 @@ type CatalogTableProps = Readonly<{
   onExportSelectedChannels: () => void | Promise<void>;
   onNextPage: () => void;
   onPreviousPage: () => void;
+  onRequestFilteredEnrichment: () => void | Promise<void>;
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onToggleChannelSelection: (channelId: string) => void;
   onTogglePageSelection: () => void;
@@ -182,6 +183,7 @@ export function CatalogTable({
   onExportSelectedChannels,
   onNextPage,
   onPreviousPage,
+  onRequestFilteredEnrichment,
   onRequestSelectedEnrichment,
   onToggleChannelSelection,
   onTogglePageSelection,
@@ -231,31 +233,46 @@ export function CatalogTable({
         </div>
       </div>
 
-      {viewMode === "table" && hasSelection ? (
+      {viewMode === "table" && hasChannels ? (
         <div className="catalog-table__selection-actions">
+          {hasSelection ? (
+            <>
+              <button
+                className="catalog-table__button"
+                disabled={isRequestingBatchEnrichment}
+                onClick={() => {
+                  void onRequestSelectedEnrichment();
+                }}
+                suppressHydrationWarning
+                type="button"
+              >
+                {isRequestingBatchEnrichment ? "Requesting..." : `Enrich selected (${selectedChannelIds.length})`}
+              </button>
+              <button
+                className="catalog-table__button"
+                disabled={isCreatingCsvExportBatch}
+                onClick={() => {
+                  void onExportSelectedChannels();
+                }}
+                suppressHydrationWarning
+                type="button"
+              >
+                {isCreatingCsvExportBatch ? "Exporting..." : `Export selected (${selectedChannelIds.length})`}
+              </button>
+            </>
+          ) : null}
           <button
-            className="catalog-table__button"
+            className="catalog-table__button catalog-table__button--secondary"
             disabled={isRequestingBatchEnrichment}
             onClick={() => {
-              void onRequestSelectedEnrichment();
+              void onRequestFilteredEnrichment();
             }}
             suppressHydrationWarning
             type="button"
           >
-            {isRequestingBatchEnrichment ? "Requesting..." : `Enrich selected (${selectedChannelIds.length})`}
+            {isRequestingBatchEnrichment ? "Requesting..." : `Enrich all filtered (${data.total})`}
           </button>
-          <button
-            className="catalog-table__button"
-            disabled={isCreatingCsvExportBatch}
-            onClick={() => {
-              void onExportSelectedChannels();
-            }}
-            suppressHydrationWarning
-            type="button"
-          >
-            {isCreatingCsvExportBatch ? "Exporting..." : `Export selected (${selectedChannelIds.length})`}
-          </button>
-          {isAdmin ? (
+          {isAdmin && hasSelection ? (
             <button
               className="catalog-table__button catalog-table__button--danger"
               disabled={isDeletingChannels}
@@ -268,14 +285,16 @@ export function CatalogTable({
               {isDeletingChannels ? "Deleting..." : `Delete selected (${selectedChannelIds.length})`}
             </button>
           ) : null}
-          <button
-            className="catalog-table__button catalog-table__button--secondary"
-            onClick={onClearSelection}
-            suppressHydrationWarning
-            type="button"
-          >
-            Clear selection
-          </button>
+          {hasSelection ? (
+            <button
+              className="catalog-table__button catalog-table__button--secondary"
+              onClick={onClearSelection}
+              suppressHydrationWarning
+              type="button"
+            >
+              Clear selection
+            </button>
+          ) : null}
         </div>
       ) : null}
 

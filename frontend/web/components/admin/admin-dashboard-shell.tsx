@@ -111,6 +111,12 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function formatEnrichmentCoverageCopy(dashboard: AdminDashboardResponse): string {
+  const { counts, notEnrichedCount } = dashboard.enrichment;
+
+  return `${pluralize(dashboard.enrichment.enrichedCount, "enriched channel")}, ${pluralize(notEnrichedCount, "not enriched channel")}. Missing ${counts.missing}, failed ${counts.failed}, stale ${counts.stale}, queued ${counts.queued}, running ${counts.running}.`;
+}
+
 export function shouldPollAdminDashboard(dashboard: AdminDashboardResponse | null): boolean {
   if (!dashboard) {
     return false;
@@ -143,6 +149,15 @@ function renderReadyState(dashboard: AdminDashboardResponse): ReactElement {
             {pluralize(dashboard.users.activeCount, "active account")},{" "}
             {pluralize(dashboard.users.adminCount, "admin")},{" "}
             {pluralize(dashboard.users.totalCount, "total record")}.
+          </p>
+        </article>
+        <article className="admin-dashboard__card">
+          <p className="admin-dashboard__card-label">Channel enrichment coverage</p>
+          <p className="admin-dashboard__card-value">
+            {dashboard.enrichment.enrichedCount}/{dashboard.enrichment.totalCount}
+          </p>
+          <p className="admin-dashboard__card-copy">
+            {formatEnrichmentCoverageCopy(dashboard)}
           </p>
         </article>
       </div>

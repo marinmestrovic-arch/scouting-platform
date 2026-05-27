@@ -77,6 +77,22 @@ export const adminDashboardUsersSchema = z.object({
   missingYoutubeKeyPreview: z.array(adminUserResponseSchema).max(5),
 });
 
+export const adminDashboardEnrichmentCountsSchema = z.object({
+  missing: z.number().int().nonnegative(),
+  queued: z.number().int().nonnegative(),
+  running: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  stale: z.number().int().nonnegative(),
+});
+
+export const adminDashboardEnrichmentSchema = z.object({
+  totalCount: z.number().int().nonnegative(),
+  enrichedCount: z.number().int().nonnegative(),
+  notEnrichedCount: z.number().int().nonnegative(),
+  counts: adminDashboardEnrichmentCountsSchema,
+});
+
 export const adminDashboardResponseSchema = z.object({
   generatedAt: isoDatetimeSchema,
   approvals: z.object({
@@ -88,6 +104,7 @@ export const adminDashboardResponseSchema = z.object({
     attentionPreview: z.array(csvImportBatchSummarySchema).max(5),
   }),
   users: adminDashboardUsersSchema,
+  enrichment: adminDashboardEnrichmentSchema,
 });
 
 export type CreateAdminUserRequest = z.infer<typeof createAdminUserRequestSchema>;
@@ -100,4 +117,6 @@ export type ListAdminUsersResponse = z.infer<typeof listAdminUsersResponseSchema
 export type AdminDashboardApprovalsCounts = z.infer<typeof adminDashboardApprovalsCountsSchema>;
 export type AdminDashboardImportsCounts = z.infer<typeof adminDashboardImportsCountsSchema>;
 export type AdminDashboardUsers = z.infer<typeof adminDashboardUsersSchema>;
+export type AdminDashboardEnrichmentCounts = z.infer<typeof adminDashboardEnrichmentCountsSchema>;
+export type AdminDashboardEnrichment = z.infer<typeof adminDashboardEnrichmentSchema>;
 export type AdminDashboardResponse = z.infer<typeof adminDashboardResponseSchema>;

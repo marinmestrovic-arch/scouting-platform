@@ -217,6 +217,7 @@ function renderView(
       onExportSelectedChannels: vi.fn(),
       onNextPage: vi.fn(),
       onPreviousPage: vi.fn(),
+      onRequestFilteredEnrichment: vi.fn(),
       onRequestSelectedEnrichment: vi.fn(),
       onResetFilters: vi.fn(),
       onRetry: vi.fn(),

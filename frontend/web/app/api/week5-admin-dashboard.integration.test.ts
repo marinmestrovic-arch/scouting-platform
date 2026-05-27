@@ -184,5 +184,18 @@ integration("week 5 admin dashboard API integration", () => {
       missingYoutubeKeyCount: 1,
     });
     expect(payload.users.missingYoutubeKeyPreview[0]?.email).toBe("missing-key@example.com");
+    expect(payload.enrichment).toEqual({
+      totalCount: 1,
+      enrichedCount: 0,
+      notEnrichedCount: 1,
+      counts: {
+        missing: 1,
+        queued: 0,
+        running: 0,
+        completed: 0,
+        failed: 0,
+        stale: 0,
+      },
+    });
   });
 });

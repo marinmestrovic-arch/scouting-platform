@@ -1,6 +1,7 @@
 import type {
   ChannelEnrichmentDetail,
   ChannelSummary,
+  BulkRetryChannelEnrichmentResponse,
   CsvExportBatchDetail,
   CsvExportBatchStatus,
   CsvExportBatchSummary,
@@ -395,6 +396,10 @@ export function getBatchEnrichmentSubmittingMessage(selectedCount: number): stri
   return `Requesting enrichment for ${formatSelectedChannelCount(selectedCount)}.`;
 }
 
+export function getFilteredEnrichmentSubmittingMessage(totalCount: number): string {
+  return `Requesting enrichment for ${formatSelectedChannelCount(totalCount)} matching the current filters.`;
+}
+
 export function getCatalogChannelDeleteSubmittingMessage(selectedCount: number): string {
   return `Deleting ${formatSelectedChannelCount(selectedCount)}.`;
 }
@@ -507,6 +512,41 @@ export function summarizeCatalogBatchEnrichmentResults(
 
   return {
     type: failureMessages.length > 0 ? "error" : "success",
+    message: parts.join(" "),
+  };
+}
+
+export function summarizeCatalogFilteredEnrichmentResult(
+  result: BulkRetryChannelEnrichmentResponse,
+): BatchEnrichmentActionState {
+  const parts: string[] = [];
+
+  if (result.queuedCount > 0) {
+    parts.push(`Queued ${formatSelectedChannelCount(result.queuedCount)} for enrichment.`);
+  }
+
+  if (result.alreadyQueuedCount > 0) {
+    parts.push(`${formatSelectedChannelCount(result.alreadyQueuedCount)} already queued or running.`);
+  }
+
+  if (result.failedCount > 0) {
+    parts.push(`${result.failedCount} request${result.failedCount === 1 ? "" : "s"} failed to enqueue.`);
+  }
+
+  if (result.requestedCount === 0) {
+    parts.push("No channels matched the current filters.");
+  }
+
+  if (result.queuedCount > 0) {
+    parts.push("The table refreshes automatically while jobs run.");
+  }
+
+  if (parts.length === 0) {
+    parts.push("No enrichment requests were recorded.");
+  }
+
+  return {
+    type: result.failedCount > 0 ? "error" : "success",
     message: parts.join(" "),
   };
 }

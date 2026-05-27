@@ -109,6 +109,7 @@ type CatalogTableShellViewProps = {
   onTogglePageSelection: () => void;
   onExportSelectedChannels: () => void | Promise<void>;
   onDeleteSelectedChannels: () => void | Promise<void>;
+  onRequestFilteredEnrichment: () => void | Promise<void>;
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onClearSelection: () => void;
   onResetFilters: () => void;
@@ -138,6 +139,7 @@ export function CatalogTableShellView({
   onTogglePageSelection,
   onExportSelectedChannels,
   onDeleteSelectedChannels,
+  onRequestFilteredEnrichment,
   onRequestSelectedEnrichment,
   onClearSelection,
   onResetFilters,
@@ -198,6 +200,7 @@ export function CatalogTableShellView({
           onExportSelectedChannels={onExportSelectedChannels}
           onNextPage={onNextPage}
           onPreviousPage={onPreviousPage}
+          onRequestFilteredEnrichment={onRequestFilteredEnrichment}
           onRequestSelectedEnrichment={onRequestSelectedEnrichment}
           onToggleChannelSelection={onToggleChannelSelection}
           onTogglePageSelection={onTogglePageSelection}

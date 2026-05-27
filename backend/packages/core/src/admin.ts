@@ -2,9 +2,9 @@ import {
   AdvancedReportRequestStatus as PrismaAdvancedReportRequestStatus,
   CredentialProvider,
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
+  Prisma,
   Role as PrismaRole,
   UserType as PrismaUserType,
-  type Prisma,
 } from "@prisma/client";
 import type {
   AdminAdvancedReportRequestSummary,
@@ -16,6 +16,7 @@ import type {
 import { prisma } from "@scouting-platform/db";
 
 import { toAdvancedReportRequestStatus, toLatestCompletedAdvancedReport } from "./approvals/status";
+import { CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS } from "./enrichment/status";
 
 const adminDashboardApprovalPreviewSelect = {
   id: true,
@@ -94,6 +95,16 @@ type ImportPreviewRecord = Prisma.CsvImportBatchGetPayload<{
 type MissingKeyUserRecord = Prisma.UserGetPayload<{
   select: typeof adminDashboardMissingKeyUserSelect;
 }>;
+
+type EnrichmentCoverageStatus =
+  keyof AdminDashboardResponse["enrichment"]["counts"];
+
+type EnrichmentCoverageCountRow = {
+  status: EnrichmentCoverageStatus;
+  total: bigint;
+};
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function toCsvImportBatchStatus(status: PrismaCsvImportBatchStatus): CsvImportBatchSummary["status"] {
   switch (status) {
@@ -200,6 +211,68 @@ function getImportCount(
   return counts.get(status) ?? 0;
 }
 
+function getEnrichmentCoverageCount(
+  counts: Map<EnrichmentCoverageStatus, number>,
+  status: EnrichmentCoverageStatus,
+): number {
+  return counts.get(status) ?? 0;
+}
+
+async function getAdminDashboardEnrichmentCoverage(
+  now: Date,
+): Promise<AdminDashboardResponse["enrichment"]> {
+  const staleThreshold = new Date(
+    now.getTime() - CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS * DAY_IN_MS,
+  );
+  const rows = await prisma.$queryRaw<EnrichmentCoverageCountRow[]>(Prisma.sql`
+    WITH channel_enrichment_coverage AS (
+      SELECT
+        CASE
+          WHEN ce.channel_id IS NULL THEN 'missing'
+          WHEN ce.status::text = 'stale' THEN 'stale'
+          WHEN ce.status::text = 'completed'
+            AND (
+              ce.completed_at IS NULL
+              OR COALESCE(ce.last_enriched_at, ce.completed_at) <= ${staleThreshold}
+            ) THEN 'stale'
+          WHEN ce.status::text = 'completed' THEN 'completed'
+          WHEN ce.status::text = 'running' THEN 'running'
+          WHEN ce.status::text = 'failed' THEN 'failed'
+          ELSE 'queued'
+        END AS status
+      FROM channels c
+      LEFT JOIN channel_enrichments ce
+        ON ce.channel_id = c.id
+    )
+    SELECT
+      status,
+      COUNT(*)::bigint AS total
+    FROM channel_enrichment_coverage
+    GROUP BY status
+  `);
+  const rowCounts = new Map(
+    rows.map((row) => [row.status, Number(row.total)] as const),
+  );
+  const counts = {
+    missing: getEnrichmentCoverageCount(rowCounts, "missing"),
+    queued: getEnrichmentCoverageCount(rowCounts, "queued"),
+    running: getEnrichmentCoverageCount(rowCounts, "running"),
+    completed: getEnrichmentCoverageCount(rowCounts, "completed"),
+    failed: getEnrichmentCoverageCount(rowCounts, "failed"),
+    stale: getEnrichmentCoverageCount(rowCounts, "stale"),
+  };
+  const enrichedCount = counts.completed;
+  const notEnrichedCount =
+    counts.missing + counts.queued + counts.running + counts.failed + counts.stale;
+
+  return {
+    totalCount: enrichedCount + notEnrichedCount,
+    enrichedCount,
+    notEnrichedCount,
+    counts,
+  };
+}
+
 async function getLatestCompletedReportsByChannelIds(
   channelIds: string[],
   now: Date,
@@ -269,6 +342,7 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardResponse
     adminCount,
     missingYoutubeKeyCount,
     missingYoutubeKeyPreviewRecords,
+    enrichment,
   ] = await Promise.all([
     prisma.advancedReportRequest.groupBy({
       by: ["status"],
@@ -346,6 +420,7 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardResponse
       take: 5,
       select: adminDashboardMissingKeyUserSelect,
     }),
+    getAdminDashboardEnrichmentCoverage(generatedAt),
   ]);
 
   const latestCompletedReportsByChannelId = await getLatestCompletedReportsByChannelIds(
@@ -395,5 +470,6 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardResponse
       missingYoutubeKeyCount,
       missingYoutubeKeyPreview: missingYoutubeKeyPreviewRecords.map(toAdminUserResponse),
     },
+    enrichment,
   };
 }

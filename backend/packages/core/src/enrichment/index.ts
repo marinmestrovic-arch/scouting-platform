@@ -4,7 +4,11 @@ import {
   CredentialProvider,
   Prisma,
 } from "@prisma/client";
-import type { RequestChannelEnrichmentResponse } from "@scouting-platform/contracts";
+import type {
+  BulkRetryChannelEnrichmentResponse,
+  CatalogChannelFilters,
+  RequestChannelEnrichmentResponse,
+} from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 import {
   extractStoredOpenAiChannelEnrichmentProfileFromRawPayload,
@@ -21,7 +25,10 @@ import {
 } from "@scouting-platform/integrations";
 
 import { getUserYoutubeApiKey } from "../auth";
-import { getChannelById } from "../channels";
+import {
+  getChannelById,
+  listAllChannelIdsForCatalogFilters,
+} from "../channels";
 import { listDropdownOptions } from "../dropdown-values";
 import { ServiceError } from "../errors";
 import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
@@ -47,12 +54,76 @@ type ChannelYoutubeContextCacheRow = {
   lastError: string | null;
 };
 
+type BulkEnrichmentChannelRow = {
+  id: string;
+  updatedAt: Date;
+  enrichment: {
+    status: PrismaChannelEnrichmentStatus;
+    completedAt: Date | null;
+    lastEnrichedAt: Date | null;
+  } | null;
+};
+
+const BULK_CHANNEL_ENRICHMENT_CHUNK_SIZE = 500;
+const BULK_CHANNEL_ENRICHMENT_ENQUEUE_CONCURRENCY = 8;
+
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
 
   return String(error);
+}
+
+function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+}
+
+async function mapWithConcurrencyLimit<Input>(
+  items: readonly Input[],
+  concurrencyLimit: number,
+  mapper: (item: Input) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const item = items[currentIndex];
+
+      if (item === undefined) {
+        return;
+      }
+
+      await mapper(item);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => worker()),
+  );
+}
+
+function shouldQueueBulkChannelEnrichment(
+  channel: BulkEnrichmentChannelRow,
+): boolean {
+  const resolvedStatus = resolveChannelEnrichmentStatus({
+    channelUpdatedAt: channel.updatedAt,
+    enrichment: channel.enrichment,
+  });
+
+  return (
+    resolvedStatus === "missing" ||
+    resolvedStatus === "failed" ||
+    resolvedStatus === "stale"
+  );
 }
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
@@ -697,6 +768,166 @@ async function refreshYoutubeContext(input: {
 
     throw error;
   }
+}
+
+export async function requestBulkChannelLlmEnrichment(input: {
+  filters: CatalogChannelFilters;
+  requestedByUserId: string;
+}): Promise<BulkRetryChannelEnrichmentResponse> {
+  const channelIds = await listAllChannelIdsForCatalogFilters(input.filters);
+
+  if (channelIds.length === 0) {
+    return {
+      requestedCount: 0,
+      queuedCount: 0,
+      alreadyQueuedCount: 0,
+      failedCount: 0,
+    };
+  }
+
+  const hasYoutubeKey = await prisma.userProviderCredential.findUnique({
+    where: {
+      userId_provider: {
+        userId: input.requestedByUserId,
+        provider: CredentialProvider.YOUTUBE_DATA_API,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!hasYoutubeKey) {
+    throw new ServiceError(
+      "YOUTUBE_KEY_REQUIRED",
+      400,
+      "Assigned YouTube API key is required before requesting enrichment",
+    );
+  }
+
+  const requestedAt = new Date();
+  let alreadyQueuedCount = 0;
+  const queuedChannelIds: string[] = [];
+
+  for (const channelIdChunk of chunkArray(channelIds, BULK_CHANNEL_ENRICHMENT_CHUNK_SIZE)) {
+    const chunkQueuedChannelIds = await withDbTransaction(async (tx) => {
+      const channels = await tx.channel.findMany({
+        where: {
+          id: {
+            in: channelIdChunk,
+          },
+        },
+        select: {
+          id: true,
+          updatedAt: true,
+          enrichment: {
+            select: {
+              status: true,
+              completedAt: true,
+              lastEnrichedAt: true,
+            },
+          },
+        },
+      });
+      const queueableChannels = channels.filter(shouldQueueBulkChannelEnrichment);
+      const existingQueueableChannelIds = queueableChannels
+        .filter((channel) => channel.enrichment !== null)
+        .map((channel) => channel.id);
+      const missingQueueableChannels = queueableChannels
+        .filter((channel) => channel.enrichment === null);
+
+      alreadyQueuedCount += channels.length - queueableChannels.length;
+
+      if (existingQueueableChannelIds.length > 0) {
+        await tx.channelEnrichment.updateMany({
+          where: {
+            channelId: {
+              in: existingQueueableChannelIds,
+            },
+          },
+          data: {
+            status: PrismaChannelEnrichmentStatus.QUEUED,
+            requestedByUserId: input.requestedByUserId,
+            requestedAt,
+            startedAt: null,
+            retryCount: 0,
+            nextRetryAt: null,
+            lastError: null,
+            youtubeFetchedAt: null,
+            rawOpenaiPayloadFetchedAt: null,
+          },
+        });
+      }
+
+      if (missingQueueableChannels.length > 0) {
+        await tx.channelEnrichment.createMany({
+          data: missingQueueableChannels.map((channel) => ({
+            channelId: channel.id,
+            status: PrismaChannelEnrichmentStatus.QUEUED,
+            requestedByUserId: input.requestedByUserId,
+            requestedAt,
+            retryCount: 0,
+            nextRetryAt: null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      if (queueableChannels.length > 0) {
+        await tx.auditEvent.createMany({
+          data: queueableChannels.map((channel) => ({
+            actorUserId: input.requestedByUserId,
+            action: "channel.enrichment.requested",
+            entityType: "channel",
+            entityId: channel.id,
+            metadata: {
+              previousStatus: resolveChannelEnrichmentStatus({
+                channelUpdatedAt: channel.updatedAt,
+                enrichment: channel.enrichment,
+              }),
+              queued: true,
+              bulkRequest: true,
+              bulkRequestedCount: channelIds.length,
+            },
+          })),
+        });
+      }
+
+      return queueableChannels.map((channel) => channel.id);
+    });
+
+    queuedChannelIds.push(...chunkQueuedChannelIds);
+  }
+
+  let queuedCount = 0;
+  let failedCount = 0;
+
+  await mapWithConcurrencyLimit(
+    queuedChannelIds,
+    BULK_CHANNEL_ENRICHMENT_ENQUEUE_CONCURRENCY,
+    async (channelId) => {
+      try {
+        await enqueueJob("channels.enrich.llm", {
+          channelId,
+          requestedByUserId: input.requestedByUserId,
+        });
+        queuedCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        await markChannelLlmEnrichmentFailed({
+          channelId,
+          error,
+        });
+      }
+    },
+  );
+
+  return {
+    requestedCount: channelIds.length,
+    queuedCount,
+    alreadyQueuedCount,
+    failedCount,
+  };
 }
 
 export async function requestChannelLlmEnrichment(input: {

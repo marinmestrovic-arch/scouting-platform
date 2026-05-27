@@ -77,6 +77,19 @@ function buildDashboard(overrides?: Partial<AdminDashboardResponse>): AdminDashb
       missingYoutubeKeyCount: 1,
       missingYoutubeKeyPreview: [],
     },
+    enrichment: {
+      totalCount: 4,
+      enrichedCount: 2,
+      notEnrichedCount: 2,
+      counts: {
+        missing: 1,
+        queued: 1,
+        running: 0,
+        completed: 2,
+        failed: 0,
+        stale: 0,
+      },
+    },
     ...overrides,
   };
 }

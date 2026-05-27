@@ -98,6 +98,19 @@ function buildDashboard(overrides?: Partial<AdminDashboardResponse>): AdminDashb
         },
       ],
     },
+    enrichment: {
+      totalCount: 12,
+      enrichedCount: 7,
+      notEnrichedCount: 5,
+      counts: {
+        missing: 2,
+        queued: 1,
+        running: 1,
+        completed: 7,
+        failed: 1,
+        stale: 0,
+      },
+    },
     ...overrides,
   };
 }
@@ -136,11 +149,16 @@ describe("admin dashboard shell view", () => {
 
     expect(html).toContain("CSV imports needing attention");
     expect(html).toContain("Managers blocked on YouTube keys");
+    expect(html).toContain("Channel enrichment coverage");
+    expect(html).toContain("7/12");
     expect(html).toContain("contacts.csv");
     expect(html).toContain("Missing Key");
     expect(html).toContain("Refreshing overview...");
     expect(html).toContain("Queued 1, running 1, failed 1.");
     expect(html).toContain("3 active accounts, 1 admin, 4 total records.");
+    expect(html).toContain(
+      "7 enriched channels, 5 not enriched channels. Missing 2, failed 1, stale 0, queued 1, running 1.",
+    );
     expect(html).not.toContain("CSV exports");
     expect(html).not.toContain("HubSpot pushes");
     expect(html).not.toContain('href="/exports"');

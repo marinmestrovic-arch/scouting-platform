@@ -14,6 +14,7 @@ const {
   fetchChannelsMock,
   fetchCsvExportBatchDetailMock,
   fetchSavedSegmentsMock,
+  requestFilteredChannelEnrichmentMock,
   requestChannelEnrichmentBatchMock,
   routerPushMock,
   replaceMock,
@@ -31,6 +32,7 @@ const {
   fetchChannelsMock: vi.fn(),
   fetchCsvExportBatchDetailMock: vi.fn(),
   fetchSavedSegmentsMock: vi.fn(),
+  requestFilteredChannelEnrichmentMock: vi.fn(),
   requestChannelEnrichmentBatchMock: vi.fn(),
   routerPushMock: vi.fn(),
   replaceMock: vi.fn(),
@@ -62,6 +64,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("../../lib/channels-api", () => ({
   deleteChannelsBatch: deleteChannelsBatchMock,
   fetchChannels: fetchChannelsMock,
+  requestFilteredChannelEnrichment: requestFilteredChannelEnrichmentMock,
   requestChannelEnrichmentBatch: requestChannelEnrichmentBatchMock,
 }));
 
@@ -96,6 +99,7 @@ type CatalogShellElement = ReactElement<{
   onLoadSegment: (segment: SegmentResponse) => void;
   onNextPage: () => void;
   onPreviousPage: () => void;
+  onRequestFilteredEnrichment: () => Promise<void> | void;
   onRequestSelectedEnrichment: () => Promise<void> | void;
   onResetFilters: () => void;
   onRetry: () => void;

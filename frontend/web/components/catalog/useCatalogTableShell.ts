@@ -5,9 +5,15 @@ import type {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { deleteChannelsBatch, requestChannelEnrichmentBatch, fetchChannels } from "../../lib/channels-api";
+import {
+  deleteChannelsBatch,
+  requestChannelEnrichmentBatch,
+  requestFilteredChannelEnrichment,
+  fetchChannels,
+} from "../../lib/channels-api";
 import {
   DEFAULT_CATALOG_FILTERS,
+  buildCatalogChannelFilters,
   buildCatalogSearchParams,
   buildSavedSegmentFilters,
   getCatalogFiltersFromSavedSegment,
@@ -22,7 +28,6 @@ import {
 } from "../../lib/catalog-filters";
 import { createCsvExportBatch, fetchCsvExportBatchDetail } from "../../lib/csv-export-batches-api";
 import { useDocumentVisibility } from "../../lib/document-visibility";
-import { getCsvExportBatchResultHref } from "../../lib/navigation";
 import { createSavedSegment, deleteSavedSegment, fetchSavedSegments } from "../../lib/segments-api";
 import type {
   BatchEnrichmentActionState,
@@ -34,6 +39,7 @@ import type {
 } from "./catalog-table-shared";
 import {
   getBatchEnrichmentSubmittingMessage,
+  getFilteredEnrichmentSubmittingMessage,
   getCatalogChannelDeleteErrorMessage,
   getCatalogChannelDeleteSubmittingMessage,
   getCatalogCsvExportBatchCreateErrorMessage,
@@ -47,6 +53,7 @@ import {
   shouldPollCatalogEnrichmentRows,
   sortSavedSegments,
   summarizeCatalogBatchEnrichmentResults,
+  summarizeCatalogFilteredEnrichmentResult,
   toggleCatalogChannelSelection,
   toggleCatalogPageSelection,
   upsertSavedSegment,
@@ -430,7 +437,9 @@ export function useCatalogTableShellModel({
     }
 
     const timeoutId = setTimeout(() => {
-      setLatestCsvExportBatchReloadToken((current) => current + 1);
+      if (shouldPollCsvExportBatch) {
+        setLatestCsvExportBatchReloadToken((current) => current + 1);
+      }
     }, CATALOG_BATCH_STATUS_POLL_INTERVAL_MS);
 
     return () => {
@@ -548,7 +557,7 @@ export function useCatalogTableShellModel({
         error: null,
         isRefreshing: false,
       });
-      router.push(getCsvExportBatchResultHref(batch.id));
+      router.push(`/exports/${batch.id}`);
     } catch (error) {
       setLatestCsvExportBatch({
         requestState: "error",
@@ -596,6 +605,46 @@ export function useCatalogTableShellModel({
       }
 
       setBatchEnrichmentActionState(summarizeCatalogBatchEnrichmentResults(results));
+    } catch (error) {
+      setBatchEnrichmentActionState({
+        type: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Unable to request channel enrichment. Please try again.",
+      });
+    }
+  }
+
+  async function handleRequestFilteredEnrichment(): Promise<void> {
+    if (requestState.status !== "ready" || requestState.data.total === 0) {
+      return;
+    }
+
+    const totalCount = requestState.data.total;
+    const confirmed = window.confirm(
+      `Request enrichment for all ${totalCount} channel${totalCount === 1 ? "" : "s"} matching the current filters?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBatchEnrichmentActionState({
+      type: "submitting",
+      message: getFilteredEnrichmentSubmittingMessage(totalCount),
+    });
+
+    try {
+      const result = await requestFilteredChannelEnrichment(
+        buildCatalogChannelFilters(appliedState.filters),
+      );
+
+      if (result.queuedCount > 0 || result.alreadyQueuedCount > 0) {
+        setReloadToken((current) => current + 1);
+      }
+
+      setBatchEnrichmentActionState(summarizeCatalogFilteredEnrichmentResult(result));
     } catch (error) {
       setBatchEnrichmentActionState({
         type: "error",
@@ -728,6 +777,7 @@ export function useCatalogTableShellModel({
         filters: appliedState.filters,
       });
     },
+    onRequestFilteredEnrichment: handleRequestFilteredEnrichment,
     onRequestSelectedEnrichment: handleRequestSelectedEnrichment,
     onResetFilters: () => {
       replaceCatalogState({

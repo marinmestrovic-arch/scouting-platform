@@ -242,11 +242,25 @@ describe("week 5 contracts", () => {
           },
         ],
       },
+      enrichment: {
+        totalCount: 20,
+        enrichedCount: 8,
+        notEnrichedCount: 12,
+        counts: {
+          missing: 5,
+          queued: 2,
+          running: 1,
+          completed: 8,
+          failed: 3,
+          stale: 1,
+        },
+      },
     });
 
     expect(payload.approvals.counts.pendingApproval).toBe(3);
     expect(payload.imports.attentionPreview[0]?.status).toBe("failed");
     expect(payload.users.missingYoutubeKeyPreview[0]?.youtubeKeyAssigned).toBe(false);
+    expect(payload.enrichment.notEnrichedCount).toBe(12);
   });
 
   it("rejects malformed admin dashboard preview items and counts", () => {
@@ -300,6 +314,19 @@ describe("week 5 contracts", () => {
         adminCount: 0,
         missingYoutubeKeyCount: 0,
         missingYoutubeKeyPreview: [],
+      },
+      enrichment: {
+        totalCount: 0,
+        enrichedCount: 0,
+        notEnrichedCount: -1,
+        counts: {
+          missing: 0,
+          queued: 0,
+          running: 0,
+          completed: 0,
+          failed: 0,
+          stale: 0,
+        },
       },
     });
 

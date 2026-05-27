@@ -1,11 +1,14 @@
 import {
   bulkDeleteChannelsRequestSchema,
   bulkDeleteChannelsResponseSchema,
+  bulkRetryChannelEnrichmentRequestSchema,
+  bulkRetryChannelEnrichmentResponseSchema,
   channelDetailSchema,
   listChannelsQuerySchema,
   listChannelsResponseSchema,
   requestChannelEnrichmentResponseSchema,
   type BulkDeleteChannelsResponse,
+  type BulkRetryChannelEnrichmentResponse,
   type CatalogChannelFilters,
   type ChannelEnrichmentDetail,
   type ChannelDetail,
@@ -308,6 +311,46 @@ export async function requestChannelEnrichmentBatch(
       }
     },
   );
+}
+
+export async function requestFilteredChannelEnrichment(
+  filters: CatalogChannelFilters,
+): Promise<BulkRetryChannelEnrichmentResponse> {
+  const requestPayload = bulkRetryChannelEnrichmentRequestSchema.parse({
+    type: "filtered",
+    filters,
+  });
+
+  try {
+    const response = await fetch("/api/channels/enrichment/bulk-retry", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getApiErrorMessage(response, payload, {
+          authorizationErrorMessage: "You are not authorized to enrich these channels.",
+          fallbackMessage: GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE,
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = bulkRetryChannelEnrichmentResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_CHANNEL_ENRICHMENT_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error, GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE);
+  }
 }
 
 export async function deleteChannelsBatch(

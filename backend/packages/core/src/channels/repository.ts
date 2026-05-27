@@ -11,6 +11,7 @@ import {
   channelAudienceInterestSchema,
   channelBrandMentionSchema,
   structuredChannelProfileSchema,
+  type CatalogChannelFilters,
   type ChannelAdvancedReportDetail as ContractChannelAdvancedReportDetail,
   type ChannelAdvancedReportStatus,
   type ChannelAdvancedReportSummary as ContractChannelAdvancedReportSummary,
@@ -51,6 +52,37 @@ export type ListChannelsInput = {
   enrichmentStatus?: ContractChannelEnrichmentStatus[];
   advancedReportStatus?: ChannelAdvancedReportStatus[];
 };
+
+type ChannelFilterInput = Omit<ListChannelsInput, "page" | "pageSize">;
+
+function toChannelFilterInput(input: CatalogChannelFilters): ChannelFilterInput {
+  return {
+    ...(input.query ? { query: input.query } : {}),
+    ...(input.countryRegion ? { countryRegion: input.countryRegion } : {}),
+    ...(input.influencerVertical ? { influencerVertical: input.influencerVertical } : {}),
+    ...(input.influencerType ? { influencerType: input.influencerType } : {}),
+    ...(input.youtubeVideoMedianViewsMin !== undefined
+      ? { youtubeVideoMedianViewsMin: input.youtubeVideoMedianViewsMin }
+      : {}),
+    ...(input.youtubeVideoMedianViewsMax !== undefined
+      ? { youtubeVideoMedianViewsMax: input.youtubeVideoMedianViewsMax }
+      : {}),
+    ...(input.youtubeShortsMedianViewsMin !== undefined
+      ? { youtubeShortsMedianViewsMin: input.youtubeShortsMedianViewsMin }
+      : {}),
+    ...(input.youtubeShortsMedianViewsMax !== undefined
+      ? { youtubeShortsMedianViewsMax: input.youtubeShortsMedianViewsMax }
+      : {}),
+    ...(input.youtubeFollowersMin !== undefined
+      ? { youtubeFollowersMin: input.youtubeFollowersMin }
+      : {}),
+    ...(input.youtubeFollowersMax !== undefined
+      ? { youtubeFollowersMax: input.youtubeFollowersMax }
+      : {}),
+    ...(input.enrichmentStatus ? { enrichmentStatus: input.enrichmentStatus } : {}),
+    ...(input.advancedReportStatus ? { advancedReportStatus: input.advancedReportStatus } : {}),
+  };
+}
 
 export type ChannelEnrichmentSummary = {
   status: ContractChannelEnrichmentStatus;
@@ -723,7 +755,7 @@ function normalizeTextFilterValues(values: readonly string[] | undefined): strin
   );
 }
 
-function hasMetricRangeFilters(input: ListChannelsInput): boolean {
+function hasMetricRangeFilters(input: ChannelFilterInput): boolean {
   return (
     input.youtubeVideoMedianViewsMin !== undefined ||
     input.youtubeVideoMedianViewsMax !== undefined ||
@@ -757,7 +789,7 @@ function buildMetricRangeFilter(
   return Object.keys(filter).length > 0 ? filter : undefined;
 }
 
-function buildChannelListWhere(input: ListChannelsInput): Prisma.ChannelWhereInput | undefined {
+function buildChannelListWhere(input: ChannelFilterInput): Prisma.ChannelWhereInput | undefined {
   const query = input.query?.trim();
   const countryRegion = normalizeTextFilterValues(input.countryRegion);
   const influencerVertical = normalizeTextFilterValues(input.influencerVertical);
@@ -851,7 +883,7 @@ function buildChannelListWhere(input: ListChannelsInput): Prisma.ChannelWhereInp
     : undefined;
 }
 
-function buildChannelListCreatorFilterJoinSql(input: ListChannelsInput): Prisma.Sql {
+function buildChannelListCreatorFilterJoinSql(input: ChannelFilterInput): Prisma.Sql {
   return hasMetricRangeFilters(input)
     ? Prisma.sql`
         INNER JOIN channel_metrics cm
@@ -860,7 +892,7 @@ function buildChannelListCreatorFilterJoinSql(input: ListChannelsInput): Prisma.
     : Prisma.empty;
 }
 
-function buildChannelListCreatorFilterWhereSql(input: ListChannelsInput): Prisma.Sql {
+function buildChannelListCreatorFilterWhereSql(input: ChannelFilterInput): Prisma.Sql {
   const countryRegion = normalizeTextFilterValues(input.countryRegion);
   const influencerVertical = normalizeTextFilterValues(input.influencerVertical);
   const influencerType = normalizeTextFilterValues(input.influencerType);
@@ -914,10 +946,10 @@ function buildChannelListCreatorFilterWhereSql(input: ListChannelsInput): Prisma
   `;
 }
 
-function buildChannelListResolvedStatusWhereSql(input: {
-  enrichmentStatus?: ContractChannelEnrichmentStatus[];
-  advancedReportStatus?: ChannelAdvancedReportStatus[];
-}): Prisma.Sql {
+function buildChannelListResolvedStatusWhereSql(input: Pick<
+  ChannelFilterInput,
+  "enrichmentStatus" | "advancedReportStatus"
+>): Prisma.Sql {
   const now = new Date();
   const enrichmentStaleThreshold = new Date(
     now.getTime() - CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
@@ -965,10 +997,10 @@ function buildChannelListResolvedStatusWhereSql(input: {
   return Prisma.sql`${enrichmentStatusFilter} ${advancedReportStatusFilter}`;
 }
 
-function buildChannelListResolvedStatusJoinSql(input: {
-  enrichmentStatus?: ContractChannelEnrichmentStatus[];
-  advancedReportStatus?: ChannelAdvancedReportStatus[];
-}): Prisma.Sql {
+function buildChannelListResolvedStatusJoinSql(input: Pick<
+  ChannelFilterInput,
+  "enrichmentStatus" | "advancedReportStatus"
+>): Prisma.Sql {
   const enrichmentJoin =
     input.enrichmentStatus && input.enrichmentStatus.length > 0
       ? Prisma.sql`
@@ -1030,6 +1062,31 @@ async function listChannelIdsForResolvedFilters(input: ListChannelsInput): Promi
     ids: idRows.map((row) => row.id),
     total: Number(countRows[0]?.total ?? 0n),
   };
+}
+
+export async function listAllChannelIdsForCatalogFilters(
+  input: CatalogChannelFilters,
+): Promise<string[]> {
+  const filters = toChannelFilterInput(input);
+  const query = filters.query?.trim();
+  const searchWhereSql = buildChannelListSearchWhereSql(query);
+  const joinSql = buildChannelListResolvedStatusJoinSql(filters);
+  const creatorFilterJoinSql = buildChannelListCreatorFilterJoinSql(filters);
+  const creatorFilterWhereSql = buildChannelListCreatorFilterWhereSql(filters);
+  const resolvedStatusWhereSql = buildChannelListResolvedStatusWhereSql(filters);
+  const idRows = await prisma.$queryRaw<ChannelListIdRow[]>(Prisma.sql`
+    SELECT c.id
+    FROM channels c
+    ${joinSql}
+    ${creatorFilterJoinSql}
+    WHERE 1 = 1
+    ${searchWhereSql}
+    ${creatorFilterWhereSql}
+    ${resolvedStatusWhereSql}
+    ORDER BY c.created_at DESC, c.id DESC
+  `);
+
+  return idRows.map((row) => row.id);
 }
 
 async function getLatestCompletedAdvancedReport(

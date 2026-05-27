@@ -95,6 +95,19 @@ function buildDashboardPayload() {
         },
       ],
     },
+    enrichment: {
+      totalCount: 4,
+      enrichedCount: 2,
+      notEnrichedCount: 2,
+      counts: {
+        missing: 1,
+        queued: 0,
+        running: 0,
+        completed: 2,
+        failed: 1,
+        stale: 0,
+      },
+    },
   };
 }
 
@@ -119,6 +132,7 @@ describe("admin dashboard api helpers", () => {
     );
     expect(dashboard.approvals.counts.pendingApproval).toBe(2);
     expect(dashboard.users.missingYoutubeKeyPreview[0]?.email).toBe("missing-key@example.com");
+    expect(dashboard.enrichment.enrichedCount).toBe(2);
   });
 
   it("throws authorization errors for forbidden dashboard access", async () => {
