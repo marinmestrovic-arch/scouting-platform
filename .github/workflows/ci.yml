@@ -40,6 +40,10 @@ jobs:
       HYPEAUDITOR_API_KEY: ""
       HUBSPOT_API_KEY: ""
       LOG_LEVEL: info
+      # Disable Prisma's background version check (checkpoint.prisma.io). Its
+      # fire-and-forget request can surface a transient ECONNRESET as an
+      # unhandled rejection that crashes `prisma generate`, flaking CI.
+      CHECKPOINT_DISABLE: "1"
 
     steps:
       - name: Checkout
