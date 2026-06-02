@@ -160,11 +160,14 @@ export function useCatalogTableShellModel({
   );
   const requestEnrichmentStatuses = useMemo((): ChannelEnrichmentStatus[] | undefined => {
     if (appliedState.filters.enrichmentStatus === "enriched") {
-      return ["completed"];
+      // Enriched = has data (completed or stale — stale channels still have enrichment content).
+      return ["completed", "stale"];
     }
 
     if (appliedState.filters.enrichmentStatus === "not_enriched") {
-      return ["missing", "failed", "stale"];
+      // Not enriched = no data at all. Stale channels have data so they are excluded.
+      // Queued/running are in-progress; omitting them keeps this filter clean.
+      return ["missing", "failed"];
     }
 
     return undefined;
