@@ -326,11 +326,12 @@ export function NewScoutingWorkspace({
     () => languageOptions.map((value) => ({ value, label: value, keywords: [value] })),
     [languageOptions],
   );
-  const influencerVerticalSelectOptions = useMemo<SearchableSelectOption[]>(
+  const influencerVerticalMultiSelectOptions = useMemo<SearchableMultiSelectOption[]>(
     () => influencerVerticalOptions.map((value) => ({ value, label: value, keywords: [value] })),
     [influencerVerticalOptions],
   );
   const selectedLocations = useMemo(() => parseMultiValueSelection(draft.location), [draft.location]);
+  const selectedVerticals = useMemo(() => parseMultiValueSelection(draft.category), [draft.category]);
   const subscribersRange = useMemo(() => parseMetricRangeSelection(draft.subscribers), [draft.subscribers]);
   const viewsRange = useMemo(() => parseMetricRangeSelection(draft.views), [draft.views]);
   const subscribersRangeStart = (subscribersRange.minIndex / LAST_METRIC_SLIDER_INDEX) * 100;
@@ -684,18 +685,18 @@ export function NewScoutingWorkspace({
 
             <label className="new-scouting__field">
               <span>Influencer Vertical</span>
-              <SearchableSelect
+              <SearchableMultiSelect
                 ariaLabel="Influencer Vertical"
-                disabled={isBusy || influencerVerticalSelectOptions.length === 0}
-                onChange={(value) => updateDraftField("category", value)}
-                options={influencerVerticalSelectOptions}
+                disabled={isBusy || influencerVerticalMultiSelectOptions.length === 0}
+                onChange={(values) => updateDraftField("category", joinMultiValueSelection(values))}
+                options={influencerVerticalMultiSelectOptions}
                 placeholder={
-                  influencerVerticalSelectOptions.length === 0
+                  influencerVerticalMultiSelectOptions.length === 0
                     ? "No Influencer Vertical values available"
-                    : "Select influencer vertical"
+                    : "Select one or more influencer verticals"
                 }
                 searchPlaceholder="Search influencer verticals..."
-                value={draft.category}
+                values={selectedVerticals}
               />
             </label>
 
