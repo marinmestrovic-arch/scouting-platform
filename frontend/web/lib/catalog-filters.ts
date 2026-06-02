@@ -202,15 +202,18 @@ export function normalizeCatalogFilters(filters: CatalogFilterInput): CatalogFil
   let enrichmentStatus: CatalogEnrichmentFilter | "" = "";
 
   if (rawEnrichmentStatus && rawEnrichmentStatus.length > 0) {
-    if (rawEnrichmentStatus.includes("completed") && rawEnrichmentStatus.length === 1) {
+    const hasCompleted = rawEnrichmentStatus.includes("completed");
+    const hasMissing = rawEnrichmentStatus.includes("missing");
+    const hasFailed = rawEnrichmentStatus.includes("failed");
+
+    if (hasCompleted && !hasMissing && !hasFailed) {
+      // ["completed"] (legacy) or ["completed", "stale"] (current) → enriched.
       enrichmentStatus = "enriched";
-    } else if (
-      !rawEnrichmentStatus.includes("completed") &&
-      rawEnrichmentStatus.some((s) => ["missing", "failed", "stale"].includes(s))
-    ) {
+    } else if ((hasMissing || hasFailed) && !hasCompleted) {
+      // ["missing", "failed"] (current) or ["missing", "failed", "stale"] (legacy) → not_enriched.
       enrichmentStatus = "not_enriched";
     } else {
-      // Also accept the simplified values directly (from URL params).
+      // Simplified values passed directly from URL params ("enriched" / "not_enriched").
       enrichmentStatus = normalizeEnrichmentFilter(rawEnrichmentStatus[0]);
     }
   }
@@ -268,9 +271,12 @@ export function buildCatalogChannelFilters(filters: CatalogFiltersState): Catalo
   }
 
   if (filters.enrichmentStatus === "enriched") {
-    requestFilters.enrichmentStatus = ["completed"];
+    // "Enriched" means the channel has enrichment data — completed or stale (data exists but is old).
+    requestFilters.enrichmentStatus = ["completed", "stale"];
   } else if (filters.enrichmentStatus === "not_enriched") {
-    requestFilters.enrichmentStatus = ["missing", "failed", "stale"];
+    // "Not enriched" means the channel has no enrichment data at all.
+    // Stale channels still have data so they are excluded; queued/running are in-progress.
+    requestFilters.enrichmentStatus = ["missing", "failed"];
   }
 
   return requestFilters;

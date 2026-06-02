@@ -261,9 +261,12 @@ async function getAdminDashboardEnrichmentCoverage(
     failed: getEnrichmentCoverageCount(rowCounts, "failed"),
     stale: getEnrichmentCoverageCount(rowCounts, "stale"),
   };
-  const enrichedCount = counts.completed;
+  // "Enriched" = has enrichment data. Stale channels still have their content,
+  // so they count as enriched. "Not enriched" = no data (missing or failed).
+  // Queued/running are in-progress and counted separately.
+  const enrichedCount = counts.completed + counts.stale;
   const notEnrichedCount =
-    counts.missing + counts.queued + counts.running + counts.failed + counts.stale;
+    counts.missing + counts.queued + counts.running + counts.failed;
 
   return {
     totalCount: enrichedCount + notEnrichedCount,
