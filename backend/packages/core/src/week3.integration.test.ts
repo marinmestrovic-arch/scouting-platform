@@ -281,6 +281,85 @@ integration("week 3 core integration", () => {
     expect(discoverYoutubeChannelsMock).not.toHaveBeenCalled();
   });
 
+  it("matches catalog scouting criteria against catalog profile and median-view fields", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "catalog-profile-fields@example.com",
+        name: "Catalog Profile Fields",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+
+    const matchingChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-PROFILE-1",
+        title: "French Strategy Creator",
+        countryRegion: "France",
+        contentLanguage: "French",
+        influencerVertical: "Strategy",
+        metrics: {
+          create: {
+            youtubeFollowers: 80_000n,
+            youtubeVideoMedianViews: 75_000n,
+          },
+        },
+      },
+    });
+
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-PROFILE-2",
+        title: "French Lifestyle Creator",
+        countryRegion: "France",
+        contentLanguage: "French",
+        influencerVertical: "Lifestyle",
+        metrics: {
+          create: {
+            youtubeFollowers: 80_000n,
+            youtubeVideoMedianViews: 75_000n,
+          },
+        },
+      },
+    });
+
+    const created = await getCore().createRunRequest({
+      userId: user.id,
+      name: "Catalog Profile Run",
+      query: buildCatalogScoutingQuery({
+        subscribers: "50K-100K",
+        views: "50K-100K",
+        location: "Germany | France",
+        language: "French",
+        category: "Strategy",
+      }),
+      target: 10,
+      metadata: await buildRunMetadata(user.id),
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: created.runId,
+      requestedByUserId: user.id,
+    });
+
+    const results = await prisma.runResult.findMany({
+      where: {
+        runRequestId: created.runId,
+      },
+      orderBy: {
+        rank: "asc",
+      },
+    });
+    expect(results).toEqual([
+      expect.objectContaining({
+        channelId: matchingChannel.id,
+        source: RunResultSource.CATALOG,
+      }),
+    ]);
+    expect(discoverYoutubeChannelsMock).not.toHaveBeenCalled();
+  });
+
   it("fails run creation when user has no assigned youtube key", async () => {
     const user = await prisma.user.create({
       data: {

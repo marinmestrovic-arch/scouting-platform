@@ -439,6 +439,15 @@ function toLikePattern(value: string): string {
   return `%${escapeLikePattern(value)}%`;
 }
 
+function splitCriteriaValues(value: string): string[] {
+  const values = value
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  return [...new Set(values)];
+}
+
 function parseMetricBound(rawValue: string): bigint | null {
   const normalized = rawValue.trim().toLowerCase();
 
@@ -517,13 +526,30 @@ function parseDaysSince(value: string): number | null {
   return parsed;
 }
 
+function buildMetricRangeClause(
+  column: Prisma.Sql,
+  range: { min?: bigint; max?: bigint },
+): Prisma.Sql {
+  const clauses: Prisma.Sql[] = [];
+
+  if (range.min !== undefined) {
+    clauses.push(Prisma.sql`${column} >= ${range.min}`);
+  }
+
+  if (range.max !== undefined) {
+    clauses.push(Prisma.sql`${column} <= ${range.max}`);
+  }
+
+  return Prisma.sql`(${Prisma.join(clauses, " AND ")})`;
+}
+
 async function getCatalogCandidatesForCriteria(
   criteria: CatalogScoutingCriteria,
 ): Promise<CatalogCandidate[]> {
   const whereClauses: Prisma.Sql[] = [];
   const subscriberRange = parseMetricRange(criteria.subscribers);
   const viewsRange = parseMetricRange(criteria.views);
-  const location = criteria.location.trim();
+  const locations = splitCriteriaValues(criteria.location);
   const language = criteria.language.trim();
   const category = criteria.category.trim();
   const niche = criteria.niche.trim();
@@ -541,27 +567,33 @@ async function getCatalogCandidatesForCriteria(
     );
   }
 
-  if (viewsRange?.min !== undefined) {
-    whereClauses.push(
-      Prisma.sql`cm.view_count >= ${viewsRange.min}`,
-    );
-  }
-
-  if (viewsRange?.max !== undefined) {
-    whereClauses.push(
-      Prisma.sql`cm.view_count <= ${viewsRange.max}`,
-    );
-  }
-
-  if (location) {
-    const pattern = toLikePattern(location);
-
+  if (viewsRange) {
     whereClauses.push(Prisma.sql`
       (
-        c.country_region ILIKE ${pattern} ESCAPE '\\'
-        OR ci.audience_countries::text ILIKE ${pattern} ESCAPE '\\'
+        ${buildMetricRangeClause(Prisma.sql`cm.youtube_video_median_views`, viewsRange)}
+        OR ${buildMetricRangeClause(Prisma.sql`cm.youtube_shorts_median_views`, viewsRange)}
+        OR (
+          cm.youtube_video_median_views IS NULL
+          AND cm.youtube_shorts_median_views IS NULL
+          AND ${buildMetricRangeClause(Prisma.sql`cm.view_count`, viewsRange)}
+        )
       )
     `);
+  }
+
+  if (locations.length > 0) {
+    const locationClauses = locations.map((location) => {
+      const pattern = toLikePattern(location);
+
+      return Prisma.sql`
+        (
+          c.country_region ILIKE ${pattern} ESCAPE '\\'
+          OR ci.audience_countries::text ILIKE ${pattern} ESCAPE '\\'
+        )
+      `;
+    });
+
+    whereClauses.push(Prisma.sql`(${Prisma.join(locationClauses, " OR ")})`);
   }
 
   if (language) {
@@ -587,9 +619,13 @@ async function getCatalogCandidatesForCriteria(
   if (category) {
     const pattern = toLikePattern(category);
 
-    whereClauses.push(
-      Prisma.sql`cyc.context::text ILIKE ${pattern} ESCAPE '\\'`,
-    );
+    whereClauses.push(Prisma.sql`
+      (
+        c.influencer_vertical ILIKE ${pattern} ESCAPE '\\'
+        OR ce.structured_profile::text ILIKE ${pattern} ESCAPE '\\'
+        OR cyc.context::text ILIKE ${pattern} ESCAPE '\\'
+      )
+    `);
   }
 
   if (niche) {
