@@ -3,7 +3,7 @@ import type {
   SegmentResponse,
 } from "@scouting-platform/contracts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteChannelsBatch,
@@ -209,6 +209,7 @@ export function useCatalogTableShellModel({
     }),
     [appliedState, pageSize, requestEnrichmentStatuses],
   );
+  const initialAppliedStateKeyRef = useRef(appliedStateKey);
   const viewMode = getCatalogViewMode(searchParams);
   const [requestState, setRequestState] = useState<CatalogTableRequestState>(
     initialData
@@ -262,7 +263,7 @@ export function useCatalogTableShellModel({
     let activeAbortController: AbortController | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const canReuseInitialData = reloadToken === 0 && !!initialData;
+    const canReuseInitialData = reloadToken === 0 && !!initialData && appliedStateKey === initialAppliedStateKeyRef.current;
 
     async function loadChannels(polling = false): Promise<void> {
       const abortController = new AbortController();

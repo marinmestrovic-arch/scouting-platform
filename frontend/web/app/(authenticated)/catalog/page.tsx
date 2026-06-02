@@ -91,6 +91,9 @@ async function CatalogData({ searchParams }: { searchParams: Promise<Record<stri
     ...(requestFilters.youtubeFollowersMax !== undefined
       ? { youtubeFollowersMax: requestFilters.youtubeFollowersMax }
       : {}),
+    ...(requestFilters.enrichmentStatus?.length
+      ? { enrichmentStatus: requestFilters.enrichmentStatus }
+      : {}),
   });
   const initialSavedSegments = session?.user?.id ? await getCachedUserSegments(session.user.id) : [];
   const dropdownValuesResponse = await getCachedDropdownValues();
