@@ -1,5 +1,5 @@
 import { ChannelEnrichmentStatus } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   enqueueJobMock,
@@ -58,12 +58,19 @@ const completedChannelId = "55555555-5555-4555-8555-555555555555";
 
 describe("bulk channel LLM enrichment requests", () => {
   beforeEach(() => {
+    // Freeze time so "completed" channels with fixed dates don't drift into the stale window.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T00:00:00.000Z"));
     vi.clearAllMocks();
     prismaMock.userProviderCredential.findUnique.mockResolvedValue({ id: "credential-id" });
     prismaMock.channelEnrichment.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.channelEnrichment.createMany.mockResolvedValue({ count: 1 });
     prismaMock.auditEvent.createMany.mockResolvedValue({ count: 2 });
     enqueueJobMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("queues all matching non-active channels and skips already queued work", async () => {

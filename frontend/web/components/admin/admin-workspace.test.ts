@@ -14,6 +14,30 @@ const {
   replaceMock: vi.fn(),
 }));
 
+vi.mock("../../lib/admin-dashboard-api", () => ({
+  fetchAdminDashboard: vi.fn().mockResolvedValue({
+    generatedAt: "2026-03-12T09:30:00.000Z",
+    enrichment: {
+      totalCount: 12,
+      enrichedCount: 7,
+      notEnrichedCount: 5,
+      counts: { missing: 2, queued: 1, running: 1, completed: 7, failed: 1, stale: 0 },
+    },
+    imports: { counts: { queued: 0, running: 0, failed: 0 }, attentionPreview: [] },
+    users: {
+      totalCount: 0,
+      activeCount: 0,
+      adminCount: 0,
+      missingYoutubeKeyCount: 0,
+      missingYoutubeKeyPreview: [],
+    },
+    approvals: {
+      counts: { pendingApproval: 0, approved: 0, queued: 0, running: 0, failed: 0 },
+      pendingPreview: [],
+    },
+  }),
+}));
+
 vi.mock("next/dynamic", () => {
   let dynamicImportIndex = 0;
 

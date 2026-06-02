@@ -7282,6 +7282,89 @@ button:disabled,
   color: var(--color-text-muted);
 }
 
+/* ── Enrichment banner ───────────────────────────────────────────── */
+
+.admin-workspace__enrichment-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: var(--gradient-card);
+  box-shadow: var(--shadow-panel);
+  padding: 0.9rem 1.25rem;
+}
+
+.admin-workspace__enrichment-banner--loading,
+.admin-workspace__enrichment-banner--error {
+  opacity: 0.7;
+}
+
+.admin-workspace__enrichment-label {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.admin-workspace__enrichment-loading,
+.admin-workspace__enrichment-error {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.admin-workspace__enrichment-counts {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.admin-workspace__enrichment-enriched {
+  font-weight: 600;
+  color: #1a8a5a;
+}
+
+.admin-workspace__enrichment-not {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.admin-workspace__enrichment-total {
+  color: var(--color-text-muted);
+}
+
+.admin-workspace__enrichment-bar {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  max-width: 14rem;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(24, 34, 74, 0.08);
+  overflow: hidden;
+}
+
+.admin-workspace__enrichment-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #1a8a5a;
+  transition: width 0.4s ease;
+}
+
+.admin-workspace__enrichment-link {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-workspace__enrichment-link:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 52rem) {
   .catalog-table__toolbar,
   .admin-workspace__toolbar,
