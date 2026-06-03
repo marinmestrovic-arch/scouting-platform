@@ -11,12 +11,13 @@ import {
 } from "./navigation";
 
 describe("navigation config", () => {
-  it("defines dashboard, new scouting, catalog, database, and admin entries", () => {
+  it("defines dashboard, new scouting, catalog, database, feedback, and admin entries", () => {
     expect(APP_NAVIGATION_ITEMS.map((item) => item.key)).toEqual([
       "dashboard",
       "new-scouting",
       "catalog",
       "database",
+      "feedback",
       "admin",
     ]);
     expect(APP_ROLES).toEqual(["admin", "user"]);
@@ -28,6 +29,7 @@ describe("navigation config", () => {
       "/new-scouting",
       "/catalog",
       "/database",
+      "/feedback",
       "/admin",
     ]);
   });
@@ -57,13 +59,15 @@ describe("navigation config", () => {
       "new-scouting",
       "catalog",
       "database",
+      "feedback",
     ]);
     expect(getNavigationForRole("admin").map((item) => item.key)).toEqual([
       "dashboard",
       "new-scouting",
       "catalog",
       "database",
-      "admin"
+      "feedback",
+      "admin",
     ]);
   });
 

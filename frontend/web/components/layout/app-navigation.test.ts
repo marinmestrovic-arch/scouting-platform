@@ -24,10 +24,11 @@ describe("app navigation", () => {
     expect(html).toContain('href="/new-scouting"');
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/database"');
+    expect(html).toContain('href="/feedback"');
     expect(html).not.toContain('href="/admin"');
     expect(html).not.toContain(">Workspace<");
     expect(html).not.toContain(">Admin<");
-    expect(linkCount).toBe(4);
+    expect(linkCount).toBe(5);
   });
 
   it("renders admin link for admin role", () => {
@@ -38,9 +39,10 @@ describe("app navigation", () => {
     expect(html).toContain('href="/new-scouting"');
     expect(html).toContain('href="/catalog"');
     expect(html).toContain('href="/database"');
+    expect(html).toContain('href="/feedback"');
     expect(html).toContain('href="/admin"');
     expect(html).toContain(">New Scouting<");
     expect(html).not.toContain(">Workspace<");
-    expect(linkCount).toBe(5);
+    expect(linkCount).toBe(6);
   });
 });
