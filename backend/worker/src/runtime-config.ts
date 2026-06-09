@@ -15,7 +15,8 @@ export type WorkerRuntimeConfig = Readonly<{
     intervalMs: number;
     initialDelayMs: number;
     batchSize: number;
-    staleAfterDays: number;
+    aiStaleAfterDays: number;
+    youtubeStaleAfterDays: number;
     maxRetryCount: number;
     processingTimeoutMs: number;
     queuedTimeoutMs: number;
@@ -157,9 +158,14 @@ export function getWorkerRuntimeConfig(
         5 * 1000,
       ),
       batchSize: parsePositiveInt(env, "WORKER_CONTINUOUS_ENRICHMENT_BATCH_SIZE", 5),
-      staleAfterDays: parsePositiveInt(
+      aiStaleAfterDays: parsePositiveInt(
         env,
-        "WORKER_CONTINUOUS_ENRICHMENT_STALE_AFTER_DAYS",
+        "WORKER_CONTINUOUS_ENRICHMENT_AI_STALE_AFTER_DAYS",
+        365,
+      ),
+      youtubeStaleAfterDays: parsePositiveInt(
+        env,
+        "WORKER_CONTINUOUS_ENRICHMENT_YOUTUBE_STALE_AFTER_DAYS",
         30,
       ),
       maxRetryCount: parsePositiveInt(

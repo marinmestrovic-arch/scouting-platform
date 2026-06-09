@@ -740,12 +740,12 @@ function renderReadyState(
                     <dd>{getEnrichmentStatusLabel(channel.enrichment.status)}</dd>
                   </div>
                   <div>
-                    <dt>Updated</dt>
-                    <dd>{formatIsoTimestamp(channel.enrichment.updatedAt)}</dd>
+                    <dt>AI updated</dt>
+                    <dd>{formatIsoTimestamp(channel.enrichment.lastEnrichedAt ?? channel.enrichment.completedAt)}</dd>
                   </div>
                   <div>
-                    <dt>Completed</dt>
-                    <dd>{formatIsoTimestamp(channel.enrichment.completedAt)}</dd>
+                    <dt>YouTube stats refreshed</dt>
+                    <dd>{formatIsoTimestamp(channel.enrichment.youtubeRefreshedAt ?? null)}</dd>
                   </div>
                   <div>
                     <dt>Confidence</dt>

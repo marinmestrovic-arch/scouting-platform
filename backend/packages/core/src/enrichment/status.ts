@@ -3,8 +3,9 @@ import type { ChannelEnrichmentStatus } from "@scouting-platform/contracts";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-export const CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS = 30;
-export const YOUTUBE_CONTEXT_FRESH_WINDOW_DAYS = 14;
+export const CHANNEL_AI_ENRICHMENT_STALE_WINDOW_DAYS = 365;
+export const CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS = CHANNEL_AI_ENRICHMENT_STALE_WINDOW_DAYS;
+export const YOUTUBE_CONTEXT_FRESH_WINDOW_DAYS = 30;
 
 type ChannelEnrichmentStatusSource = {
   status: PrismaChannelEnrichmentStatus;

@@ -1,5 +1,6 @@
 import {
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  ChannelYoutubeRefreshStatus as PrismaChannelYoutubeRefreshStatus,
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
   CsvImportRowStatus as PrismaCsvImportRowStatus,
   HubspotPreviewEnrichmentJobStatus as PrismaHubspotPreviewEnrichmentJobStatus,
@@ -492,15 +493,16 @@ integration("week 4 core integration", () => {
     expect(jobs[0]?.count).toBe(0);
   });
 
-  it("queues never-enriched and 30-day stale catalog enrichments for the continuous worker", async () => {
+  it("queues missing and 365-day stale AI enrichments while refreshing 30-day stale YouTube context", async () => {
     const now = new Date("2026-05-04T10:00:00.000Z");
-    const oldCompletedAt = new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000);
+    const oldCompletedAt = new Date(now.getTime() - 366 * 24 * 60 * 60 * 1000);
     const freshCompletedAt = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
     const user = await createUser();
     const neverEnriched = await createChannel("UCaaaaaaaaaaaaaaaaaaaaaa", "Never Enriched");
     const discoveryOnly = await createChannel("UCeeeeeeeeeeeeeeeeeeeeee", "Discovery Only");
     const oldEnrichment = await createChannel("UCbbbbbbbbbbbbbbbbbbbbbb", "Old Enrichment");
     const freshEnrichment = await createChannel("UCcccccccccccccccccccccc", "Fresh Enrichment");
+    const staleYoutubeContext = await createChannel("UCyyyyyyyyyyyyyyyyyyyyyy", "Stale YouTube");
     const runningEnrichment = await createChannel("UCdddddddddddddddddddddd", "Running Enrichment");
     const invalidYoutubeId = await createChannel("not-a-canonical-youtube-channel-id", "Invalid ID");
     await assignYoutubeKey(user.id);
@@ -541,6 +543,24 @@ integration("week 4 core integration", () => {
     });
     await prisma.channelEnrichment.create({
       data: {
+        channelId: staleYoutubeContext.id,
+        status: PrismaChannelEnrichmentStatus.COMPLETED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000),
+        completedAt: freshCompletedAt,
+        lastEnrichedAt: freshCompletedAt,
+        summary: "Fresh AI summary",
+      },
+    });
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: staleYoutubeContext.id,
+        context: CACHED_CONTEXT,
+        fetchedAt: new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000),
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
         channelId: runningEnrichment.id,
         status: PrismaChannelEnrichmentStatus.RUNNING,
         requestedByUserId: user.id,
@@ -567,13 +587,18 @@ integration("week 4 core integration", () => {
     });
 
     expect(result.missingYoutubeCredential).toBe(false);
-    expect(result.queued).toBe(3);
-    expect(result.queuedChannelIds).toEqual([
+    expect(result.queued).toBe(5);
+    expect(result.queuedFull).toBe(3);
+    expect(result.queuedYoutubeOnly).toBe(2);
+    expect(result.queuedChannelIds.slice(0, 3)).toEqual([
       neverEnriched.id,
       discoveryOnly.id,
       oldEnrichment.id,
     ]);
-    expect(enqueuedPayloads).toEqual([
+    expect(new Set(result.queuedChannelIds.slice(3))).toEqual(
+      new Set([staleYoutubeContext.id, freshEnrichment.id]),
+    );
+    expect(enqueuedPayloads.slice(0, 3)).toEqual([
       {
         channelId: neverEnriched.id,
         requestedByUserId: user.id,
@@ -587,6 +612,23 @@ integration("week 4 core integration", () => {
         requestedByUserId: user.id,
       },
     ]);
+    expect(new Set(enqueuedPayloads.slice(3).map((payload) => payload.channelId))).toEqual(
+      new Set([staleYoutubeContext.id, freshEnrichment.id]),
+    );
+    expect(enqueuedPayloads.slice(3)).toEqual(
+      expect.arrayContaining([
+        {
+          channelId: staleYoutubeContext.id,
+          requestedByUserId: user.id,
+          mode: "youtube_only",
+        },
+        {
+          channelId: freshEnrichment.id,
+          requestedByUserId: user.id,
+          mode: "youtube_only",
+        },
+      ]),
+    );
 
     const enrichments = await prisma.channelEnrichment.findMany({
       where: {
@@ -596,6 +638,7 @@ integration("week 4 core integration", () => {
             discoveryOnly.id,
             oldEnrichment.id,
             freshEnrichment.id,
+            staleYoutubeContext.id,
             runningEnrichment.id,
             invalidYoutubeId.id,
           ],
@@ -612,10 +655,29 @@ integration("week 4 core integration", () => {
     expect(statusByChannelId.get(freshEnrichment.id)).toBe(
       PrismaChannelEnrichmentStatus.COMPLETED,
     );
+    expect(statusByChannelId.get(staleYoutubeContext.id)).toBe(
+      PrismaChannelEnrichmentStatus.COMPLETED,
+    );
     expect(statusByChannelId.get(runningEnrichment.id)).toBe(
       PrismaChannelEnrichmentStatus.RUNNING,
     );
     expect(statusByChannelId.has(invalidYoutubeId.id)).toBe(false);
+
+    const staleYoutubeContextRow = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: staleYoutubeContext.id,
+      },
+    });
+    expect(staleYoutubeContextRow.refreshStatus).toBe(PrismaChannelYoutubeRefreshStatus.QUEUED);
+    expect(staleYoutubeContextRow.refreshRequestedAt).toEqual(now);
+
+    const freshYoutubeContextRow = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: freshEnrichment.id,
+      },
+    });
+    expect(freshYoutubeContextRow.refreshStatus).toBe(PrismaChannelYoutubeRefreshStatus.QUEUED);
+    expect(freshYoutubeContextRow.refreshRequestedAt).toEqual(now);
   });
 
   it("does not queue continuous enrichment with an unrelated fallback credential", async () => {
@@ -774,8 +836,14 @@ integration("week 4 core integration", () => {
       retryableFailed.id,
       oldQueued.id,
       stuckRunning.id,
+      maxedFailed.id,
     ]);
-    expect(enqueuedPayloads).toHaveLength(3);
+    expect(enqueuedPayloads).toHaveLength(4);
+    expect(enqueuedPayloads.at(-1)).toEqual({
+      channelId: maxedFailed.id,
+      requestedByUserId: user.id,
+      mode: "youtube_only",
+    });
 
     const enrichments = await prisma.channelEnrichment.findMany({
       where: {
@@ -793,6 +861,13 @@ integration("week 4 core integration", () => {
     expect(byChannelId.get(stuckRunning.id)?.status).toBe(PrismaChannelEnrichmentStatus.QUEUED);
     expect(byChannelId.get(stuckRunning.id)?.retryCount).toBe(1);
     expect(byChannelId.get(oldQueued.id)?.status).toBe(PrismaChannelEnrichmentStatus.QUEUED);
+
+    const maxedYoutubeContext = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: maxedFailed.id,
+      },
+    });
+    expect(maxedYoutubeContext.refreshStatus).toBe(PrismaChannelYoutubeRefreshStatus.QUEUED);
   });
 
   it("skips continuous enrichment scans when no YouTube credential is available", async () => {
@@ -943,7 +1018,7 @@ integration("week 4 core integration", () => {
         channelId: channel.id,
       },
       data: {
-        fetchedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+        fetchedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -1487,6 +1562,134 @@ integration("week 4 core integration", () => {
     expect(enrichment.rawOpenaiPayloadFetchedAt).toBeNull();
   });
 
+  it("refreshes YouTube-only signals without calling OpenAI or changing AI freshness", async () => {
+    const user = await createUser("youtube-only@example.com");
+    const channel = await createChannel("UC-YOUTUBE-ONLY-REFRESH", "YouTube Only Refresh");
+    const lastEnrichedAt = new Date("2026-01-15T10:00:00.000Z");
+    await assignYoutubeKey(user.id);
+
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.COMPLETED,
+        requestedByUserId: user.id,
+        requestedAt: new Date("2026-01-15T09:59:00.000Z"),
+        completedAt: lastEnrichedAt,
+        lastEnrichedAt,
+        summary: "Existing AI summary",
+      },
+    });
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: channel.id,
+        context: CACHED_CONTEXT,
+        fetchedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+        refreshRequestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...buildFreshMetricContext(),
+      title: "YouTube Only Refreshed",
+      handle: "@youtube-only-refreshed",
+      subscriberCount: 2400,
+    });
+
+    await getCore().executeChannelYoutubeRefresh({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    expect(fetchYoutubeChannelContextMock).toHaveBeenCalledTimes(1);
+    expect(enrichChannelWithOpenAiMock).not.toHaveBeenCalled();
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.COMPLETED);
+    expect(enrichment.lastEnrichedAt).toEqual(lastEnrichedAt);
+
+    const context = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(context.refreshStatus).toBe(PrismaChannelYoutubeRefreshStatus.COMPLETED);
+    expect(context.refreshCompletedAt).not.toBeNull();
+    expect(context.refreshRetryCount).toBe(0);
+    expect(context.refreshNextRetryAt).toBeNull();
+    expect(context.lastError).toBeNull();
+    expect(context.context).toMatchObject({
+      title: "YouTube Only Refreshed",
+      handle: "@youtube-only-refreshed",
+      subscriberCount: 2400,
+    });
+
+    const metrics = await prisma.channelMetric.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(metrics.youtubeFollowers).toBe(2400n);
+    expect(metrics.youtubeVideoMedianViews).toBe(2000n);
+    expect(metrics.youtubeShortsMedianViews).toBe(1000n);
+
+    // The catalog detail must surface the YouTube refresh timestamp separately
+    // from the AI enrichment timestamp so the two cadences are visible.
+    const detail = await getCore().getChannelById(channel.id);
+    expect(detail?.enrichment.lastEnrichedAt).toEqual(lastEnrichedAt.toISOString());
+    expect(detail?.enrichment.youtubeRefreshedAt).not.toBeNull();
+    expect(
+      new Date(detail!.enrichment.youtubeRefreshedAt!).getTime(),
+    ).toBeGreaterThan(lastEnrichedAt.getTime());
+  });
+
+  it("persists failed YouTube-only refresh state and retry timing", async () => {
+    const user = await createUser("youtube-only-failure@example.com");
+    const channel = await createChannel("UC-YOUTUBE-ONLY-FAIL", "YouTube Only Failure");
+    await assignYoutubeKey(user.id);
+    await prisma.channelYoutubeContext.create({
+      data: {
+        channelId: channel.id,
+        context: CACHED_CONTEXT,
+        fetchedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+        refreshRequestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockRejectedValueOnce(
+      new (await import("@scouting-platform/integrations")).YoutubeChannelContextProviderError(
+        "YOUTUBE_QUOTA_EXCEEDED",
+        429,
+        "YouTube context rate limited",
+      ),
+    );
+
+    await expect(
+      getCore().executeChannelYoutubeRefresh({
+        channelId: channel.id,
+        requestedByUserId: user.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "YOUTUBE_QUOTA_EXCEEDED",
+      status: 429,
+    });
+
+    const context = await prisma.channelYoutubeContext.findUniqueOrThrow({
+      where: {
+        channelId: channel.id,
+      },
+    });
+    expect(context.refreshStatus).toBe(PrismaChannelYoutubeRefreshStatus.FAILED);
+    expect(context.refreshRetryCount).toBe(1);
+    expect(context.refreshNextRetryAt).not.toBeNull();
+    expect(context.lastError).toContain("YouTube context rate limited");
+  });
+
   it("replaces URL-only placeholder channel titles with the YouTube channel name during enrichment", async () => {
     const user = await createUser("url-title@example.com");
     const channel = await createChannel("UC-ENRICH-1", "@channel-name");
@@ -1591,9 +1794,10 @@ integration("week 4 core integration", () => {
     expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.FAILED);
   });
 
-  it("returns stale enrichment when last enriched age exceeds the freshness window", async () => {
+  it("keeps 31-day AI enrichment fresh and marks 366-day AI enrichment stale", async () => {
     const user = await createUser();
     const channelByAge = await createChannel("UC-STALE-AGE", "Old Completion");
+    const channelByMonth = await createChannel("UC-FRESH-MONTH", "Month Old Completion");
     const channelByUpdate = await createChannel("UC-STALE-UPDATE", "Updated Channel");
 
     await prisma.channelEnrichment.create({
@@ -1601,13 +1805,27 @@ integration("week 4 core integration", () => {
         channelId: channelByAge.id,
         status: PrismaChannelEnrichmentStatus.COMPLETED,
         requestedByUserId: user.id,
-        requestedAt: new Date(Date.now() - 32 * 24 * 60 * 60 * 1000),
-        completedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
-        lastEnrichedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        requestedAt: new Date(Date.now() - 367 * 24 * 60 * 60 * 1000),
+        completedAt: new Date(Date.now() - 366 * 24 * 60 * 60 * 1000),
+        lastEnrichedAt: new Date(Date.now() - 366 * 24 * 60 * 60 * 1000),
         summary: "Old summary",
         topics: ["gaming"],
         brandFitNotes: "Old notes",
         confidence: 0.5,
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channelByMonth.id,
+        status: PrismaChannelEnrichmentStatus.COMPLETED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(Date.now() - 32 * 24 * 60 * 60 * 1000),
+        completedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        lastEnrichedAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+        summary: "Month-old summary",
+        topics: ["gaming"],
+        brandFitNotes: "Month-old notes",
+        confidence: 0.6,
       },
     });
     await prisma.channelEnrichment.create({
@@ -1626,9 +1844,11 @@ integration("week 4 core integration", () => {
     });
 
     const staleByAge = await getCore().getChannelById(channelByAge.id);
+    const freshByMonth = await getCore().getChannelById(channelByMonth.id);
     const staleByUpdate = await getCore().getChannelById(channelByUpdate.id);
 
     expect(staleByAge?.enrichment.status).toBe("stale");
+    expect(freshByMonth?.enrichment.status).toBe("completed");
     expect(staleByUpdate?.enrichment.status).toBe("completed");
   });
 });

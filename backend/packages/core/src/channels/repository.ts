@@ -98,6 +98,7 @@ export type ChannelEnrichmentDetail = ChannelEnrichmentSummary & {
   brandFitNotes: string | null;
   confidence: number | null;
   structuredProfile: StructuredChannelProfile | null;
+  youtubeRefreshedAt: string | null;
 };
 
 export type ChannelAdvancedReportSummary = ContractChannelAdvancedReportSummary;
@@ -316,6 +317,11 @@ const channelDetailSelect = {
   enrichment: {
     select: channelEnrichmentDetailSelect,
   },
+  youtubeContext: {
+    select: {
+      fetchedAt: true,
+    },
+  },
   insights: {
     select: channelInsightsSelect,
   },
@@ -506,6 +512,7 @@ function toChannelEnrichmentDetail(
     confidence: number | null;
     structuredProfile: Prisma.JsonValue | null;
   } | null,
+  youtubeRefreshedAt: Date | null,
 ): ChannelEnrichmentDetail {
   const base = toChannelEnrichmentSummary(channelUpdatedAt, enrichment);
 
@@ -516,6 +523,7 @@ function toChannelEnrichmentDetail(
     brandFitNotes: enrichment?.brandFitNotes ?? null,
     confidence: enrichment?.confidence ?? null,
     structuredProfile: enrichment ? toStructuredChannelProfile(enrichment.structuredProfile) : null,
+    youtubeRefreshedAt: youtubeRefreshedAt?.toISOString() ?? null,
   };
 }
 
@@ -704,6 +712,9 @@ function toChannelDetail(channel: {
     confidence: number | null;
     structuredProfile: Prisma.JsonValue | null;
   } | null;
+  youtubeContext: {
+    fetchedAt: Date | null;
+  } | null;
   insights: ChannelInsightsRow | null;
   advancedReportRequests: LatestAdvancedReportRow[];
 }, lastCompletedReport: LatestCompletedAdvancedReport | null): ChannelDetail {
@@ -712,7 +723,11 @@ function toChannelDetail(channel: {
     description: channel.description,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
-    enrichment: toChannelEnrichmentDetail(channel.updatedAt, channel.enrichment),
+    enrichment: toChannelEnrichmentDetail(
+      channel.updatedAt,
+      channel.enrichment,
+      channel.youtubeContext?.fetchedAt ?? null,
+    ),
     advancedReport: toChannelAdvancedReportDetail(
       channel.advancedReportRequests[0] ?? null,
       lastCompletedReport,

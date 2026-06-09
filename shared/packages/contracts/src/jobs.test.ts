@@ -25,6 +25,30 @@ describe("parseJobPayload", () => {
     ).toThrow();
   });
 
+  it("parses legacy and scoped channel enrichment payloads", () => {
+    expect(
+      parseJobPayload("channels.enrich.llm", {
+        channelId: TEST_UUID,
+        requestedByUserId: TEST_UUID,
+      }),
+    ).toEqual({
+      channelId: TEST_UUID,
+      requestedByUserId: TEST_UUID,
+    });
+
+    expect(
+      parseJobPayload("channels.enrich.llm", {
+        channelId: TEST_UUID,
+        requestedByUserId: TEST_UUID,
+        mode: "youtube_only",
+      }),
+    ).toEqual({
+      channelId: TEST_UUID,
+      requestedByUserId: TEST_UUID,
+      mode: "youtube_only",
+    });
+  });
+
   it("parses maintenance payload for system jobs", () => {
     const payload = parseJobPayload("maintenance.refresh-stale", {
       initiatedBy: "system",

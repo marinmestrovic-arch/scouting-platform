@@ -94,6 +94,16 @@ enum ChannelEnrichmentStatus {
   @@map("channel_enrichment_status")
 }
 
+enum ChannelYoutubeRefreshStatus {
+  IDLE      @map("idle")
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("channel_youtube_refresh_status")
+}
+
 enum RunChannelAssessmentStatus {
   QUEUED    @map("queued")
   RUNNING   @map("running")
@@ -529,15 +539,24 @@ model ChannelManualOverride {
 }
 
 model ChannelYoutubeContext {
-  channelId String    @id @map("channel_id") @db.Uuid
-  context   Json?
-  fetchedAt DateTime? @map("fetched_at")
-  lastError String?   @map("last_error") @db.Text
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channelId           String                      @id @map("channel_id") @db.Uuid
+  context             Json?
+  fetchedAt           DateTime?                   @map("fetched_at")
+  lastError           String?                     @map("last_error") @db.Text
+  refreshStatus       ChannelYoutubeRefreshStatus @default(IDLE) @map("refresh_status")
+  refreshRequestedAt  DateTime?                   @map("refresh_requested_at")
+  refreshStartedAt    DateTime?                   @map("refresh_started_at")
+  refreshCompletedAt  DateTime?                   @map("refresh_completed_at")
+  refreshRetryCount   Int                         @default(0) @map("refresh_retry_count")
+  refreshNextRetryAt  DateTime?                   @map("refresh_next_retry_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  channel             Channel                     @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@index([fetchedAt], map: "channel_youtube_contexts_fetched_at_idx")
+  @@index([refreshStatus, refreshRequestedAt], map: "channel_youtube_contexts_refresh_status_requested_at_idx")
+  @@index([refreshStatus, refreshStartedAt], map: "channel_youtube_contexts_refresh_status_started_at_idx")
+  @@index([refreshStatus, refreshNextRetryAt], map: "channel_youtube_contexts_refresh_status_next_retry_at_idx")
   @@map("channel_youtube_contexts")
 }
 

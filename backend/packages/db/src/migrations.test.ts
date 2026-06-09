@@ -106,6 +106,10 @@ const userAccountSecurityHardeningMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260521120000_user_account_security_hardening/migration.sql",
 );
+const channelYoutubeRefreshStateMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260608120000_channel_youtube_refresh_state/migration.sql",
+);
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
@@ -409,6 +413,34 @@ describe("user account security hardening migration", () => {
     expect(migrationSql).toContain('"locked_until" TIMESTAMP(3)');
     expect(migrationSql).toContain('"last_login_at" TIMESTAMP(3)');
     expect(migrationSql).toContain('CREATE INDEX "users_locked_until_idx"');
+  });
+});
+
+describe("channel YouTube refresh state migration", () => {
+  it("adds durable refresh state and scan indexes", () => {
+    const migrationSql = readFileSync(channelYoutubeRefreshStateMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "channel_youtube_refresh_status" AS ENUM');
+    expect(migrationSql).toContain('ALTER TABLE "channel_youtube_contexts"');
+    expect(migrationSql).toContain(
+      '"refresh_status" "channel_youtube_refresh_status" NOT NULL DEFAULT',
+    );
+    expect(migrationSql).toContain('"refresh_requested_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"refresh_started_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"refresh_completed_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"refresh_retry_count" INTEGER NOT NULL DEFAULT 0');
+    expect(migrationSql).toContain('"refresh_next_retry_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain(
+      '"channel_youtube_contexts_refresh_status_requested_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      '"channel_youtube_contexts_refresh_status_started_at_idx"',
+    );
+    expect(migrationSql).toContain(
+      '"channel_youtube_contexts_refresh_status_next_retry_at_idx"',
+    );
+    expect(migrationSql).not.toContain("IF NOT EXISTS");
+    expect(migrationSql).not.toContain("DO $$");
   });
 });
 

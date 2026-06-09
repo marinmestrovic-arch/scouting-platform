@@ -9,7 +9,8 @@ export type ContinuousEnrichmentMonitorOptions = Readonly<{
   intervalMs: number;
   initialDelayMs: number;
   batchSize: number;
-  staleAfterDays: number;
+  aiStaleAfterDays: number;
+  youtubeStaleAfterDays: number;
   maxRetryCount: number;
   processingTimeoutMs: number;
   queuedTimeoutMs: number;
@@ -47,7 +48,8 @@ export function startContinuousEnrichmentMonitor(
       try {
         const result = await queueDueChannelLlmEnrichments({
           batchSize: options.batchSize,
-          staleAfterDays: options.staleAfterDays,
+          aiStaleAfterDays: options.aiStaleAfterDays,
+          youtubeStaleAfterDays: options.youtubeStaleAfterDays,
           maxRetryCount: options.maxRetryCount,
           processingTimeoutMs: options.processingTimeoutMs,
           queuedTimeoutMs: options.queuedTimeoutMs,

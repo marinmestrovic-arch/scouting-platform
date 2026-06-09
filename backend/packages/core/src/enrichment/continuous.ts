@@ -1,12 +1,16 @@
 import {
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  ChannelYoutubeRefreshStatus as PrismaChannelYoutubeRefreshStatus,
   CredentialProvider,
   Prisma,
 } from "@prisma/client";
 import type { JobPayloadByName } from "@scouting-platform/contracts";
 import { prisma } from "@scouting-platform/db";
 
-import { CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS } from "./status";
+import {
+  CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS,
+  YOUTUBE_CONTEXT_FRESH_WINDOW_DAYS,
+} from "./status";
 
 type ChannelLlmEnrichmentPayload = JobPayloadByName["channels.enrich.llm"];
 type ChannelLlmEnrichmentEnqueue = (
@@ -20,6 +24,13 @@ type ChannelLlmEnrichmentCandidateReason =
   | "running_timeout"
   | "queued_timeout";
 
+type ChannelYoutubeRefreshCandidateReason =
+  | "youtube_missing"
+  | "youtube_stale"
+  | "youtube_failed_retry"
+  | "youtube_running_timeout"
+  | "youtube_queued_timeout";
+
 type DueChannelLlmEnrichmentCandidateRow = {
   channelId: string;
   requestedByUserId: string;
@@ -27,10 +38,21 @@ type DueChannelLlmEnrichmentCandidateRow = {
   reason: ChannelLlmEnrichmentCandidateReason;
 };
 
+type DueChannelYoutubeRefreshCandidateRow = {
+  channelId: string;
+  requestedByUserId: string;
+  hasYoutubeContext: boolean;
+  reason: ChannelYoutubeRefreshCandidateReason;
+};
+
 export type QueueDueChannelLlmEnrichmentsResult = Readonly<{
   scannedAt: Date;
   staleThreshold: Date;
+  aiStaleThreshold: Date;
+  youtubeStaleThreshold: Date;
   queued: number;
+  queuedFull: number;
+  queuedYoutubeOnly: number;
   skipped: number;
   failed: number;
   missingYoutubeCredential: boolean;
@@ -67,9 +89,12 @@ function normalizeContinuousEnrichmentBatchSize(value: number | undefined): numb
   );
 }
 
-function normalizeContinuousEnrichmentStaleDays(value: number | undefined): number {
+function normalizeContinuousEnrichmentStaleDays(
+  value: number | undefined,
+  defaultValue: number,
+): number {
   if (!value || !Number.isFinite(value)) {
-    return CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS;
+    return defaultValue;
   }
 
   return Math.max(1, Math.trunc(value));
@@ -330,6 +355,174 @@ async function listDueChannelLlmEnrichmentCandidates(input: {
   `);
 }
 
+async function listDueChannelYoutubeRefreshCandidates(input: {
+  batchSize: number;
+  aiStaleThreshold: Date;
+  youtubeStaleThreshold: Date;
+  processingStaleThreshold: Date;
+  queuedStaleThreshold: Date;
+  maxRetryCount: number;
+  now: Date;
+  excludedChannelIds: readonly string[];
+}): Promise<DueChannelYoutubeRefreshCandidateRow[]> {
+  if (input.batchSize <= 0) {
+    return [];
+  }
+
+  const excludedChannelIdsFilter = input.excludedChannelIds.length > 0
+    ? Prisma.sql`AND c.id <> ALL(ARRAY[${Prisma.join(input.excludedChannelIds)}]::uuid[])`
+    : Prisma.empty;
+
+  return prisma.$queryRaw<DueChannelYoutubeRefreshCandidateRow[]>(Prisma.sql`
+    SELECT
+      c.id AS "channelId",
+      requester.user_id AS "requestedByUserId",
+      (cyc.channel_id IS NOT NULL) AS "hasYoutubeContext",
+      CASE
+        WHEN cyc.channel_id IS NULL THEN 'youtube_missing'
+        WHEN cyc.refresh_status::text = 'failed' THEN 'youtube_failed_retry'
+        WHEN cyc.refresh_status::text = 'running' THEN 'youtube_running_timeout'
+        WHEN cyc.refresh_status::text = 'queued' THEN 'youtube_queued_timeout'
+        ELSE 'youtube_stale'
+      END AS "reason"
+    FROM channels c
+    INNER JOIN channel_enrichments ce
+      ON ce.channel_id = c.id
+    LEFT JOIN channel_youtube_contexts cyc
+      ON cyc.channel_id = c.id
+    LEFT JOIN LATERAL (
+      SELECT candidate.user_id
+      FROM (
+        SELECT
+          ce.requested_by_user_id AS user_id,
+          0 AS source_rank,
+          COALESCE(ce.last_enriched_at, ce.requested_at, ce.created_at) AS source_at
+        WHERE
+          ce.last_enriched_at IS NOT NULL
+          OR EXISTS (
+            SELECT 1
+            FROM audit_events ae
+            WHERE
+              ae.entity_type = 'channel'
+              AND ae.entity_id = ce.channel_id::text
+              AND ae.action = 'channel.enrichment.requested'
+              AND ae.actor_user_id = ce.requested_by_user_id
+          )
+
+        UNION ALL
+
+        SELECT
+          cib.requested_by_user_id AS user_id,
+          1 AS source_rank,
+          cib.created_at AS source_at
+        FROM csv_import_rows cir
+        INNER JOIN csv_import_batches cib
+          ON cib.id = cir.batch_id
+        WHERE
+          cir.channel_id = c.id
+          AND cir.status::text = 'imported'
+
+        UNION ALL
+
+        SELECT
+          rr.requested_by_user_id AS user_id,
+          2 AS source_rank,
+          rr.created_at AS source_at
+        FROM run_results result
+        INNER JOIN run_requests rr
+          ON rr.id = result.run_request_id
+        WHERE
+          result.channel_id = c.id
+      ) candidate
+      INNER JOIN user_provider_credentials credential
+        ON credential.user_id = candidate.user_id
+        AND credential.provider::text = 'youtube_data_api'
+      ORDER BY
+        candidate.source_rank ASC,
+        candidate.source_at DESC
+      LIMIT 1
+    ) requester ON TRUE
+    WHERE
+      c.youtube_channel_id ~ '^UC[A-Za-z0-9_-]{22}$'
+      AND requester.user_id IS NOT NULL
+      ${excludedChannelIdsFilter}
+      AND NOT (
+        (
+          ce.status::text IN ('missing', 'stale')
+          AND (
+            ce.last_enriched_at IS NULL
+            OR ce.last_enriched_at <= ${input.aiStaleThreshold}
+          )
+        )
+        OR (
+          ce.status::text = 'completed'
+          AND COALESCE(ce.last_enriched_at, ce.completed_at) <= ${input.aiStaleThreshold}
+        )
+        OR (
+          ce.status::text = 'failed'
+          AND ce.retry_count < ${input.maxRetryCount}
+          AND (ce.next_retry_at IS NULL OR ce.next_retry_at <= ${input.now})
+          AND (
+            ce.last_enriched_at IS NULL
+            OR ce.last_enriched_at <= ${input.aiStaleThreshold}
+            OR ce.requested_at > ce.last_enriched_at
+          )
+        )
+        OR (
+          ce.status::text = 'running'
+          AND ce.retry_count < ${input.maxRetryCount}
+          AND ce.started_at <= ${input.processingStaleThreshold}
+        )
+        OR (
+          ce.status::text = 'queued'
+          AND ce.requested_at <= ${input.queuedStaleThreshold}
+        )
+      )
+      AND (
+        cyc.channel_id IS NULL
+        OR (
+          cyc.refresh_status::text IN ('idle', 'completed')
+          AND (
+            cyc.fetched_at IS NULL
+            OR cyc.fetched_at <= ${input.youtubeStaleThreshold}
+          )
+        )
+        OR (
+          cyc.refresh_status::text = 'failed'
+          AND cyc.refresh_retry_count < ${input.maxRetryCount}
+          AND (cyc.refresh_next_retry_at IS NULL OR cyc.refresh_next_retry_at <= ${input.now})
+        )
+        OR (
+          cyc.refresh_status::text = 'running'
+          AND cyc.refresh_retry_count < ${input.maxRetryCount}
+          AND cyc.refresh_started_at <= ${input.processingStaleThreshold}
+        )
+        OR (
+          cyc.refresh_status::text = 'queued'
+          AND cyc.refresh_requested_at <= ${input.queuedStaleThreshold}
+        )
+      )
+    ORDER BY
+      CASE
+        WHEN cyc.channel_id IS NULL THEN 0
+        WHEN cyc.refresh_status::text = 'failed' THEN 0
+        WHEN cyc.refresh_status::text = 'queued' THEN 1
+        WHEN cyc.refresh_status::text = 'running' THEN 2
+        WHEN cyc.fetched_at IS NULL THEN 0
+        ELSE 3
+      END ASC,
+      COALESCE(
+        cyc.refresh_next_retry_at,
+        cyc.fetched_at,
+        cyc.refresh_started_at,
+        cyc.refresh_requested_at,
+        c.updated_at
+      ) ASC,
+      c.id ASC
+    LIMIT ${input.batchSize}
+  `);
+}
+
 async function claimDueChannelLlmEnrichment(input: {
   candidate: DueChannelLlmEnrichmentCandidateRow;
   requestedAt: Date;
@@ -462,6 +655,224 @@ async function claimDueChannelLlmEnrichment(input: {
   return claimed.count > 0;
 }
 
+async function claimDueChannelYoutubeRefresh(input: {
+  candidate: DueChannelYoutubeRefreshCandidateRow;
+  requestedAt: Date;
+  youtubeStaleThreshold: Date;
+  processingStaleThreshold: Date;
+  queuedStaleThreshold: Date;
+  maxRetryCount: number;
+}): Promise<boolean> {
+  if (!input.candidate.hasYoutubeContext) {
+    try {
+      await prisma.channelYoutubeContext.create({
+        data: {
+          channelId: input.candidate.channelId,
+          context: Prisma.DbNull,
+          fetchedAt: null,
+          lastError: null,
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+          refreshRequestedAt: input.requestedAt,
+          refreshStartedAt: null,
+          refreshCompletedAt: null,
+          refreshRetryCount: 0,
+          refreshNextRetryAt: null,
+        },
+      });
+
+      return true;
+    } catch (error) {
+      if (isPrismaErrorCode(error, "P2002")) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  const statusWhere = (() => {
+    switch (input.candidate.reason) {
+      case "youtube_failed_retry":
+        return {
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.FAILED,
+          refreshRetryCount: {
+            lt: input.maxRetryCount,
+          },
+          OR: [
+            {
+              refreshNextRetryAt: null,
+            },
+            {
+              refreshNextRetryAt: {
+                lte: input.requestedAt,
+              },
+            },
+          ],
+        } satisfies Prisma.ChannelYoutubeContextWhereInput;
+      case "youtube_running_timeout":
+        return {
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.RUNNING,
+          refreshRetryCount: {
+            lt: input.maxRetryCount,
+          },
+          refreshStartedAt: {
+            lte: input.processingStaleThreshold,
+          },
+        } satisfies Prisma.ChannelYoutubeContextWhereInput;
+      case "youtube_queued_timeout":
+        return {
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+          refreshRequestedAt: {
+            lte: input.queuedStaleThreshold,
+          },
+        } satisfies Prisma.ChannelYoutubeContextWhereInput;
+      case "youtube_missing":
+      case "youtube_stale":
+        return {
+          OR: [
+            {
+              refreshStatus: {
+                in: [
+                  PrismaChannelYoutubeRefreshStatus.IDLE,
+                  PrismaChannelYoutubeRefreshStatus.COMPLETED,
+                ],
+              },
+              OR: [
+                {
+                  fetchedAt: null,
+                },
+                {
+                  fetchedAt: {
+                    lte: input.youtubeStaleThreshold,
+                  },
+                },
+              ],
+            },
+            {
+              refreshStatus: PrismaChannelYoutubeRefreshStatus.FAILED,
+              refreshRetryCount: {
+                lt: input.maxRetryCount,
+              },
+              OR: [
+                {
+                  refreshNextRetryAt: null,
+                },
+                {
+                  refreshNextRetryAt: {
+                    lte: input.requestedAt,
+                  },
+                },
+              ],
+            },
+          ],
+        } satisfies Prisma.ChannelYoutubeContextWhereInput;
+    }
+  })();
+  const updateData: Prisma.ChannelYoutubeContextUncheckedUpdateManyInput = {
+    refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+    refreshRequestedAt: input.requestedAt,
+    refreshStartedAt: null,
+    refreshNextRetryAt: null,
+    lastError: null,
+  };
+
+  if (input.candidate.reason === "youtube_running_timeout") {
+    updateData.refreshRetryCount = {
+      increment: 1,
+    };
+  } else if (
+    input.candidate.reason === "youtube_stale"
+    || input.candidate.reason === "youtube_missing"
+  ) {
+    updateData.refreshRetryCount = 0;
+  }
+
+  const claimed = await prisma.channelYoutubeContext.updateMany({
+    where: {
+      channelId: input.candidate.channelId,
+      ...statusWhere,
+    },
+    data: updateData,
+  });
+
+  return claimed.count > 0;
+}
+
+export async function markChannelYoutubeRefreshFailed(input: {
+  channelId: string;
+  error: unknown;
+  failedAt?: Date;
+}): Promise<void> {
+  const failedAt = input.failedAt ?? new Date();
+  const lastError = formatErrorMessage(input.error);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const context = await prisma.channelYoutubeContext.findUnique({
+      where: {
+        channelId: input.channelId,
+      },
+      select: {
+        refreshRetryCount: true,
+      },
+    });
+
+    if (!context) {
+      return;
+    }
+
+    const refreshRetryCount = context.refreshRetryCount + 1;
+    const updated = await prisma.channelYoutubeContext.updateMany({
+      where: {
+        channelId: input.channelId,
+        refreshRetryCount: context.refreshRetryCount,
+      },
+      data: {
+        refreshStatus: PrismaChannelYoutubeRefreshStatus.FAILED,
+        refreshRetryCount,
+        refreshNextRetryAt: getChannelLlmEnrichmentNextRetryAt({
+          failedAt,
+          retryCount: refreshRetryCount,
+        }),
+        lastError,
+      },
+    });
+
+    if (updated.count > 0) {
+      return;
+    }
+  }
+
+  const context = await prisma.channelYoutubeContext.findUnique({
+    where: {
+      channelId: input.channelId,
+    },
+    select: {
+      refreshRetryCount: true,
+    },
+  });
+
+  if (!context) {
+    return;
+  }
+
+  const refreshRetryCount = context.refreshRetryCount + 1;
+
+  await prisma.channelYoutubeContext.update({
+    where: {
+      channelId: input.channelId,
+    },
+    data: {
+      refreshStatus: PrismaChannelYoutubeRefreshStatus.FAILED,
+      refreshRetryCount,
+      refreshNextRetryAt: getChannelLlmEnrichmentNextRetryAt({
+        failedAt,
+        retryCount: refreshRetryCount,
+      }),
+      lastError,
+    },
+  });
+}
+
 export async function markChannelLlmEnrichmentFailed(input: {
   channelId: string;
   error: unknown;
@@ -542,7 +953,8 @@ export async function markChannelLlmEnrichmentFailed(input: {
 export async function queueDueChannelLlmEnrichments(input: {
   enqueue: ChannelLlmEnrichmentEnqueue;
   batchSize?: number;
-  staleAfterDays?: number;
+  aiStaleAfterDays?: number;
+  youtubeStaleAfterDays?: number;
   maxRetryCount?: number;
   processingTimeoutMs?: number;
   queuedTimeoutMs?: number;
@@ -550,7 +962,14 @@ export async function queueDueChannelLlmEnrichments(input: {
 }): Promise<QueueDueChannelLlmEnrichmentsResult> {
   const scannedAt = input.now ?? new Date();
   const batchSize = normalizeContinuousEnrichmentBatchSize(input.batchSize);
-  const staleAfterDays = normalizeContinuousEnrichmentStaleDays(input.staleAfterDays);
+  const aiStaleAfterDays = normalizeContinuousEnrichmentStaleDays(
+    input.aiStaleAfterDays,
+    CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS,
+  );
+  const youtubeStaleAfterDays = normalizeContinuousEnrichmentStaleDays(
+    input.youtubeStaleAfterDays,
+    YOUTUBE_CONTEXT_FRESH_WINDOW_DAYS,
+  );
   const maxRetryCount = normalizeContinuousEnrichmentMaxRetryCount(input.maxRetryCount);
   const processingTimeoutMs = normalizePositiveDurationMs(
     input.processingTimeoutMs,
@@ -560,7 +979,8 @@ export async function queueDueChannelLlmEnrichments(input: {
     input.queuedTimeoutMs,
     CHANNEL_LLM_ENRICHMENT_DEFAULT_QUEUED_TIMEOUT_MS,
   );
-  const staleThreshold = new Date(scannedAt.getTime() - staleAfterDays * DAY_IN_MS);
+  const aiStaleThreshold = new Date(scannedAt.getTime() - aiStaleAfterDays * DAY_IN_MS);
+  const youtubeStaleThreshold = new Date(scannedAt.getTime() - youtubeStaleAfterDays * DAY_IN_MS);
   const processingStaleThreshold = new Date(scannedAt.getTime() - processingTimeoutMs);
   const queuedStaleThreshold = new Date(scannedAt.getTime() - queuedTimeoutMs);
   const anyYoutubeCredential = await prisma.userProviderCredential.findFirst({
@@ -575,8 +995,12 @@ export async function queueDueChannelLlmEnrichments(input: {
   if (!anyYoutubeCredential) {
     return {
       scannedAt,
-      staleThreshold,
+      staleThreshold: aiStaleThreshold,
+      aiStaleThreshold,
+      youtubeStaleThreshold,
       queued: 0,
+      queuedFull: 0,
+      queuedYoutubeOnly: 0,
       skipped: 0,
       failed: 0,
       missingYoutubeCredential: true,
@@ -586,7 +1010,7 @@ export async function queueDueChannelLlmEnrichments(input: {
 
   const candidates = await listDueChannelLlmEnrichmentCandidates({
     batchSize,
-    staleThreshold,
+    staleThreshold: aiStaleThreshold,
     processingStaleThreshold,
     queuedStaleThreshold,
     maxRetryCount,
@@ -595,12 +1019,14 @@ export async function queueDueChannelLlmEnrichments(input: {
   let skipped = 0;
   let failed = 0;
   const queuedChannelIds: string[] = [];
+  let queuedFull = 0;
+  let queuedYoutubeOnly = 0;
 
   for (const candidate of candidates) {
     const claimed = await claimDueChannelLlmEnrichment({
       candidate,
       requestedAt: scannedAt,
-      staleThreshold,
+      staleThreshold: aiStaleThreshold,
       processingStaleThreshold,
       queuedStaleThreshold,
       maxRetryCount,
@@ -618,6 +1044,7 @@ export async function queueDueChannelLlmEnrichments(input: {
       });
 
       queuedChannelIds.push(candidate.channelId);
+      queuedFull += 1;
     } catch (error) {
       failed += 1;
       await markChannelLlmEnrichmentFailed({
@@ -628,10 +1055,60 @@ export async function queueDueChannelLlmEnrichments(input: {
     }
   }
 
+  const remainingBatchSize = batchSize - candidates.length;
+  const youtubeRefreshCandidates = await listDueChannelYoutubeRefreshCandidates({
+    batchSize: remainingBatchSize,
+    aiStaleThreshold,
+    youtubeStaleThreshold,
+    processingStaleThreshold,
+    queuedStaleThreshold,
+    maxRetryCount,
+    now: scannedAt,
+    excludedChannelIds: candidates.map((candidate) => candidate.channelId),
+  });
+
+  for (const candidate of youtubeRefreshCandidates) {
+    const claimed = await claimDueChannelYoutubeRefresh({
+      candidate,
+      requestedAt: scannedAt,
+      youtubeStaleThreshold,
+      processingStaleThreshold,
+      queuedStaleThreshold,
+      maxRetryCount,
+    });
+
+    if (!claimed) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      await input.enqueue({
+        channelId: candidate.channelId,
+        requestedByUserId: candidate.requestedByUserId,
+        mode: "youtube_only",
+      });
+
+      queuedChannelIds.push(candidate.channelId);
+      queuedYoutubeOnly += 1;
+    } catch (error) {
+      failed += 1;
+      await markChannelYoutubeRefreshFailed({
+        channelId: candidate.channelId,
+        error,
+        failedAt: scannedAt,
+      });
+    }
+  }
+
   return {
     scannedAt,
-    staleThreshold,
+    staleThreshold: aiStaleThreshold,
+    aiStaleThreshold,
+    youtubeStaleThreshold,
     queued: queuedChannelIds.length,
+    queuedFull,
+    queuedYoutubeOnly,
     skipped,
     failed,
     missingYoutubeCredential: false,
