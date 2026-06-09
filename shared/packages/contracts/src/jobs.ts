@@ -38,6 +38,7 @@ export const runsAssessChannelFitPayloadSchema = z.object({
 export const channelsEnrichLlmPayloadSchema = z.object({
   channelId: uuid,
   requestedByUserId: uuid,
+  mode: z.enum(["full", "youtube_only"]).optional(),
 });
 
 export const channelsEnrichHypeAuditorPayloadSchema = z.object({

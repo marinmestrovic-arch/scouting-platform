@@ -178,6 +178,9 @@ export const channelEnrichmentDetailSchema = channelEnrichmentSummarySchema.exte
   brandFitNotes: z.string().nullable(),
   confidence: z.number().min(0).max(1).nullable(),
   structuredProfile: structuredChannelProfileSchema.nullable(),
+  // When the channel's YouTube statistics were last refreshed (30-day cadence),
+  // distinct from the AI enrichment cadence above (365 days).
+  youtubeRefreshedAt: isoDatetimeSchema.nullable().optional(),
 });
 
 export const listChannelsQuerySchema = catalogChannelFiltersSchema.extend({

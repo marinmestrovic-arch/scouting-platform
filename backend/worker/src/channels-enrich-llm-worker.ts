@@ -3,7 +3,11 @@ import process from "node:process";
 import type { PgBoss } from "pg-boss";
 
 import { parseJobPayload } from "@scouting-platform/contracts";
-import { executeChannelLlmEnrichment, ServiceError } from "@scouting-platform/core";
+import {
+  executeChannelLlmEnrichment,
+  executeChannelYoutubeRefresh,
+  ServiceError,
+} from "@scouting-platform/core";
 
 import type { WorkerJobOptions } from "./runtime-config";
 
@@ -43,7 +47,11 @@ export async function registerChannelsEnrichLlmWorker(
         const payload = parseJobPayload("channels.enrich.llm", current.data);
 
         try {
-          await executeChannelLlmEnrichment(payload);
+          if (payload.mode === "youtube_only") {
+            await executeChannelYoutubeRefresh(payload);
+          } else {
+            await executeChannelLlmEnrichment(payload);
+          }
         } catch (error) {
           if (error instanceof ServiceError) {
             process.stderr.write(

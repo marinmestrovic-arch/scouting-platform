@@ -1,6 +1,7 @@
 import {
   ChannelManualOverrideField,
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  ChannelYoutubeRefreshStatus as PrismaChannelYoutubeRefreshStatus,
   CredentialProvider,
   Prisma,
 } from "@prisma/client";
@@ -36,7 +37,10 @@ import { inferVerticalsForHubspot } from "../hubspot/vertical-inference";
 import { enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
-import { markChannelLlmEnrichmentFailed } from "./continuous";
+import {
+  markChannelLlmEnrichmentFailed,
+  markChannelYoutubeRefreshFailed,
+} from "./continuous";
 import {
   deriveCreatorListYoutubeMetrics,
   deriveYoutubeMetrics,
@@ -73,6 +77,15 @@ function formatErrorMessage(error: unknown): string {
   }
 
   return String(error);
+}
+
+function isPrismaErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === code
+  );
 }
 
 function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
@@ -136,6 +149,201 @@ function toNullableBigInt(value: number | null): bigint | null {
   }
 
   return BigInt(Math.round(value));
+}
+
+type MutableYoutubeSignalField = "title" | "handle" | "description" | "thumbnailUrl";
+
+type YoutubeSignalManualOverride = {
+  id: string;
+  field: ChannelManualOverrideField;
+  value: string | null;
+  fallbackValue: string | null;
+};
+
+type YoutubeSignalChannel = {
+  id: string;
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  youtubeUrl: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  contentLanguage: string | null;
+  manualOverrides: YoutubeSignalManualOverride[];
+};
+
+function setChannelFieldValue(
+  target: Prisma.ChannelUpdateInput,
+  field: MutableYoutubeSignalField,
+  value: string | null,
+): void {
+  switch (field) {
+    case "title":
+      if (value !== null) {
+        target.title = value;
+      }
+      return;
+    case "handle":
+      target.handle = value;
+      return;
+    case "description":
+      target.description = value;
+      return;
+    case "thumbnailUrl":
+      target.thumbnailUrl = value;
+      return;
+  }
+}
+
+function getManualOverride(
+  manualOverrides: readonly YoutubeSignalManualOverride[],
+  field: ChannelManualOverrideField,
+): YoutubeSignalManualOverride | undefined {
+  return manualOverrides.find((manualOverride) => manualOverride.field === field);
+}
+
+async function applyYoutubeSignalFieldUpdate(input: {
+  tx: Prisma.TransactionClient;
+  channel: YoutubeSignalChannel;
+  updateData: Prisma.ChannelUpdateInput;
+  prismaField: ChannelManualOverrideField;
+  channelField: MutableYoutubeSignalField;
+  automatedValue: string | null;
+  shouldUpdateWithoutOverride: boolean;
+}): Promise<void> {
+  const manualOverride = getManualOverride(
+    input.channel.manualOverrides,
+    input.prismaField,
+  );
+
+  if (manualOverride) {
+    if (manualOverride.fallbackValue !== input.automatedValue) {
+      await input.tx.channelManualOverride.update({
+        where: {
+          id: manualOverride.id,
+        },
+        data: {
+          fallbackValue: input.automatedValue,
+        },
+      });
+    }
+
+    const value = input.channelField === "title"
+      ? manualOverride.value ?? input.channel.title
+      : manualOverride.value;
+
+    setChannelFieldValue(input.updateData, input.channelField, value);
+    return;
+  }
+
+  if (input.shouldUpdateWithoutOverride) {
+    setChannelFieldValue(input.updateData, input.channelField, input.automatedValue);
+  }
+}
+
+async function persistYoutubeSignals(input: {
+  tx: Prisma.TransactionClient;
+  channel: YoutubeSignalChannel;
+  youtubeMetrics: ReturnType<typeof deriveYoutubeMetrics>;
+}): Promise<void> {
+  const creatorListYoutubeMetrics = deriveCreatorListYoutubeMetrics(input.youtubeMetrics.context);
+  const updateData: Prisma.ChannelUpdateInput = {
+    youtubeUrl: input.youtubeMetrics.canonicalUrl,
+  };
+  const shouldUpdateTitle = shouldReplaceChannelTitleWithYoutubeTitle({
+    currentTitle: input.channel.title,
+    youtubeTitle: input.youtubeMetrics.context.title,
+    youtubeChannelId: input.channel.youtubeChannelId,
+    currentHandle: input.channel.handle,
+    currentYoutubeUrl: input.channel.youtubeUrl,
+    hasManualTitleOverride: Boolean(
+      getManualOverride(input.channel.manualOverrides, ChannelManualOverrideField.TITLE),
+    ),
+  });
+
+  await applyYoutubeSignalFieldUpdate({
+    tx: input.tx,
+    channel: input.channel,
+    updateData,
+    prismaField: ChannelManualOverrideField.TITLE,
+    channelField: "title",
+    automatedValue: input.youtubeMetrics.context.title,
+    shouldUpdateWithoutOverride: shouldUpdateTitle,
+  });
+  await applyYoutubeSignalFieldUpdate({
+    tx: input.tx,
+    channel: input.channel,
+    updateData,
+    prismaField: ChannelManualOverrideField.HANDLE,
+    channelField: "handle",
+    automatedValue: input.youtubeMetrics.normalizedHandle,
+    shouldUpdateWithoutOverride: true,
+  });
+  await applyYoutubeSignalFieldUpdate({
+    tx: input.tx,
+    channel: input.channel,
+    updateData,
+    prismaField: ChannelManualOverrideField.DESCRIPTION,
+    channelField: "description",
+    automatedValue: input.youtubeMetrics.context.description,
+    shouldUpdateWithoutOverride: input.channel.description === null,
+  });
+  await applyYoutubeSignalFieldUpdate({
+    tx: input.tx,
+    channel: input.channel,
+    updateData,
+    prismaField: ChannelManualOverrideField.THUMBNAIL_URL,
+    channelField: "thumbnailUrl",
+    automatedValue: input.youtubeMetrics.context.thumbnailUrl,
+    shouldUpdateWithoutOverride: true,
+  });
+
+  updateData.contentLanguage =
+    mapYoutubeLanguageToHubspot(input.youtubeMetrics.context.defaultLanguage ?? "")
+    || input.channel.contentLanguage
+    || null;
+
+  await input.tx.channelYoutubeContext.update({
+    where: {
+      channelId: input.channel.id,
+    },
+    data: {
+      context: toJsonValue(input.youtubeMetrics.context),
+      lastError: null,
+    },
+  });
+
+  await input.tx.channel.update({
+    where: {
+      id: input.channel.id,
+    },
+    data: updateData,
+  });
+
+  await input.tx.channelMetric.upsert({
+    where: {
+      channelId: input.channel.id,
+    },
+    create: {
+      channelId: input.channel.id,
+      subscriberCount: toNullableBigInt(input.youtubeMetrics.context.subscriberCount),
+      viewCount: toNullableBigInt(input.youtubeMetrics.context.viewCount),
+      videoCount: toNullableBigInt(input.youtubeMetrics.context.videoCount),
+      youtubeEngagementRate: input.youtubeMetrics.engagementRate,
+      youtubeFollowers: toNullableBigInt(input.youtubeMetrics.context.subscriberCount),
+      youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
+      youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
+    },
+    update: {
+      subscriberCount: toNullableBigInt(input.youtubeMetrics.context.subscriberCount),
+      viewCount: toNullableBigInt(input.youtubeMetrics.context.viewCount),
+      videoCount: toNullableBigInt(input.youtubeMetrics.context.videoCount),
+      youtubeEngagementRate: input.youtubeMetrics.engagementRate,
+      youtubeFollowers: toNullableBigInt(input.youtubeMetrics.context.subscriberCount),
+      youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
+      youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
+    },
+  });
 }
 
 function deriveYoutubeUrlTitlePlaceholder(value: string | null): string | null {
@@ -706,10 +914,12 @@ async function refreshYoutubeContext(input: {
   youtubeChannelId: string;
   youtubeApiKey: string;
   cachedContextRow: ChannelYoutubeContextCacheRow | null;
+  forceRefresh?: boolean;
 }) {
   const cachedContext = getCachedYoutubeContext(input.cachedContextRow);
 
   if (
+    !input.forceRefresh &&
     cachedContext &&
     isYoutubeContextFresh({
       fetchedAt: input.cachedContextRow?.fetchedAt,
@@ -1068,6 +1278,178 @@ export async function requestChannelLlmEnrichment(input: {
   };
 }
 
+export async function executeChannelYoutubeRefresh(input: {
+  channelId: string;
+  requestedByUserId: string;
+}): Promise<void> {
+  const startedAt = new Date();
+  const channel = await prisma.channel.findUnique({
+    where: {
+      id: input.channelId,
+    },
+    select: {
+      id: true,
+      youtubeChannelId: true,
+      title: true,
+      handle: true,
+      youtubeUrl: true,
+      description: true,
+      thumbnailUrl: true,
+      contentLanguage: true,
+      manualOverrides: {
+        where: {
+          field: {
+            in: [
+              ChannelManualOverrideField.TITLE,
+              ChannelManualOverrideField.HANDLE,
+              ChannelManualOverrideField.DESCRIPTION,
+              ChannelManualOverrideField.THUMBNAIL_URL,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          field: true,
+          value: true,
+          fallbackValue: true,
+        },
+      },
+      youtubeContext: {
+        select: {
+          context: true,
+          fetchedAt: true,
+          lastError: true,
+          refreshRetryCount: true,
+        },
+      },
+    },
+  });
+
+  if (!channel) {
+    throw new ServiceError("CHANNEL_NOT_FOUND", 404, "Channel not found");
+  }
+
+  let retryAttempt = false;
+  const claimed = await prisma.channelYoutubeContext.updateMany({
+    where: {
+      channelId: input.channelId,
+      refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+    },
+    data: {
+      refreshStatus: PrismaChannelYoutubeRefreshStatus.RUNNING,
+      refreshStartedAt: startedAt,
+      lastError: null,
+    },
+  });
+
+  if (claimed.count === 0) {
+    if (channel.youtubeContext) {
+      return;
+    }
+
+    try {
+      await prisma.channelYoutubeContext.create({
+        data: {
+          channelId: input.channelId,
+          context: Prisma.DbNull,
+          fetchedAt: null,
+          lastError: null,
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.RUNNING,
+          refreshRequestedAt: startedAt,
+          refreshStartedAt: startedAt,
+          refreshCompletedAt: null,
+          refreshRetryCount: 0,
+          refreshNextRetryAt: null,
+        },
+      });
+    } catch (error) {
+      if (isPrismaErrorCode(error, "P2002")) {
+        return;
+      }
+
+      throw error;
+    }
+  } else {
+    retryAttempt = (channel.youtubeContext?.refreshRetryCount ?? 0) > 0;
+  }
+
+  try {
+    const youtubeApiKey = await getUserYoutubeApiKey(input.requestedByUserId);
+
+    if (!youtubeApiKey) {
+      throw new ServiceError(
+        "YOUTUBE_KEY_REQUIRED",
+        400,
+        "Assigned YouTube API key is required before executing YouTube refresh",
+      );
+    }
+
+    const youtubeContextStartedAt = Date.now();
+    const youtubeContext = await (async () => {
+      try {
+        return await refreshYoutubeContext({
+          channelId: channel.id,
+          youtubeChannelId: channel.youtubeChannelId,
+          youtubeApiKey,
+          cachedContextRow: channel.youtubeContext,
+          forceRefresh: true,
+        });
+      } catch (error) {
+        logProviderSpend({
+          provider: "youtube_context",
+          operation: "refresh_context",
+          outcome: "error",
+          retryAttempt,
+          durationMs: Date.now() - youtubeContextStartedAt,
+        });
+
+        if (isYoutubeChannelContextProviderError(error)) {
+          throw new ServiceError(error.code, error.status, error.message);
+        }
+
+        throw error;
+      }
+    })();
+    const youtubeMetrics = deriveYoutubeMetrics(youtubeContext);
+
+    logProviderSpend({
+      provider: "youtube_context",
+      operation: "refresh_context",
+      outcome: "fresh_call",
+      retryAttempt,
+      durationMs: Date.now() - youtubeContextStartedAt,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await persistYoutubeSignals({
+        tx,
+        channel,
+        youtubeMetrics,
+      });
+
+      await tx.channelYoutubeContext.update({
+        where: {
+          channelId: input.channelId,
+        },
+        data: {
+          refreshStatus: PrismaChannelYoutubeRefreshStatus.COMPLETED,
+          refreshCompletedAt: new Date(),
+          refreshRetryCount: 0,
+          refreshNextRetryAt: null,
+          lastError: null,
+        },
+      });
+    });
+  } catch (error) {
+    await markChannelYoutubeRefreshFailed({
+      channelId: input.channelId,
+      error,
+    });
+
+    throw error;
+  }
+}
+
 export async function executeChannelLlmEnrichment(input: {
   channelId: string;
   requestedByUserId: string;
@@ -1127,6 +1509,7 @@ export async function executeChannelLlmEnrichment(input: {
             handle: true,
             youtubeUrl: true,
             description: true,
+            thumbnailUrl: true,
             influencerType: true,
             influencerVertical: true,
             countryRegion: true,
@@ -1141,10 +1524,20 @@ export async function executeChannelLlmEnrichment(input: {
             },
             manualOverrides: {
               where: {
-                field: ChannelManualOverrideField.TITLE,
+                field: {
+                  in: [
+                    ChannelManualOverrideField.TITLE,
+                    ChannelManualOverrideField.HANDLE,
+                    ChannelManualOverrideField.DESCRIPTION,
+                    ChannelManualOverrideField.THUMBNAIL_URL,
+                  ],
+                },
               },
               select: {
                 id: true,
+                field: true,
+                value: true,
+                fallbackValue: true,
               },
             },
             youtubeContext: {
@@ -1344,13 +1737,9 @@ export async function executeChannelLlmEnrichment(input: {
     }
 
     youtubeMetrics ??= deriveYoutubeMetrics(youtubeContext);
-    const creatorListYoutubeMetrics = deriveCreatorListYoutubeMetrics(youtubeMetrics.context);
-    const canonicalUrl = youtubeMetrics.canonicalUrl
-      || executionState.channel.youtubeUrl
-      || `https://www.youtube.com/channel/${executionState.channel.youtubeChannelId}`;
     const [dropdownOptions, pageSignal] = await Promise.all([
       listDropdownOptions(),
-      fetchChannelPageSignalBestEffort(canonicalUrl),
+      fetchChannelPageSignalBestEffort(youtubeMetrics.canonicalUrl),
     ]);
     const profileValues = await enrichChannelCreatorProfileFieldsBestEffort({
       channel: executionState.channel,
@@ -1403,24 +1792,12 @@ export async function executeChannelLlmEnrichment(input: {
     const influencerVerticalValue = applyDropdownUpdate(influencerVerticalUpdate);
     const countryRegionValue = applyDropdownUpdate(countryRegionUpdate);
     const languageValue = applyDropdownUpdate(languageUpdate);
-    const shouldUpdateTitle = shouldReplaceChannelTitleWithYoutubeTitle({
-      currentTitle: executionState.channel.title,
-      youtubeTitle: youtubeMetrics.context.title,
-      youtubeChannelId: executionState.channel.youtubeChannelId,
-      currentHandle: executionState.channel.handle,
-      currentYoutubeUrl: executionState.channel.youtubeUrl,
-      hasManualTitleOverride: executionState.channel.manualOverrides.length > 0,
-    });
 
     await prisma.$transaction(async (tx) => {
-      await tx.channelYoutubeContext.update({
-        where: {
-          channelId: executionState.channel.id,
-        },
-        data: {
-          context: toJsonValue(youtubeMetrics.context),
-          lastError: null,
-        },
+      await persistYoutubeSignals({
+        tx,
+        channel: executionState.channel,
+        youtubeMetrics,
       });
 
       await tx.channel.update({
@@ -1428,11 +1805,6 @@ export async function executeChannelLlmEnrichment(input: {
           id: executionState.channel.id,
         },
         data: {
-          ...(shouldUpdateTitle ? { title: youtubeMetrics.context.title } : {}),
-          handle: youtubeMetrics.normalizedHandle,
-          youtubeUrl: youtubeMetrics.canonicalUrl,
-          description: executionState.channel.description ?? youtubeMetrics.context.description,
-          thumbnailUrl: youtubeMetrics.context.thumbnailUrl,
           contentLanguage: languageValue
             ?? (mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage) || null),
           ...(influencerTypeValue !== undefined
@@ -1455,31 +1827,6 @@ export async function executeChannelLlmEnrichment(input: {
           },
         });
       }
-
-      await tx.channelMetric.upsert({
-        where: {
-          channelId: executionState.channel.id,
-        },
-        create: {
-          channelId: executionState.channel.id,
-          subscriberCount: toNullableBigInt(youtubeMetrics.context.subscriberCount),
-          viewCount: toNullableBigInt(youtubeMetrics.context.viewCount),
-          videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
-          youtubeEngagementRate: youtubeMetrics.engagementRate,
-          youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
-          youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
-          youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
-        },
-        update: {
-          subscriberCount: toNullableBigInt(youtubeMetrics.context.subscriberCount),
-          viewCount: toNullableBigInt(youtubeMetrics.context.viewCount),
-          videoCount: toNullableBigInt(youtubeMetrics.context.videoCount),
-          youtubeEngagementRate: youtubeMetrics.engagementRate,
-          youtubeFollowers: toNullableBigInt(youtubeMetrics.context.subscriberCount),
-          youtubeVideoMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianVideoViews),
-          youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
-        },
-      });
 
       const completedAt = new Date();
 

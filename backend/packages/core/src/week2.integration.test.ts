@@ -450,14 +450,17 @@ integration("week 2 core integration", () => {
       },
     });
 
+    // Older than the 365-day AI enrichment staleness window so the channel
+    // resolves to "stale" (relative offset stays correct as wall-clock moves).
+    const staleEnrichmentAt = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
     await prisma.channelEnrichment.create({
       data: {
         channelId: staleChannel.id,
         status: ChannelEnrichmentStatus.COMPLETED,
         requestedByUserId: requester.id,
-        requestedAt: new Date("2026-02-01T10:00:00.000Z"),
-        completedAt: new Date("2026-02-01T10:00:00.000Z"),
-        lastEnrichedAt: new Date("2026-02-01T10:00:00.000Z"),
+        requestedAt: staleEnrichmentAt,
+        completedAt: staleEnrichmentAt,
+        lastEnrichedAt: staleEnrichmentAt,
       },
     });
     const readyEnrichmentCompletedAt = new Date();

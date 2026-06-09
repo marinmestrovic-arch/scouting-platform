@@ -21,7 +21,8 @@ describe("getWorkerRuntimeConfig", () => {
       intervalMs: 60000,
       initialDelayMs: 5000,
       batchSize: 5,
-      staleAfterDays: 30,
+      aiStaleAfterDays: 365,
+      youtubeStaleAfterDays: 30,
       maxRetryCount: 5,
       processingTimeoutMs: 1800000,
       queuedTimeoutMs: 600000,
@@ -41,7 +42,8 @@ describe("getWorkerRuntimeConfig", () => {
       WORKER_CONTINUOUS_ENRICHMENT_INTERVAL_MS: "120000",
       WORKER_CONTINUOUS_ENRICHMENT_INITIAL_DELAY_MS: "0",
       WORKER_CONTINUOUS_ENRICHMENT_BATCH_SIZE: "9",
-      WORKER_CONTINUOUS_ENRICHMENT_STALE_AFTER_DAYS: "45",
+      WORKER_CONTINUOUS_ENRICHMENT_AI_STALE_AFTER_DAYS: "400",
+      WORKER_CONTINUOUS_ENRICHMENT_YOUTUBE_STALE_AFTER_DAYS: "45",
       WORKER_CONTINUOUS_ENRICHMENT_MAX_RETRY_COUNT: "7",
       WORKER_CONTINUOUS_ENRICHMENT_PROCESSING_TIMEOUT_MS: "900000",
       WORKER_CONTINUOUS_ENRICHMENT_QUEUED_TIMEOUT_MS: "120000",
@@ -57,11 +59,23 @@ describe("getWorkerRuntimeConfig", () => {
       intervalMs: 120000,
       initialDelayMs: 0,
       batchSize: 9,
-      staleAfterDays: 45,
+      aiStaleAfterDays: 400,
+      youtubeStaleAfterDays: 45,
       maxRetryCount: 7,
       processingTimeoutMs: 900000,
       queuedTimeoutMs: 120000,
     });
+  });
+
+  it("ignores the deprecated single continuous enrichment stale override", () => {
+    const config = getWorkerRuntimeConfig({
+      DATABASE_URL: "postgresql://scouting:scouting@localhost:5432/scouting_platform",
+      APP_ENCRYPTION_KEY: "12345678901234567890123456789012",
+      WORKER_CONTINUOUS_ENRICHMENT_STALE_AFTER_DAYS: "45",
+    });
+
+    expect(config.continuousEnrichment.aiStaleAfterDays).toBe(365);
+    expect(config.continuousEnrichment.youtubeStaleAfterDays).toBe(30);
   });
 
   it("rejects invalid concurrency overrides", () => {

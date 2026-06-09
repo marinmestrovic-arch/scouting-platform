@@ -1,6 +1,10 @@
-import { executeChannelLlmEnrichment, ServiceError } from "@scouting-platform/core";
+import {
+  executeChannelLlmEnrichment,
+  executeChannelYoutubeRefresh,
+  ServiceError,
+} from "@scouting-platform/core";
 import type { PgBoss } from "pg-boss";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   channelsEnrichLlmWorkerOptions,
@@ -9,6 +13,7 @@ import {
 
 vi.mock("@scouting-platform/core", () => ({
   executeChannelLlmEnrichment: vi.fn(),
+  executeChannelYoutubeRefresh: vi.fn(),
   ServiceError: class ServiceError extends Error {
     readonly code: string;
     readonly status: number;
@@ -23,6 +28,10 @@ vi.mock("@scouting-platform/core", () => ({
 }));
 
 describe("channels.enrich.llm worker registration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("registers channels.enrich.llm with explicit bounded concurrency options", async () => {
     const work = vi.fn(async () => "channels-enrich-llm-worker");
 
@@ -67,6 +76,7 @@ describe("channels.enrich.llm worker registration", () => {
     const requestB = {
       channelId: "33333333-3333-4333-8333-333333333333",
       requestedByUserId: "44444444-4444-4444-8444-444444444444",
+      mode: "full" as const,
     };
 
     await handler([
@@ -76,6 +86,35 @@ describe("channels.enrich.llm worker registration", () => {
 
     expect(vi.mocked(executeChannelLlmEnrichment)).toHaveBeenNthCalledWith(1, requestA);
     expect(vi.mocked(executeChannelLlmEnrichment)).toHaveBeenNthCalledWith(2, requestB);
+    expect(vi.mocked(executeChannelYoutubeRefresh)).not.toHaveBeenCalled();
+  });
+
+  it("dispatches youtube-only payloads to the YouTube refresh executor", async () => {
+    const work = vi.fn(async () => "channels-enrich-llm-worker");
+
+    await registerChannelsEnrichLlmWorker({ work } as unknown as Pick<PgBoss, "work">);
+
+    const call = work.mock.calls[0];
+
+    if (!call) {
+      throw new Error("Expected channels.enrich.llm worker to be registered");
+    }
+
+    const [, , handler] = call as unknown as [
+      string,
+      typeof channelsEnrichLlmWorkerOptions,
+      (job: unknown) => Promise<void>,
+    ];
+    const request = {
+      channelId: "11111111-1111-4111-8111-111111111111",
+      requestedByUserId: "22222222-2222-4222-8222-222222222222",
+      mode: "youtube_only" as const,
+    };
+
+    await handler({ data: request });
+
+    expect(vi.mocked(executeChannelYoutubeRefresh)).toHaveBeenCalledWith(request);
+    expect(vi.mocked(executeChannelLlmEnrichment)).not.toHaveBeenCalled();
   });
 
   it("records durable service failures without rethrowing for pg-boss retry", async () => {
