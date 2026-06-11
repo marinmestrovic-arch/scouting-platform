@@ -289,16 +289,15 @@ describe("catalog table shell view", () => {
         youtubeShortsMedianViewsMax: "",
         youtubeFollowersMin: "",
         youtubeFollowersMax: "500000",
-        // "failed" is a raw backend status — maps to "not_enriched" in the UI filter.
-        enrichmentStatus: "not_enriched",
+        enrichmentStatus: "failed",
       },
     });
 
     expect(buildCatalogSearchParams(parsed).toString()).toBe(
-      "page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000&enrichmentStatus=not_enriched",
+      "page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000&enrichmentStatus=failed",
     );
     expect(buildCatalogHref("/catalog", parsed)).toBe(
-      "/catalog?page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000&enrichmentStatus=not_enriched",
+      "/catalog?page=3&query=space&countryRegion=Croatia&countryRegion=Germany&influencerVertical=Gaming&youtubeVideoMedianViewsMin=100000&youtubeFollowersMax=500000&enrichmentStatus=failed",
     );
     expect(
       areCatalogFiltersEqual(parsed.filters, {
@@ -312,7 +311,7 @@ describe("catalog table shell view", () => {
         youtubeShortsMedianViewsMax: "",
         youtubeFollowersMin: "",
         youtubeFollowersMax: "500000",
-        enrichmentStatus: "not_enriched",
+        enrichmentStatus: "failed",
       }),
     ).toBe(true);
   });
@@ -441,6 +440,33 @@ describe("catalog table shell view", () => {
     expect(merged.items[1]?.enrichment).toEqual(pagedChannels.items[1]?.enrichment);
   });
 
+  it("removes newly queued channels from a completed-only result set", () => {
+    const merged = mergeCatalogBatchEnrichmentResults(
+      pagedChannels,
+      [
+        {
+          channelId: pagedChannels.items[0]!.id,
+          ok: true,
+          enrichment: {
+            status: "queued",
+            updatedAt: "2026-03-11T09:00:00.000Z",
+            completedAt: null,
+            lastError: null,
+            summary: null,
+            topics: null,
+            brandFitNotes: null,
+            confidence: null,
+            structuredProfile: null,
+          },
+        },
+      ],
+      ["completed"],
+    );
+
+    expect(merged.items.map((channel) => channel.id)).toEqual([pagedChannels.items[1]!.id]);
+    expect(merged.total).toBe(41);
+  });
+
   it("formats per-row enrichment copy and polling eligibility", () => {
     expect(
       getCatalogEnrichmentDetailCopy({
@@ -506,7 +532,7 @@ describe("catalog table shell view", () => {
   });
 
   it("round-trips saved segment filters into catalog filter state", () => {
-    const filters = buildSavedSegmentFilters({
+    const baseFilters: Parameters<typeof buildSavedSegmentFilters>[0] = {
       query: "  space  ",
       countryRegion: ["Croatia", "Germany"],
       influencerVertical: ["Gaming"],
@@ -518,7 +544,8 @@ describe("catalog table shell view", () => {
       youtubeFollowersMin: "",
       youtubeFollowersMax: "500000",
       enrichmentStatus: "",
-    });
+    };
+    const filters = buildSavedSegmentFilters(baseFilters);
 
     expect(filters).toEqual({
       query: "space",
@@ -556,6 +583,18 @@ describe("catalog table shell view", () => {
       youtubeFollowersMax: "",
       enrichmentStatus: "enriched",
     });
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "enriched" }).enrichmentStatus)
+      .toEqual(["completed"]);
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "not_enriched" }).enrichmentStatus)
+      .toEqual(["missing"]);
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "queued" }).enrichmentStatus)
+      .toEqual(["queued"]);
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "running" }).enrichmentStatus)
+      .toEqual(["running"]);
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "failed" }).enrichmentStatus)
+      .toEqual(["failed"]);
+    expect(buildSavedSegmentFilters({ ...baseFilters, enrichmentStatus: "stale" }).enrichmentStatus)
+      .toEqual(["stale"]);
     expect(
       formatSavedSegmentSummary({
         locale: "en",

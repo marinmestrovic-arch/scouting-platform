@@ -441,6 +441,7 @@ function toCatalogEnrichmentSummary(
 export function mergeCatalogBatchEnrichmentResults(
   data: ListChannelsResponse,
   results: readonly BatchChannelEnrichmentRequestResult[],
+  visibleEnrichmentStatuses?: readonly ChannelSummary["enrichment"]["status"][],
 ): ListChannelsResponse {
   const enrichmentByChannelId = new Map(
     results
@@ -452,20 +453,34 @@ export function mergeCatalogBatchEnrichmentResults(
     return data;
   }
 
-  return {
-    ...data,
-    items: data.items.map((channel) => {
-      const enrichment = enrichmentByChannelId.get(channel.id);
+  const visibleStatusSet = visibleEnrichmentStatuses
+    ? new Set(visibleEnrichmentStatuses)
+    : null;
+  let removedCount = 0;
+  const items = data.items.flatMap((channel) => {
+    const enrichment = enrichmentByChannelId.get(channel.id);
 
-      if (!enrichment) {
-        return channel;
-      }
+    if (!enrichment) {
+      return [channel];
+    }
 
-      return {
+    if (visibleStatusSet && !visibleStatusSet.has(enrichment.status)) {
+      removedCount += 1;
+      return [];
+    }
+
+    return [
+      {
         ...channel,
         enrichment,
-      };
-    }),
+      },
+    ];
+  });
+
+  return {
+    ...data,
+    items,
+    total: Math.max(0, data.total - removedCount),
   };
 }
 

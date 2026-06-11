@@ -16,7 +16,13 @@ export type CatalogMultiValueFilterKey =
   | "influencerVertical"
   | "influencerType";
 
-export type CatalogEnrichmentFilter = "enriched" | "not_enriched";
+export type CatalogEnrichmentFilter =
+  | "enriched"
+  | "not_enriched"
+  | "queued"
+  | "running"
+  | "failed"
+  | "stale";
 
 export type CatalogFiltersState = {
   query: string;
@@ -158,7 +164,14 @@ function toOptionalNumber(value: string): number | undefined {
 }
 
 function normalizeEnrichmentFilter(value: unknown): CatalogEnrichmentFilter | "" {
-  if (value === "enriched" || value === "not_enriched") {
+  if (
+    value === "enriched" ||
+    value === "not_enriched" ||
+    value === "queued" ||
+    value === "running" ||
+    value === "failed" ||
+    value === "stale"
+  ) {
     return value;
   }
 
@@ -196,25 +209,31 @@ function formatRangeSummary(
 }
 
 export function normalizeCatalogFilters(filters: CatalogFilterInput): CatalogFiltersState {
-  // Map raw enrichmentStatus array to simplified UI filter value.
-  // "completed" → "enriched"; anything else in the set → "not_enriched".
   const rawEnrichmentStatus = filters.enrichmentStatus;
   let enrichmentStatus: CatalogEnrichmentFilter | "" = "";
 
   if (rawEnrichmentStatus && rawEnrichmentStatus.length > 0) {
-    const hasCompleted = rawEnrichmentStatus.includes("completed");
-    const hasMissing = rawEnrichmentStatus.includes("missing");
-    const hasFailed = rawEnrichmentStatus.includes("failed");
+    const statuses = new Set(rawEnrichmentStatus);
+    const directFilter = normalizeEnrichmentFilter(rawEnrichmentStatus[0]);
 
-    if (hasCompleted && !hasMissing && !hasFailed) {
-      // ["completed"] (legacy) or ["completed", "stale"] (current) → enriched.
+    if (rawEnrichmentStatus.length === 1 && directFilter) {
+      enrichmentStatus = directFilter;
+    } else if (statuses.size === 1 && statuses.has("completed")) {
       enrichmentStatus = "enriched";
-    } else if ((hasMissing || hasFailed) && !hasCompleted) {
-      // ["missing", "failed"] (current) or ["missing", "failed", "stale"] (legacy) → not_enriched.
+    } else if (statuses.size === 1 && statuses.has("missing")) {
       enrichmentStatus = "not_enriched";
-    } else {
-      // Simplified values passed directly from URL params ("enriched" / "not_enriched").
-      enrichmentStatus = normalizeEnrichmentFilter(rawEnrichmentStatus[0]);
+    } else if (
+      [...statuses].every((status) => status === "completed" || status === "stale")
+    ) {
+      // Preserve saved segments created when stale channels were grouped under Enriched.
+      enrichmentStatus = "enriched";
+    } else if (
+      [...statuses].every(
+        (status) => status === "missing" || status === "failed" || status === "stale",
+      )
+    ) {
+      // Preserve saved segments created when failed/stale channels were grouped under Not enriched.
+      enrichmentStatus = "not_enriched";
     }
   }
 
@@ -270,13 +289,19 @@ export function buildCatalogChannelFilters(filters: CatalogFiltersState): Catalo
     }
   }
 
-  if (filters.enrichmentStatus === "enriched") {
-    // "Enriched" means the channel has enrichment data — completed or stale (data exists but is old).
-    requestFilters.enrichmentStatus = ["completed", "stale"];
-  } else if (filters.enrichmentStatus === "not_enriched") {
-    // "Not enriched" means the channel has no enrichment data at all.
-    // Stale channels still have data so they are excluded; queued/running are in-progress.
-    requestFilters.enrichmentStatus = ["missing", "failed"];
+  switch (filters.enrichmentStatus) {
+    case "enriched":
+      requestFilters.enrichmentStatus = ["completed"];
+      break;
+    case "not_enriched":
+      requestFilters.enrichmentStatus = ["missing"];
+      break;
+    case "queued":
+    case "running":
+    case "failed":
+    case "stale":
+      requestFilters.enrichmentStatus = [filters.enrichmentStatus];
+      break;
   }
 
   return requestFilters;

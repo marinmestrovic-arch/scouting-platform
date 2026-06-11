@@ -442,6 +442,10 @@ function MetricRangeFilterChip({
 const ENRICHMENT_FILTER_OPTIONS: { value: CatalogEnrichmentFilter; label: string }[] = [
   { value: "enriched", label: "Enriched" },
   { value: "not_enriched", label: "Not enriched" },
+  { value: "queued", label: "Queued" },
+  { value: "running", label: "Running" },
+  { value: "failed", label: "Failed" },
+  { value: "stale", label: "Stale" },
 ];
 
 function EnrichmentStatusFilterChip({
