@@ -80,7 +80,7 @@ type ChannelEnrichmentTimings = {
 
 function logChannelEnrichmentTiming(input: {
   channelId: string;
-  outcome: "completed" | "failed";
+  outcome: "completed" | "failed" | "cancelled";
   timings: ChannelEnrichmentTimings;
   totalMs: number;
   providerErrorClass?: string;
@@ -94,6 +94,30 @@ function logChannelEnrichmentTiming(input: {
     totalMs: input.totalMs,
     ...(input.providerErrorClass ? { providerErrorClass: input.providerErrorClass } : {}),
   }));
+}
+
+class ChannelEnrichmentCancelledError extends Error {
+  constructor() {
+    super("Channel enrichment was cancelled");
+    this.name = "ChannelEnrichmentCancelledError";
+  }
+}
+
+async function persistRunningEnrichmentMarker(input: {
+  channelId: string;
+  data: Prisma.ChannelEnrichmentUpdateManyMutationInput;
+}): Promise<void> {
+  const updated = await prisma.channelEnrichment.updateMany({
+    where: {
+      channelId: input.channelId,
+      status: PrismaChannelEnrichmentStatus.RUNNING,
+    },
+    data: input.data,
+  });
+
+  if (updated.count === 0) {
+    throw new ChannelEnrichmentCancelledError();
+  }
 }
 
 function formatErrorMessage(error: unknown): string {
@@ -1122,6 +1146,98 @@ export async function requestChannelLlmEnrichment(input: {
   };
 }
 
+export async function cancelChannelLlmEnrichment(input: {
+  channelId: string;
+  actorUserId: string;
+}): Promise<RequestChannelEnrichmentResponse> {
+  await withDbTransaction(async (tx) => {
+    const channel = await tx.channel.findUnique({
+      where: {
+        id: input.channelId,
+      },
+      select: {
+        enrichment: {
+          select: {
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!channel) {
+      throw new ServiceError("CHANNEL_NOT_FOUND", 404, "Channel not found");
+    }
+
+    if (!channel.enrichment) {
+      throw new ServiceError(
+        "CHANNEL_ENRICHMENT_NOT_ACTIVE",
+        409,
+        "Channel enrichment is not active",
+      );
+    }
+
+    if (channel.enrichment.status === PrismaChannelEnrichmentStatus.CANCELLED) {
+      return;
+    }
+
+    if (
+      channel.enrichment.status !== PrismaChannelEnrichmentStatus.QUEUED &&
+      channel.enrichment.status !== PrismaChannelEnrichmentStatus.RUNNING
+    ) {
+      throw new ServiceError(
+        "CHANNEL_ENRICHMENT_NOT_ACTIVE",
+        409,
+        "Channel enrichment is not active",
+      );
+    }
+
+    const cancelled = await tx.channelEnrichment.updateMany({
+      where: {
+        channelId: input.channelId,
+        status: channel.enrichment.status,
+      },
+      data: {
+        status: PrismaChannelEnrichmentStatus.CANCELLED,
+        nextRetryAt: null,
+        lastError: null,
+        youtubeFetchedAt: null,
+        rawOpenaiPayloadFetchedAt: null,
+      },
+    });
+
+    if (cancelled.count === 0) {
+      throw new ServiceError(
+        "CHANNEL_ENRICHMENT_NOT_ACTIVE",
+        409,
+        "Channel enrichment is no longer active",
+      );
+    }
+
+    await tx.auditEvent.create({
+      data: {
+        actorUserId: input.actorUserId,
+        action: "channel.enrichment.cancelled",
+        entityType: "channel",
+        entityId: input.channelId,
+        metadata: {
+          previousStatus: channel.enrichment.status.toLowerCase(),
+        },
+      },
+    });
+  });
+
+  const channel = await getChannelById(input.channelId);
+
+  if (!channel) {
+    throw new ServiceError("CHANNEL_NOT_FOUND", 404, "Channel not found");
+  }
+
+  return {
+    channelId: input.channelId,
+    enrichment: channel.enrichment,
+  };
+}
+
 export async function executeChannelYoutubeRefresh(input: {
   channelId: string;
   requestedByUserId: string;
@@ -1506,10 +1622,8 @@ export async function executeChannelLlmEnrichment(input: {
       });
       timings.youtubeContextMs = Date.now() - youtubeContextStartedAt;
 
-      await prisma.channelEnrichment.update({
-        where: {
-          channelId: input.channelId,
-        },
+      await persistRunningEnrichmentMarker({
+        channelId: input.channelId,
         data: {
           youtubeFetchedAt: new Date(),
         },
@@ -1616,10 +1730,8 @@ export async function executeChannelLlmEnrichment(input: {
         });
       }
 
-      await prisma.channelEnrichment.update({
-        where: {
-          channelId: input.channelId,
-        },
+      await persistRunningEnrichmentMarker({
+        channelId: input.channelId,
         data: {
           rawOpenaiPayload: toJsonValue(result.rawPayload),
           rawOpenaiPayloadFetchedAt: new Date(),
@@ -1670,6 +1782,20 @@ export async function executeChannelLlmEnrichment(input: {
 
     const persistenceStartedAt = Date.now();
     await prisma.$transaction(async (tx) => {
+      const running = await tx.channelEnrichment.updateMany({
+        where: {
+          channelId: executionState.channelId,
+          status: PrismaChannelEnrichmentStatus.RUNNING,
+        },
+        data: {
+          status: PrismaChannelEnrichmentStatus.RUNNING,
+        },
+      });
+
+      if (running.count === 0) {
+        throw new ChannelEnrichmentCancelledError();
+      }
+
       await persistYoutubeSignals({
         tx,
         channel: executionState.channel,
@@ -1739,6 +1865,16 @@ export async function executeChannelLlmEnrichment(input: {
       totalMs: Date.now() - totalStartedAt,
     });
   } catch (error) {
+    if (error instanceof ChannelEnrichmentCancelledError) {
+      logChannelEnrichmentTiming({
+        channelId: input.channelId,
+        outcome: "cancelled",
+        timings,
+        totalMs: Date.now() - totalStartedAt,
+      });
+      return;
+    }
+
     await markChannelLlmEnrichmentFailed({
       channelId: input.channelId,
       error,

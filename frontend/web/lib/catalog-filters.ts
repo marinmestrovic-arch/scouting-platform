@@ -22,7 +22,8 @@ export type CatalogEnrichmentFilter =
   | "queued"
   | "running"
   | "failed"
-  | "stale";
+  | "stale"
+  | "cancelled";
 
 export type CatalogFiltersState = {
   query: string;
@@ -170,7 +171,8 @@ function normalizeEnrichmentFilter(value: unknown): CatalogEnrichmentFilter | ""
     value === "queued" ||
     value === "running" ||
     value === "failed" ||
-    value === "stale"
+    value === "stale" ||
+    value === "cancelled"
   ) {
     return value;
   }
@@ -300,6 +302,7 @@ export function buildCatalogChannelFilters(filters: CatalogFiltersState): Catalo
     case "running":
     case "failed":
     case "stale":
+    case "cancelled":
       requestFilters.enrichmentStatus = [filters.enrichmentStatus];
       break;
   }

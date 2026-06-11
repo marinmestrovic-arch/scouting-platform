@@ -1,5 +1,8 @@
 import { requestChannelEnrichmentResponseSchema } from "@scouting-platform/contracts";
-import { requestChannelLlmEnrichment } from "@scouting-platform/core";
+import {
+  cancelChannelLlmEnrichment,
+  requestChannelLlmEnrichment,
+} from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -36,6 +39,35 @@ export async function POST(
     const payload = requestChannelEnrichmentResponseSchema.parse(result);
 
     return NextResponse.json(payload, { status: 202 });
+  } catch (error) {
+    return toRouteErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const session = await requireAuthenticatedSession();
+
+  if (!session.ok) {
+    return session.response;
+  }
+
+  try {
+    const params = paramsSchema.safeParse(await context.params);
+
+    if (!params.success) {
+      return NextResponse.json({ error: "Invalid channel id" }, { status: 400 });
+    }
+
+    const result = await cancelChannelLlmEnrichment({
+      channelId: params.data.id,
+      actorUserId: session.userId,
+    });
+    const payload = requestChannelEnrichmentResponseSchema.parse(result);
+
+    return NextResponse.json(payload);
   } catch (error) {
     return toRouteErrorResponse(error);
   }

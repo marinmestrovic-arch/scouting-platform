@@ -880,6 +880,11 @@ export async function markChannelLlmEnrichmentFailed(input: {
 }): Promise<void> {
   const failedAt = input.failedAt ?? new Date();
   const lastError = formatErrorMessage(input.error);
+  const failureEligibleStatuses: PrismaChannelEnrichmentStatus[] = [
+    PrismaChannelEnrichmentStatus.QUEUED,
+    PrismaChannelEnrichmentStatus.RUNNING,
+    PrismaChannelEnrichmentStatus.STALE,
+  ];
 
   // Use optimistic compare-and-set retries so failure marking still works even
   // if callback-style transaction hooks are interrupted by surrounding tests/mocks.
@@ -890,10 +895,14 @@ export async function markChannelLlmEnrichmentFailed(input: {
       },
       select: {
         retryCount: true,
+        status: true,
       },
     });
 
-    if (!enrichment) {
+    if (
+      !enrichment ||
+      !failureEligibleStatuses.includes(enrichment.status)
+    ) {
       return;
     }
 
@@ -902,6 +911,7 @@ export async function markChannelLlmEnrichmentFailed(input: {
       where: {
         channelId: input.channelId,
         retryCount: enrichment.retryCount,
+        status: enrichment.status,
       },
       data: {
         status: PrismaChannelEnrichmentStatus.FAILED,
@@ -925,18 +935,24 @@ export async function markChannelLlmEnrichmentFailed(input: {
     },
     select: {
       retryCount: true,
+      status: true,
     },
   });
 
-  if (!enrichment) {
+  if (
+    !enrichment ||
+    !failureEligibleStatuses.includes(enrichment.status)
+  ) {
     return;
   }
 
   const retryCount = enrichment.retryCount + 1;
 
-  await prisma.channelEnrichment.update({
+  await prisma.channelEnrichment.updateMany({
     where: {
       channelId: input.channelId,
+      retryCount: enrichment.retryCount,
+      status: enrichment.status,
     },
     data: {
       status: PrismaChannelEnrichmentStatus.FAILED,

@@ -16,6 +16,7 @@ export const channelEnrichmentStatusSchema = z.enum([
   "completed",
   "failed",
   "stale",
+  "cancelled",
 ]);
 
 export const structuredChannelProfilePrimaryNicheSchema = z.enum([

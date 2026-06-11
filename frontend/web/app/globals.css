@@ -1316,7 +1316,8 @@ a {
 .catalog-table__status--missing,
 .catalog-table__status--queued,
 .catalog-table__status--running,
-.catalog-table__status--stale {
+.catalog-table__status--stale,
+.catalog-table__status--cancelled {
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
 }
@@ -3379,6 +3380,7 @@ a {
 .channel-detail-shell__status--queued,
 .channel-detail-shell__status--running,
 .channel-detail-shell__status--stale,
+.channel-detail-shell__status--cancelled,
 .channel-detail-shell__status--pending_approval,
 .channel-detail-shell__status--approved {
   background: rgba(15, 106, 104, 0.08);
@@ -10106,6 +10108,7 @@ textarea:focus-visible,
   flex-shrink: 0;
 }
 .creator-profile__hero-actions .channel-detail-shell__status--missing::before { background: rgba(255, 255, 255, 0.5); }
+.creator-profile__hero-actions .channel-detail-shell__status--cancelled::before { background: rgba(255, 255, 255, 0.5); }
 .creator-profile__hero-actions .channel-detail-shell__status--queued::before,
 .creator-profile__hero-actions .channel-detail-shell__status--running::before {
   background: #7AA1FF;
@@ -10438,6 +10441,11 @@ textarea:focus-visible,
 .channel-detail-shell__status--missing {
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
+}
+.channel-detail-shell__status--cancelled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
 }
 .channel-detail-shell__status--queued,
 .channel-detail-shell__status--running {

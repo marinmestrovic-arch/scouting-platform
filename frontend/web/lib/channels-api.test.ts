@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiRequestError,
+  cancelChannelEnrichment,
   deleteChannelsBatch,
   fetchChannelDetail,
   fetchChannels,
@@ -350,6 +351,24 @@ describe("channels api helpers", () => {
     });
     expect(response.channelId).toBe(channelId);
     expect(response.enrichment.summary).toBe("Creator focused on launches and industry analysis.");
+  });
+
+  it("stops enrichment through DELETE /api/channels/:id/enrich", async () => {
+    const channelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const enrichment = {
+      ...buildChannelDetailPayload().enrichment,
+      status: "cancelled",
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({ channelId, enrichment }),
+    );
+
+    const response = await cancelChannelEnrichment(channelId);
+
+    expect(fetchSpy).toHaveBeenCalledWith(`/api/channels/${channelId}/enrich`, {
+      method: "DELETE",
+    });
+    expect(response.enrichment.status).toBe("cancelled");
   });
 
   it("deletes channels through the admin bulk delete endpoint", async () => {

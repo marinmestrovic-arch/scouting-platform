@@ -22,6 +22,8 @@ const GENERIC_CHANNEL_DETAIL_REQUEST_ERROR_MESSAGE =
   "Unable to load channel details. Please try again.";
 const GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE =
   "Unable to request channel enrichment. Please try again.";
+const GENERIC_CHANNEL_ENRICHMENT_CANCEL_ERROR_MESSAGE =
+  "Unable to stop channel enrichment. Please try again.";
 const GENERIC_CHANNEL_DELETE_REQUEST_ERROR_MESSAGE =
   "Unable to delete selected channels. Please try again.";
 const BATCH_CHANNEL_ENRICHMENT_CONCURRENCY_LIMIT = 4;
@@ -282,6 +284,38 @@ export async function requestChannelEnrichment(
     return parsed.data;
   } catch (error) {
     throw normalizeRequestError(error, GENERIC_CHANNEL_ENRICHMENT_REQUEST_ERROR_MESSAGE);
+  }
+}
+
+export async function cancelChannelEnrichment(
+  channelId: string,
+): Promise<RequestChannelEnrichmentResponse> {
+  try {
+    const response = await fetch(`/api/channels/${channelId}/enrich`, {
+      method: "DELETE",
+    });
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new ApiRequestError(
+        getApiErrorMessage(response, payload, {
+          authorizationErrorMessage: "You are not authorized to stop this enrichment.",
+          notFoundErrorMessage: "Channel not found.",
+          fallbackMessage: GENERIC_CHANNEL_ENRICHMENT_CANCEL_ERROR_MESSAGE,
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = requestChannelEnrichmentResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_CHANNEL_ENRICHMENT_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error, GENERIC_CHANNEL_ENRICHMENT_CANCEL_ERROR_MESSAGE);
   }
 }
 

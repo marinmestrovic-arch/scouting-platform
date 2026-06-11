@@ -154,6 +154,61 @@ integration("week 4 API integration", () => {
     expect(response.status).toBe(400);
   });
 
+  it("cancels active enrichment through DELETE and records an audit event", async () => {
+    const user = await createUser("cancel-manager@example.com");
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-API-CANCEL-1",
+        title: "Cancelable Channel",
+        enrichment: {
+          create: {
+            status: PrismaChannelEnrichmentStatus.RUNNING,
+            requestedByUserId: user.id,
+            requestedAt: new Date(),
+            startedAt: new Date(),
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    currentSessionUser = { id: user.id, role: "user" };
+
+    const response = await channelEnrichRoute.DELETE(
+      new Request(`http://localhost/api/channels/${channel.id}/enrich`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: channel.id }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      channelId: channel.id,
+      enrichment: {
+        status: "cancelled",
+      },
+    });
+    await expect(prisma.channelEnrichment.findUnique({
+      where: { channelId: channel.id },
+      select: { status: true, lastError: true, nextRetryAt: true },
+    })).resolves.toEqual({
+      status: PrismaChannelEnrichmentStatus.CANCELLED,
+      lastError: null,
+      nextRetryAt: null,
+    });
+    await expect(prisma.auditEvent.findFirst({
+      where: {
+        action: "channel.enrichment.cancelled",
+        entityId: channel.id,
+      },
+      select: { actorUserId: true, metadata: true },
+    })).resolves.toMatchObject({
+      actorUserId: user.id,
+      metadata: { previousStatus: "running" },
+    });
+  });
+
   it("includes enrichment state on channel list and detail responses", async () => {
     const user = await createUser("manager@example.com");
     currentSessionUser = { id: user.id, role: "user" };

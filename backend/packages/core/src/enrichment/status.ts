@@ -67,6 +67,10 @@ export function resolveChannelEnrichmentStatus(input: {
     return "failed";
   }
 
+  if (input.enrichment.status === PrismaChannelEnrichmentStatus.CANCELLED) {
+    return "cancelled";
+  }
+
   return "queued";
 }
 

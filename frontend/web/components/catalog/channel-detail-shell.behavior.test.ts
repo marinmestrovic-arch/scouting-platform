@@ -3,12 +3,14 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  cancelChannelEnrichmentMock,
   fetchChannelDetailMock,
   requestChannelEnrichmentMock,
   useEffectMock,
   useRefMock,
   useStateMock,
 } = vi.hoisted(() => ({
+  cancelChannelEnrichmentMock: vi.fn(),
   fetchChannelDetailMock: vi.fn(),
   requestChannelEnrichmentMock: vi.fn(),
   useEffectMock: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("../../lib/channels-api", () => ({
     }
   },
   fetchChannelDetail: fetchChannelDetailMock,
+  cancelChannelEnrichment: cancelChannelEnrichmentMock,
   requestChannelEnrichment: requestChannelEnrichmentMock,
 }));
 
@@ -202,6 +205,13 @@ describe("channel detail shell behavior", () => {
     requestChannelEnrichmentMock.mockResolvedValue({
       channelId: "53adac17-f39d-4731-a61f-194150fbc431",
       enrichment: createChannelDetail().enrichment,
+    });
+    cancelChannelEnrichmentMock.mockResolvedValue({
+      channelId: "53adac17-f39d-4731-a61f-194150fbc431",
+      enrichment: {
+        ...createChannelDetail().enrichment,
+        status: "cancelled",
+      },
     });
   });
 
@@ -439,6 +449,34 @@ describe("channel detail shell behavior", () => {
 
     const reloadTokenUpdater = setReloadToken.mock.calls[0]?.[0] as ((value: number) => number) | undefined;
     expect(reloadTokenUpdater?.(4)).toBe(5);
+  });
+
+  it("stops an active enrichment and preserves the retained result", async () => {
+    const currentChannel = createChannelDetail({
+      enrichment: {
+        ...createChannelDetail().enrichment,
+        status: "running",
+      },
+    });
+    const { element, setEnrichmentActionState, setRequestState } = renderShell({
+      requestState: {
+        status: "ready",
+        data: currentChannel,
+        error: null,
+      },
+      runEffects: false,
+    });
+
+    await element.props.onRequestEnrichment();
+
+    expect(cancelChannelEnrichmentMock).toHaveBeenCalledWith(currentChannel.id);
+    expect(requestChannelEnrichmentMock).not.toHaveBeenCalled();
+    expect(setRequestState).toHaveBeenCalledWith(expect.any(Function));
+    expect(setEnrichmentActionState).toHaveBeenLastCalledWith({
+      type: "success",
+      message:
+        "Enrichment stopped. Any provider request already in flight may finish, but its result will not be saved.",
+    });
   });
 
   it("shows enrichment request errors without clearing the loaded detail state", async () => {

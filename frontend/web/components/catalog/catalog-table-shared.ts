@@ -105,6 +105,8 @@ export function getCatalogEnrichmentDetailCopy(
       const timestamp = getCatalogEnrichmentActivityTimestamp(enrichment);
       return timestamp ? `Stale since ${timestamp}.` : "Stale and should be refreshed.";
     }
+    case "cancelled":
+      return "Stopped before the latest attempt completed.";
     default:
       return enrichment.status;
   }

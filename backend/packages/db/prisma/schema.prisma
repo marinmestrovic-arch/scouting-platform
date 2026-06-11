@@ -90,6 +90,7 @@ enum ChannelEnrichmentStatus {
   COMPLETED @map("completed")
   FAILED    @map("failed")
   STALE     @map("stale")
+  CANCELLED @map("cancelled")
 
   @@map("channel_enrichment_status")
 }

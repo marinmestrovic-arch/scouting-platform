@@ -446,6 +446,7 @@ const ENRICHMENT_FILTER_OPTIONS: { value: CatalogEnrichmentFilter; label: string
   { value: "running", label: "Running" },
   { value: "failed", label: "Failed" },
   { value: "stale", label: "Stale" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 function EnrichmentStatusFilterChip({

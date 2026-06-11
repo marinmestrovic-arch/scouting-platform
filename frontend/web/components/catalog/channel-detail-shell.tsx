@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import {
   ApiRequestError,
+  cancelChannelEnrichment,
   fetchChannelDetail,
   requestChannelEnrichment,
 } from "../../lib/channels-api";
@@ -233,11 +234,15 @@ function getEnrichmentActionLabel(status: ChannelEnrichmentStatus): string {
   }
 
   if (status === "queued") {
-    return "Enrichment queued";
+    return "Stop enrichment";
   }
 
   if (status === "running") {
-    return "Enrichment running";
+    return "Stop enrichment";
+  }
+
+  if (status === "cancelled") {
+    return "Enrich again";
   }
 
   return "Refresh enrichment";
@@ -265,6 +270,12 @@ function getEnrichmentStatusMessage(
     return hasRetainedResult
       ? "Enrichment is running in the background. This page refreshes automatically while processing continues, and the previous result stays visible below until the new result is stored."
       : "Enrichment is running in the background. This page refreshes automatically while processing continues.";
+  }
+
+  if (enrichment.status === "cancelled") {
+    return hasRetainedResult
+      ? "The latest enrichment attempt was stopped. The previous successful result remains visible below."
+      : "The enrichment was stopped before a result was stored. You can start it again when ready.";
   }
 
   if (enrichment.status === "failed") {
@@ -477,7 +488,7 @@ function StatusPopoverTag({
                   onClick={() => setIsOpen(false)}
                   type="button"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
                   className="workspace-button"
@@ -514,9 +525,6 @@ function renderReadyState(
   },
 ) {
   const enrichmentActionStatus = options.enrichmentActionState;
-  const isEnrichmentBusy =
-    options.enrichmentActionState.type === "submitting" ||
-    shouldPollEnrichmentStatus(channel.enrichment.status);
   const youtubeUrl = resolveYoutubeUrl(channel);
   const socialMediaUrl = resolveSocialMediaUrl(channel);
   const handleLabel = getChannelHandle(channel);
@@ -593,7 +601,7 @@ function renderReadyState(
                   actionLabel={getEnrichmentActionLabel(channel.enrichment.status)}
                   actionState={enrichmentActionStatus}
                   body={getEnrichmentStatusMessage(channel.enrichment)}
-                  disabled={isEnrichmentBusy}
+                  disabled={enrichmentActionStatus.type === "submitting"}
                   onAction={() => {
                     void options.onRequestEnrichment();
                   }}
@@ -998,11 +1006,8 @@ export function ChannelDetailShell({
       return;
     }
 
-    if (shouldPollEnrichmentStatus(requestState.data.enrichment.status)) {
-      return;
-    }
-
     const hadVisibleEnrichment = hasVisibleEnrichmentResult(requestState.data.enrichment);
+    const isCancelling = shouldPollEnrichmentStatus(requestState.data.enrichment.status);
 
     setEnrichmentActionState({
       type: "submitting",
@@ -1010,7 +1015,9 @@ export function ChannelDetailShell({
     });
 
     try {
-      const response = await requestChannelEnrichment(channelId);
+      const response = isCancelling
+        ? await cancelChannelEnrichment(channelId)
+        : await requestChannelEnrichment(channelId);
 
       setRequestState((current) => {
         if (current.status !== "ready") {
@@ -1025,10 +1032,12 @@ export function ChannelDetailShell({
       });
       setEnrichmentActionState({
         type: "success",
-        message: getEnrichmentRequestSuccessMessage(
-          response.enrichment.status,
-          hadVisibleEnrichment || hasVisibleEnrichmentResult(response.enrichment),
-        ),
+        message: isCancelling
+          ? "Enrichment stopped. Any provider request already in flight may finish, but its result will not be saved."
+          : getEnrichmentRequestSuccessMessage(
+            response.enrichment.status,
+            hadVisibleEnrichment || hasVisibleEnrichmentResult(response.enrichment),
+          ),
       });
       reloadOriginChannelIdRef.current = channelId;
       setReloadToken((currentValue) => currentValue + 1);

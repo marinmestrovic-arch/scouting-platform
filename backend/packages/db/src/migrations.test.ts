@@ -110,6 +110,22 @@ const channelYoutubeRefreshStateMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260608120000_channel_youtube_refresh_state/migration.sql",
 );
+const channelEnrichmentCancellationMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260611120000_channel_enrichment_cancellation/migration.sql",
+);
+
+describe("channel enrichment cancellation migration", () => {
+  it("adds the cancelled status deterministically", () => {
+    const migrationSql = readFileSync(channelEnrichmentCancellationMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain(
+      "ALTER TYPE \"channel_enrichment_status\" ADD VALUE 'cancelled'",
+    );
+    expect(migrationSql).not.toContain("IF NOT EXISTS");
+    expect(migrationSql).not.toContain("DO $$");
+  });
+});
 
 describe("pg-boss migration", () => {
   it("installs the pgboss schema and version table", () => {
