@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { YoutubeChannelContext } from "../youtube/context";
 
 const OPENAI_MODEL_FALLBACK = "gpt-5-nano";
+const OPENAI_REQUEST_TIMEOUT_MS = 60_000;
 
 const structuredProfilePrimaryNicheValues = [
   "beauty",
@@ -71,6 +72,20 @@ const structuredProfileBrandSafetyFlagValues = [
   "controversy",
 ] as const;
 
+const crmDropdownOptionsSchema = z.object({
+  influencerType: z.array(z.string().trim().min(1)),
+  influencerVertical: z.array(z.string().trim().min(1)),
+  countryRegion: z.array(z.string().trim().min(1)),
+  language: z.array(z.string().trim().min(1)),
+});
+
+const crmClassificationsSchema = z.object({
+  influencerType: z.string().trim().min(1).nullable().optional(),
+  verticals: z.array(z.string().trim().min(1)).max(3).optional(),
+  countryRegion: z.string().trim().min(1).nullable().optional(),
+  language: z.string().trim().min(1).nullable().optional(),
+});
+
 const legacyOutputSchema = z.object({
   summary: z.string().trim().min(1),
   topics: z.array(z.string().trim().min(1)).min(1).max(20),
@@ -95,6 +110,7 @@ const structuredProfileSchema = z.object({
 
 const strictOutputSchema = legacyOutputSchema.extend({
   structuredProfile: structuredProfileSchema,
+  crmClassifications: crmClassificationsSchema.optional(),
 });
 const fallbackSummary = "Creator profile generated from the available YouTube channel context.";
 const fallbackBrandFitNotes =
@@ -116,6 +132,12 @@ const inputSchema = z.object({
     dominantYoutubeCategoryName: z.string().trim().nullable(),
     contentMixHint: z.enum(["long_form", "shorts", "mixed"]).nullable(),
     uploadCadenceHint: z.enum(["weekly", "biweekly", "monthly", "irregular"]).nullable(),
+  }),
+  crmDropdownOptions: crmDropdownOptionsSchema.default({
+    influencerType: [],
+    influencerVertical: [],
+    countryRegion: [],
+    language: [],
   }),
   apiKey: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).optional(),
@@ -150,6 +172,12 @@ type OpenAiStructuredProfile = z.infer<typeof structuredProfileSchema>;
 
 export type OpenAiChannelEnrichment = z.infer<typeof legacyOutputSchema> & {
   structuredProfile: OpenAiStructuredProfile | null;
+  crmClassifications?: {
+    influencerType?: string;
+    verticals?: string[];
+    countryRegion?: string;
+    language?: string;
+  };
 };
 export type StoredOpenAiChannelEnrichment = OpenAiChannelEnrichment;
 export type EnrichChannelWithOpenAiInput = z.input<typeof inputSchema>;
@@ -191,7 +219,11 @@ function getApiKey(override?: string): string {
 }
 
 function getClient(apiKey: string, override?: OpenAiClientLike): OpenAiClientLike {
-  return override ?? (new OpenAI({ apiKey }) as unknown as OpenAiClientLike);
+  return override ?? (new OpenAI({
+    apiKey,
+    timeout: OPENAI_REQUEST_TIMEOUT_MS,
+    maxRetries: 1,
+  }) as unknown as OpenAiClientLike);
 }
 
 function getModel(override?: string): string {
@@ -261,6 +293,7 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
       brandFitTagValues: [...structuredProfileBrandFitTagValues],
       brandSafetyStatusValues: [...structuredProfileBrandSafetyStatusValues],
       brandSafetyFlagValues: [...structuredProfileBrandSafetyFlagValues],
+      crmDropdownOptions: input.crmDropdownOptions,
     },
     instructions: {
       summary:
@@ -272,6 +305,8 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
         "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
       structuredProfile:
         "Return evidence-based niche, format, brand-fit, language, geo, sponsor, and brand-safety fields. Be conservative and prefer empty arrays, null, 'other', or 'unknown' when evidence is weak.",
+      crmClassifications:
+        "Optionally classify influencerType, verticals, countryRegion, and language. Use only exact values from crmDropdownOptions; return null or an empty array when no allowed value is supported by evidence.",
     },
   });
 }
@@ -440,6 +475,65 @@ function normalizeConfidence(value: unknown): number {
   return Math.min(1, Math.max(0, numericValue));
 }
 
+function normalizeAllowedDropdownValue(
+  value: unknown,
+  allowedValues: readonly string[],
+): string | undefined {
+  const candidate = toTrimmedString(value);
+
+  if (!candidate) {
+    return undefined;
+  }
+
+  const normalizedCandidate = candidate.toLocaleLowerCase("en-US");
+  return allowedValues.find(
+    (allowedValue) => allowedValue.toLocaleLowerCase("en-US") === normalizedCandidate,
+  );
+}
+
+function normalizeCrmClassifications(
+  value: unknown,
+  allowed: z.output<typeof crmDropdownOptionsSchema> | undefined,
+): OpenAiChannelEnrichment["crmClassifications"] {
+  if (!allowed || !isRecord(value)) {
+    return undefined;
+  }
+
+  const verticalCandidates = Array.isArray(value.verticals)
+    ? value.verticals
+    : typeof value.verticals === "string"
+      ? [value.verticals]
+      : [];
+  const verticals = Array.from(new Set(
+    verticalCandidates
+      .map((candidate) => normalizeAllowedDropdownValue(
+        candidate,
+        allowed.influencerVertical,
+      ))
+      .filter((candidate): candidate is string => Boolean(candidate)),
+  )).slice(0, 3);
+  const influencerType = normalizeAllowedDropdownValue(
+    value.influencerType,
+    allowed.influencerType,
+  );
+  const countryRegion = normalizeAllowedDropdownValue(
+    value.countryRegion,
+    allowed.countryRegion,
+  );
+  const language = normalizeAllowedDropdownValue(value.language, allowed.language);
+
+  if (!influencerType && verticals.length === 0 && !countryRegion && !language) {
+    return undefined;
+  }
+
+  return {
+    ...(influencerType ? { influencerType } : {}),
+    ...(verticals.length > 0 ? { verticals } : {}),
+    ...(countryRegion ? { countryRegion } : {}),
+    ...(language ? { language } : {}),
+  };
+}
+
 function normalizeLooseStructuredProfile(value: unknown): OpenAiStructuredProfile | null {
   if (!isRecord(value)) {
     return null;
@@ -559,9 +653,15 @@ function normalizeLooseStructuredProfile(value: unknown): OpenAiStructuredProfil
 
 function normalizeLooseOpenAiChannelEnrichmentProfile(
   parsedContent: unknown,
+  allowedCrmValues?: z.output<typeof crmDropdownOptionsSchema>,
 ): OpenAiChannelEnrichment {
   const content = isRecord(parsedContent) ? parsedContent : {};
   const topics = toStringList(content.topics, 20, 80);
+
+  const crmClassifications = normalizeCrmClassifications(
+    content.crmClassifications,
+    allowedCrmValues,
+  );
 
   return {
     summary: toTrimmedString(content.summary) ?? fallbackSummary,
@@ -569,6 +669,7 @@ function normalizeLooseOpenAiChannelEnrichmentProfile(
     brandFitNotes: toTrimmedString(content.brandFitNotes) ?? fallbackBrandFitNotes,
     confidence: normalizeConfidence(content.confidence),
     structuredProfile: normalizeLooseStructuredProfile(content.structuredProfile),
+    ...(crmClassifications ? { crmClassifications } : {}),
   };
 }
 
@@ -598,26 +699,41 @@ function parseJsonContent(content: string): unknown {
 function normalizeOpenAiChannelEnrichmentProfile(
   parsedContent: unknown,
   allowLegacy: boolean,
+  allowedCrmValues?: z.output<typeof crmDropdownOptionsSchema>,
 ): OpenAiChannelEnrichment {
   const strictProfile = strictOutputSchema.safeParse(parsedContent);
 
   if (strictProfile.success) {
-    return strictProfile.data;
+    const { crmClassifications: rawCrmClassifications, ...strictData } = strictProfile.data;
+    const crmClassifications = normalizeCrmClassifications(
+      rawCrmClassifications,
+      allowedCrmValues,
+    );
+
+    return {
+      ...strictData,
+      ...(crmClassifications ? { crmClassifications } : {}),
+    };
   }
 
   if (allowLegacy) {
     const legacyProfile = legacyOutputSchema.safeParse(parsedContent);
 
     if (legacyProfile.success) {
+      const crmClassifications = isRecord(parsedContent)
+        ? normalizeCrmClassifications(parsedContent.crmClassifications, allowedCrmValues)
+        : undefined;
+
       return {
         ...legacyProfile.data,
         structuredProfile: isRecord(parsedContent)
           ? normalizeLooseStructuredProfile(parsedContent.structuredProfile)
           : null,
+        ...(crmClassifications ? { crmClassifications } : {}),
       };
     }
 
-    return normalizeLooseOpenAiChannelEnrichmentProfile(parsedContent);
+    return normalizeLooseOpenAiChannelEnrichmentProfile(parsedContent, allowedCrmValues);
   }
 
   throw new OpenAiChannelEnrichmentError(
@@ -630,6 +746,7 @@ function normalizeOpenAiChannelEnrichmentProfile(
 function extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(
   rawPayload: unknown,
   allowLegacy: boolean,
+  allowedCrmValues?: z.output<typeof crmDropdownOptionsSchema>,
 ): OpenAiChannelEnrichment {
   const content = extractTextContent(
     (rawPayload as OpenAiCompletionResponse | null | undefined)?.choices?.[0]?.message?.content,
@@ -645,7 +762,11 @@ function extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(
 
   const parsedContent = parseJsonContent(content);
 
-  return normalizeOpenAiChannelEnrichmentProfile(parsedContent, allowLegacy);
+  return normalizeOpenAiChannelEnrichmentProfile(
+    parsedContent,
+    allowLegacy,
+    allowedCrmValues,
+  );
 }
 
 export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
@@ -656,8 +777,13 @@ export function extractOpenAiChannelEnrichmentProfileFromRawPayload(
 
 export function extractStoredOpenAiChannelEnrichmentProfileFromRawPayload(
   rawPayload: unknown,
+  crmDropdownOptions?: z.input<typeof crmDropdownOptionsSchema>,
 ): StoredOpenAiChannelEnrichment {
-  return extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(rawPayload, true);
+  return extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(
+    rawPayload,
+    true,
+    crmDropdownOptions ? crmDropdownOptionsSchema.parse(crmDropdownOptions) : undefined,
+  );
 }
 
 function toProviderError(error: unknown): OpenAiChannelEnrichmentError {
@@ -682,6 +808,21 @@ function toProviderError(error: unknown): OpenAiChannelEnrichmentError {
       "OPENAI_RATE_LIMITED",
       429,
       "OpenAI rate limit exceeded",
+    );
+  }
+
+  if (
+    error instanceof Error
+    && (
+      error.name === "APIConnectionTimeoutError"
+      || error.name === "AbortError"
+      || error.name === "TimeoutError"
+    )
+  ) {
+    return new OpenAiChannelEnrichmentError(
+      "OPENAI_ENRICHMENT_FAILED",
+      504,
+      "OpenAI enrichment request timed out",
     );
   }
 
@@ -725,7 +866,11 @@ export async function enrichChannelWithOpenAi(
   }
 
   return {
-    profile: extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(response, true),
+    profile: extractOpenAiChannelEnrichmentProfileFromRawPayloadInternal(
+      response,
+      true,
+      input.crmDropdownOptions,
+    ),
     rawPayload: toRawPayload(response),
   };
 }

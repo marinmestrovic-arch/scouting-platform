@@ -1,11 +1,9 @@
 import process from "node:process";
+import type { WorkOptions } from "pg-boss";
 
-export type WorkerJobOptions = Readonly<{
-  teamSize: number;
-  teamConcurrency: number;
-  batchSize: number;
-  includeMetadata?: boolean;
-}>;
+export type WorkerJobOptions = Readonly<
+  Pick<WorkOptions, "localConcurrency" | "batchSize" | "includeMetadata">
+>;
 
 export type WorkerRuntimeConfig = Readonly<{
   databaseUrl: string;
@@ -131,8 +129,7 @@ function buildWorkerJobOptions(
   defaultConcurrency: number,
 ): WorkerJobOptions {
   return {
-    teamSize: 1,
-    teamConcurrency: parsePositiveInt(env, name, defaultConcurrency),
+    localConcurrency: parsePositiveInt(env, name, defaultConcurrency),
     batchSize: 1,
   };
 }
@@ -191,7 +188,7 @@ export function getWorkerRuntimeConfig(
         "WORKER_RUNS_ASSESS_CHANNEL_FIT_CONCURRENCY",
         2,
       ),
-      channelsEnrichLlm: buildWorkerJobOptions(env, "WORKER_CHANNELS_ENRICH_LLM_CONCURRENCY", 2),
+      channelsEnrichLlm: buildWorkerJobOptions(env, "WORKER_CHANNELS_ENRICH_LLM_CONCURRENCY", 4),
       channelsEnrichHypeauditor: buildWorkerJobOptions(
         env,
         "WORKER_CHANNELS_ENRICH_HYPEAUDITOR_CONCURRENCY",

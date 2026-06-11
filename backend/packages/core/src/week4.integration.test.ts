@@ -1080,20 +1080,14 @@ integration("week 4 core integration", () => {
           ...ENRICHMENT_RESULT.profile.structuredProfile,
           geoHints: ["US"],
         },
-      },
-    });
-    enrichCreatorProfilesWithOpenAiMock.mockResolvedValueOnce([
-      {
-        rowKey: channel.id,
-        values: {
-          Email: "",
-          "Influencer Type": "Creator",
-          "Influencer Vertical": "Gaming; Tech",
-          "Country/Region": "United States",
-          Language: "English",
+        crmClassifications: {
+          influencerType: "Creator",
+          verticals: ["Gaming", "Tech"],
+          countryRegion: "United States",
+          language: "English",
         },
       },
-    ]);
+    });
 
     await getCore().executeChannelLlmEnrichment({
       channelId: channel.id,
@@ -1117,13 +1111,14 @@ integration("week 4 core integration", () => {
       },
     });
 
-    expect(enrichCreatorProfilesWithOpenAiMock).toHaveBeenCalledWith(
+    expect(enrichChannelWithOpenAiMock).toHaveBeenCalledTimes(1);
+    expect(enrichChannelWithOpenAiMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        dropdownOptions: {
-          "Influencer Type": ["Creator", "Streamer"],
-          "Influencer Vertical": ["Gaming", "Tech"],
-          "Country/Region": ["Croatia", "United States"],
-          Language: ["English"],
+        crmDropdownOptions: {
+          influencerType: ["Creator", "Streamer"],
+          influencerVertical: ["Gaming", "Tech"],
+          countryRegion: ["Croatia", "United States"],
+          language: ["English"],
         },
       }),
     );
@@ -1134,6 +1129,67 @@ integration("week 4 core integration", () => {
     expect(persistedChannel.contacts.map((contact) => contact.email)).toEqual([
       "collabs@example.com",
     ]);
+  });
+
+  it("preserves existing valid CRM classifications during enrichment", async () => {
+    const user = await createUser("preserve-profile-fields@example.com");
+    const channel = await createChannel("UC-PRESERVE-PROFILE", "Preserve Profile Channel");
+    await assignYoutubeKey(user.id);
+    await seedProfileDropdownValues();
+    await prisma.channel.update({
+      where: { id: channel.id },
+      data: {
+        influencerType: "Streamer",
+        influencerVertical: "Tech",
+        countryRegion: "Croatia",
+        contentLanguage: "English",
+      },
+    });
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+    fetchYoutubeChannelContextMock.mockResolvedValue({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-PRESERVE-PROFILE",
+      defaultLanguage: "hr",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValue({
+      ...ENRICHMENT_RESULT,
+      profile: {
+        ...ENRICHMENT_RESULT.profile,
+        crmClassifications: {
+          influencerType: "Creator",
+          verticals: ["Gaming"],
+          countryRegion: "United States",
+          language: "English",
+        },
+      },
+    });
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channel.findUniqueOrThrow({
+      where: { id: channel.id },
+      select: {
+        influencerType: true,
+        influencerVertical: true,
+        countryRegion: true,
+        contentLanguage: true,
+      },
+    })).resolves.toEqual({
+      influencerType: "Streamer",
+      influencerVertical: "Tech",
+      countryRegion: "Croatia",
+      contentLanguage: "English",
+    });
   });
 
   it("persists YouTube medians when Creator List preview refresh writes metrics", async () => {
@@ -1419,6 +1475,34 @@ integration("week 4 core integration", () => {
     expect(enrichment.nextRetryAt).not.toBeNull();
   });
 
+  it("completes enrichment when channel-page extraction times out", async () => {
+    const user = await createUser("page-timeout@example.com");
+    const channel = await createChannel("UC-PAGE-TIMEOUT", "Page Timeout Channel");
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+    fetchYoutubeChannelContextMock.mockResolvedValue(CACHED_CONTEXT);
+    enrichChannelWithOpenAiMock.mockResolvedValue(ENRICHMENT_RESULT);
+    fetchYoutubeChannelPageEmailSignalMock.mockRejectedValue(new Error("page timed out"));
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
+      where: { channelId: channel.id },
+    });
+    expect(enrichment.status).toBe(PrismaChannelEnrichmentStatus.COMPLETED);
+    expect(enrichment.lastError).toBeNull();
+  });
+
   it("skips OpenAI when rawOpenaiPayloadFetchedAt is set", async () => {
     const user = await createUser();
     const channel = await createChannel("UC-ENRICH-REUSE", "Reuse Channel");
@@ -1448,6 +1532,7 @@ integration("week 4 core integration", () => {
     });
 
     expect(enrichChannelWithOpenAiMock).not.toHaveBeenCalled();
+    expect(fetchYoutubeChannelPageEmailSignalMock).not.toHaveBeenCalled();
 
     const enrichment = await prisma.channelEnrichment.findUniqueOrThrow({
       where: {

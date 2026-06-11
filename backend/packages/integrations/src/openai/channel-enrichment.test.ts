@@ -68,6 +68,12 @@ const TEST_INPUT = {
     contentMixHint: "long_form",
     uploadCadenceHint: "weekly",
   },
+  crmDropdownOptions: {
+    influencerType: ["Creator", "Streamer"],
+    influencerVertical: ["Gaming", "Tech"],
+    countryRegion: ["United States", "Croatia"],
+    language: ["English"],
+  },
 } satisfies EnrichChannelWithOpenAiInput;
 
 function createStructuredResponse(overrides?: Record<string, unknown>) {
@@ -143,6 +149,7 @@ describe("enrichChannelWithOpenAi", () => {
         primaryNicheValues: string[];
         contentFormatValues: string[];
         brandFitTagValues: string[];
+        crmDropdownOptions: typeof TEST_INPUT.crmDropdownOptions;
       };
       youtubeContext: {
         defaultLanguage: string | null;
@@ -172,6 +179,43 @@ describe("enrichChannelWithOpenAi", () => {
     expect(parsed.taxonomyHints.primaryNicheValues).toContain("gaming");
     expect(parsed.taxonomyHints.contentFormatValues).toContain("long_form");
     expect(parsed.taxonomyHints.brandFitTagValues).toContain("consumer_tech");
+    expect(parsed.taxonomyHints).toMatchObject({
+      crmDropdownOptions: TEST_INPUT.crmDropdownOptions,
+    });
+  });
+
+  it("keeps only CRM classifications present in the allowed dropdown values", async () => {
+    const create = vi.fn(async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify(createStructuredResponse({
+              crmClassifications: {
+                influencerType: "creator",
+                verticals: ["Gaming", "Not Allowed", "Tech"],
+                countryRegion: "Mars",
+                language: "English",
+              },
+            })),
+          },
+        },
+      ],
+    }));
+
+    const result = await enrichChannelWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: { create },
+        },
+      },
+    });
+
+    expect(result.profile.crmClassifications).toEqual({
+      influencerType: "Creator",
+      verticals: ["Gaming", "Tech"],
+      language: "English",
+    });
   });
 
   it("uses gpt-5-nano by default and omits temperature", async () => {
@@ -602,6 +646,31 @@ describe("enrichChannelWithOpenAi", () => {
         code: "OPENAI_ENRICHMENT_FAILED",
         status: 502,
         message: "OpenAI enrichment request failed",
+      } satisfies Partial<OpenAiChannelEnrichmentError>),
+    );
+  });
+
+  it("maps SDK timeouts", async () => {
+    await expect(
+      enrichChannelWithOpenAi({
+        ...TEST_INPUT,
+        client: {
+          chat: {
+            completions: {
+              create: async () => {
+                const error = new Error("request timed out");
+                error.name = "APIConnectionTimeoutError";
+                throw error;
+              },
+            },
+          },
+        },
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "OPENAI_ENRICHMENT_FAILED",
+        status: 504,
+        message: "OpenAI enrichment request timed out",
       } satisfies Partial<OpenAiChannelEnrichmentError>),
     );
   });

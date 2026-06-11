@@ -10,6 +10,22 @@ import { ServiceError } from "./errors";
 
 let bossPromise: Promise<PgBoss> | null = null;
 const ensuredQueues = new Set<JobName>();
+export type EnqueueJobOptions = Readonly<{ priority?: number }>;
+
+function parseEnqueueOptions(options: EnqueueJobOptions): EnqueueJobOptions {
+  if (
+    options.priority !== undefined
+    && (
+      !Number.isInteger(options.priority)
+      || options.priority < -2_147_483_648
+      || options.priority > 2_147_483_647
+    )
+  ) {
+    throw new ServiceError("INVALID_JOB_PRIORITY", 400, "Job priority must be a 32-bit integer");
+  }
+
+  return options.priority === undefined ? {} : { priority: options.priority };
+}
 
 function getQueueRuntimeConfig(): { databaseUrl: string; schema: string } {
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -55,15 +71,44 @@ async function ensureQueue(name: JobName): Promise<void> {
 export async function enqueueJob<Name extends JobName>(
   name: Name,
   payload: JobPayloadByName[Name],
+  options: EnqueueJobOptions = {},
 ): Promise<void> {
   const parsedPayload = parseJobPayload(name, payload);
+  const parsedOptions = parseEnqueueOptions(options);
   const boss = await getBoss();
   await ensureQueue(name);
   await boss.send(name, parsedPayload, {
     retryLimit: 5,
     retryDelay: 30,
     retryBackoff: true,
+    ...parsedOptions,
   });
+}
+
+export async function enqueueChannelLlmJobs(
+  payloads: readonly JobPayloadByName["channels.enrich.llm"][],
+  options: EnqueueJobOptions = {},
+): Promise<void> {
+  if (payloads.length === 0) {
+    return;
+  }
+
+  const parsedOptions = parseEnqueueOptions(options);
+  const parsedPayloads = payloads.map((payload) =>
+    parseJobPayload("channels.enrich.llm", payload),
+  );
+  const boss = await getBoss();
+  await ensureQueue("channels.enrich.llm");
+  await boss.insert(
+    "channels.enrich.llm",
+    parsedPayloads.map((data) => ({
+      data,
+      retryLimit: 5,
+      retryDelay: 30,
+      retryBackoff: true,
+      ...parsedOptions,
+    })),
+  );
 }
 
 export async function stopQueueRuntime(): Promise<void> {

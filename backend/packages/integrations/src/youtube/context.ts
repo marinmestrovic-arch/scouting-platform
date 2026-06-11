@@ -4,6 +4,8 @@ const DEFAULT_MAX_INSPECTED_UPLOADS = 50;
 const DEFAULT_MIN_LONG_FORM_VIDEOS = 12;
 const PLAYLIST_ITEMS_PAGE_SIZE = 25;
 const YOUTUBE_SHORTS_MAX_DURATION_SECONDS = 180;
+const YOUTUBE_REQUEST_TIMEOUT_MS = 15_000;
+const YOUTUBE_PAGE_REQUEST_TIMEOUT_MS = 5_000;
 
 const contextInputSchema = z
   .object({
@@ -502,14 +504,34 @@ function toWarningMessage(error: unknown): string {
   return "Unknown YouTube video statistics error";
 }
 
+async function fetchYoutubeApi(url: string): Promise<Response> {
+  try {
+    return await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(YOUTUBE_REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (
+      error instanceof Error
+      && (error.name === "AbortError" || error.name === "TimeoutError")
+    ) {
+      throw new YoutubeChannelContextProviderError(
+        "YOUTUBE_CONTEXT_FAILED",
+        504,
+        "YouTube channel context request timed out",
+      );
+    }
+
+    throw error;
+  }
+}
+
 export async function fetchYoutubeChannelContext(
   rawInput: FetchYoutubeChannelContextInput,
 ): Promise<YoutubeChannelContext> {
   const classifyIsShort = rawInput.classifyIsShort ?? defaultClassifyIsShort;
   const input = contextInputSchema.parse(rawInput);
-  const channelResponse = await fetch(buildChannelsUrl(input), {
-    method: "GET",
-  });
+  const channelResponse = await fetchYoutubeApi(buildChannelsUrl(input));
   await assertSuccessResponseOrThrow(channelResponse);
 
   const parsedChannels = parseChannelResponse(await parseJsonResponse(channelResponse));
@@ -534,16 +556,13 @@ export async function fetchYoutubeChannelContext(
 
   while (shouldContinue && uploadsPlaylistId !== null && recentVideos.length < input.maxVideos) {
     const remainingVideos = input.maxVideos - recentVideos.length;
-    const playlistResponse = await fetch(
+    const playlistResponse = await fetchYoutubeApi(
       buildPlaylistItemsUrl(
         input.apiKey,
         uploadsPlaylistId,
         Math.min(PLAYLIST_ITEMS_PAGE_SIZE, remainingVideos),
         nextPageToken,
       ),
-      {
-        method: "GET",
-      },
     );
     await assertSuccessResponseOrThrow(playlistResponse);
 
@@ -575,9 +594,9 @@ export async function fetchYoutubeChannelContext(
 
     if (pageRecentVideoIds.length > 0) {
       try {
-        const videosResponse = await fetch(buildVideosUrl(input.apiKey, pageRecentVideoIds), {
-          method: "GET",
-        });
+        const videosResponse = await fetchYoutubeApi(
+          buildVideosUrl(input.apiKey, pageRecentVideoIds),
+        );
         await assertSuccessResponseOrThrow(videosResponse);
 
         const parsedVideos = parseVideosResponse(await parseJsonResponse(videosResponse));
@@ -752,14 +771,21 @@ export async function fetchYoutubeChannelPageEmailSignal(input: {
   const fetchImpl = input.fetchImpl ?? fetch;
 
   for (const url of buildYoutubePageCandidateUrls(input.canonicalUrl)) {
-    const response = await fetchImpl(url, {
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent":
-          "Mozilla/5.0 (compatible; ScoutingPlatformBot/1.0; +https://scouting-platform.local)",
-      },
-      redirect: "follow",
-    });
+    let response: Response;
+
+    try {
+      response = await fetchImpl(url, {
+        headers: {
+          accept: "text/html,application/xhtml+xml",
+          "user-agent":
+            "Mozilla/5.0 (compatible; ScoutingPlatformBot/1.0; +https://scouting-platform.local)",
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(YOUTUBE_PAGE_REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      continue;
+    }
 
     if (!response.ok) {
       continue;

@@ -40,8 +40,7 @@ export const JOB_NAME = "channels.enrich.llm";
 // ============================================================================
 
 export const channelsEnrichLlmWorkerOptions = {
-  teamSize: 1,
-  teamConcurrency: 2,
+  localConcurrency: 4,
   batchSize: 1,
 } as const;
 
@@ -123,7 +122,7 @@ export async function registerChannelsEnrichLlmWorker(
 // □ Job name is registered in shared/packages/contracts/src/jobs.ts
 // □ Payload parsed with parseJobPayload()
 // □ Worker delegates to a core service instead of inlining business logic
-// □ teamConcurrency/batchSize explicitly set
+// □ localConcurrency/batchSize explicitly set
 // □ Failures logged with enough context for operators
 // □ Errors re-thrown so pg-boss can retry when appropriate
 // □ If the job has durable state, claim/status updates happen in core

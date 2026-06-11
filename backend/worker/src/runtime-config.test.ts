@@ -10,12 +10,12 @@ describe("getWorkerRuntimeConfig", () => {
     });
 
     expect(config.pgBossSchema).toBe("pgboss");
-    expect(config.jobs.runsDiscover.teamConcurrency).toBe(1);
-    expect(config.jobs.runsAssessChannelFit.teamConcurrency).toBe(2);
-    expect(config.jobs.channelsEnrichLlm.teamConcurrency).toBe(2);
-    expect(config.jobs.channelsEnrichHypeauditor.teamConcurrency).toBe(1);
-    expect(config.jobs.hubspotPreviewEnrich.teamConcurrency).toBe(1);
-    expect(config.jobs.hubspotObjectSync.teamConcurrency).toBe(1);
+    expect(config.jobs.runsDiscover.localConcurrency).toBe(1);
+    expect(config.jobs.runsAssessChannelFit.localConcurrency).toBe(2);
+    expect(config.jobs.channelsEnrichLlm.localConcurrency).toBe(4);
+    expect(config.jobs.channelsEnrichHypeauditor.localConcurrency).toBe(1);
+    expect(config.jobs.hubspotPreviewEnrich.localConcurrency).toBe(1);
+    expect(config.jobs.hubspotObjectSync.localConcurrency).toBe(1);
     expect(config.continuousEnrichment).toEqual({
       enabled: true,
       intervalMs: 60000,
@@ -35,8 +35,13 @@ describe("getWorkerRuntimeConfig", () => {
       APP_ENCRYPTION_KEY: "12345678901234567890123456789012",
       WORKER_RUNS_DISCOVER_CONCURRENCY: "3",
       WORKER_RUNS_ASSESS_CHANNEL_FIT_CONCURRENCY: "5",
+      WORKER_CHANNELS_ENRICH_LLM_CONCURRENCY: "6",
+      WORKER_CHANNELS_ENRICH_HYPEAUDITOR_CONCURRENCY: "7",
+      WORKER_IMPORTS_CSV_PROCESS_CONCURRENCY: "8",
       WORKER_EXPORTS_CSV_GENERATE_CONCURRENCY: "2",
       WORKER_HUBSPOT_PREVIEW_ENRICH_CONCURRENCY: "4",
+      WORKER_HUBSPOT_IMPORT_BATCH_CONCURRENCY: "9",
+      WORKER_HUBSPOT_PUSH_BATCH_CONCURRENCY: "10",
       WORKER_HUBSPOT_OBJECT_SYNC_CONCURRENCY: "3",
       WORKER_CONTINUOUS_ENRICHMENT_ENABLED: "false",
       WORKER_CONTINUOUS_ENRICHMENT_INTERVAL_MS: "120000",
@@ -49,11 +54,16 @@ describe("getWorkerRuntimeConfig", () => {
       WORKER_CONTINUOUS_ENRICHMENT_QUEUED_TIMEOUT_MS: "120000",
     });
 
-    expect(config.jobs.runsDiscover.teamConcurrency).toBe(3);
-    expect(config.jobs.runsAssessChannelFit.teamConcurrency).toBe(5);
-    expect(config.jobs.exportsCsvGenerate.teamConcurrency).toBe(2);
-    expect(config.jobs.hubspotPreviewEnrich.teamConcurrency).toBe(4);
-    expect(config.jobs.hubspotObjectSync.teamConcurrency).toBe(3);
+    expect(config.jobs.runsDiscover.localConcurrency).toBe(3);
+    expect(config.jobs.runsAssessChannelFit.localConcurrency).toBe(5);
+    expect(config.jobs.channelsEnrichLlm.localConcurrency).toBe(6);
+    expect(config.jobs.channelsEnrichHypeauditor.localConcurrency).toBe(7);
+    expect(config.jobs.importsCsvProcess.localConcurrency).toBe(8);
+    expect(config.jobs.exportsCsvGenerate.localConcurrency).toBe(2);
+    expect(config.jobs.hubspotPreviewEnrich.localConcurrency).toBe(4);
+    expect(config.jobs.hubspotImportBatch.localConcurrency).toBe(9);
+    expect(config.jobs.hubspotPushBatch.localConcurrency).toBe(10);
+    expect(config.jobs.hubspotObjectSync.localConcurrency).toBe(3);
     expect(config.continuousEnrichment).toEqual({
       enabled: false,
       intervalMs: 120000,

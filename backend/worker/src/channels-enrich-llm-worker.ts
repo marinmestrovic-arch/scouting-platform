@@ -16,8 +16,7 @@ type ChannelsEnrichLlmJob = {
 };
 
 export const channelsEnrichLlmWorkerOptions: WorkerJobOptions = {
-  teamSize: 1,
-  teamConcurrency: 2,
+  localConcurrency: 4,
   batchSize: 1,
 };
 

@@ -12,8 +12,7 @@ type RunsDiscoverJob = {
 };
 
 export const runsDiscoverWorkerOptions: WorkerJobOptions = {
-  teamSize: 1,
-  teamConcurrency: 2,
+  localConcurrency: 2,
   batchSize: 1,
 };
 

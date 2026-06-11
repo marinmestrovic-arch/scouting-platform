@@ -105,6 +105,7 @@ describe("continuous enrichment monitor", () => {
     await monitor.runOnce();
 
     expect(send).toHaveBeenCalledWith("channels.enrich.llm", payload, {
+      priority: 0,
       retryLimit: 5,
       retryDelay: 30,
       retryBackoff: true,

@@ -622,6 +622,25 @@ describe("fetchYoutubeChannelContext", () => {
       } satisfies Partial<YoutubeChannelContextProviderError>),
     );
   });
+
+  it("maps request timeouts to a retryable durable provider failure", async () => {
+    const timeoutError = new Error("timed out");
+    timeoutError.name = "TimeoutError";
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValueOnce(timeoutError));
+
+    await expect(
+      fetchYoutubeChannelContext({
+        apiKey: "yt-key",
+        channelId: "UC-CONTEXT-TIMEOUT",
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "YOUTUBE_CONTEXT_FAILED",
+        status: 504,
+        message: "YouTube channel context request timed out",
+      } satisfies Partial<YoutubeChannelContextProviderError>),
+    );
+  });
 });
 
 describe("fetchYoutubeChannelPageEmailSignal", () => {
@@ -651,5 +670,22 @@ describe("fetchYoutubeChannelPageEmailSignal", () => {
     );
     expect(signal.emails).toEqual(["creator@example.com"]);
     expect(signal.snippet).toContain("Business inquiries");
+  });
+
+  it("continues to the next candidate URL after a page timeout", async () => {
+    const timeoutError = new Error("timed out");
+    timeoutError.name = "TimeoutError";
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(timeoutError)
+      .mockResolvedValueOnce(new Response("Contact backup@example.com", { status: 200 }));
+
+    const signal = await fetchYoutubeChannelPageEmailSignal({
+      canonicalUrl: "https://www.youtube.com/@creator",
+      fetchImpl: fetchMock,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(signal.emails).toEqual(["backup@example.com"]);
   });
 });

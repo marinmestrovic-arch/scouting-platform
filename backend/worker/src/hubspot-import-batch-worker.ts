@@ -12,8 +12,7 @@ type HubspotImportBatchJob = {
 };
 
 export const hubspotImportBatchWorkerOptions: WorkerJobOptions = {
-  teamSize: 1,
-  teamConcurrency: 1,
+  localConcurrency: 1,
   batchSize: 1,
 };
 

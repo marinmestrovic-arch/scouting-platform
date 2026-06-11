@@ -29,7 +29,10 @@ vi.mock("@scouting-platform/core", () => ({
 
 describe("channels.enrich.llm worker registration", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.mocked(executeChannelLlmEnrichment).mockReset();
+    vi.mocked(executeChannelYoutubeRefresh).mockReset();
+    vi.mocked(executeChannelLlmEnrichment).mockResolvedValue(undefined);
+    vi.mocked(executeChannelYoutubeRefresh).mockResolvedValue(undefined);
   });
 
   it("registers channels.enrich.llm with explicit bounded concurrency options", async () => {
@@ -51,6 +54,42 @@ describe("channels.enrich.llm worker registration", () => {
     ];
     expect(name).toBe("channels.enrich.llm");
     expect(options).toEqual(channelsEnrichLlmWorkerOptions);
+    expect(options.localConcurrency).toBe(4);
+  });
+
+  it("allows four enrichment jobs to overlap at configured local concurrency", async () => {
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maxActive = 0;
+    vi.mocked(executeChannelLlmEnrichment).mockImplementation(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      active -= 1;
+    });
+    const work = vi.fn(async (
+      _name: string,
+      options: typeof channelsEnrichLlmWorkerOptions,
+      handler: (job: unknown) => Promise<void>,
+    ) => {
+      const running = Array.from({ length: options.localConcurrency ?? 1 }, (_, index) =>
+        handler({
+          data: {
+            channelId: `${String(index + 1).padStart(8, "0")}-1111-4111-8111-111111111111`,
+            requestedByUserId: "22222222-2222-4222-8222-222222222222",
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(active).toBe(4));
+      releases.splice(0).forEach((release) => release());
+      await Promise.all(running);
+      return "channels-enrich-llm-worker";
+    });
+
+    await registerChannelsEnrichLlmWorker({ work } as unknown as Pick<PgBoss, "work">);
+
+    expect(maxActive).toBe(4);
   });
 
   it("parses and executes each job payload", async () => {

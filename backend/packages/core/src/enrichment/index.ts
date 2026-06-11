@@ -14,7 +14,6 @@ import { prisma, withDbTransaction } from "@scouting-platform/db";
 import {
   extractStoredOpenAiChannelEnrichmentProfileFromRawPayload,
   enrichChannelWithOpenAi,
-  enrichCreatorProfilesWithOpenAi,
   fetchYoutubeChannelContext,
   fetchYoutubeChannelPageEmailSignal,
   isOpenAiChannelEnrichmentError,
@@ -33,8 +32,7 @@ import {
 import { listDropdownOptions } from "../dropdown-values";
 import { ServiceError } from "../errors";
 import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
-import { inferVerticalsForHubspot } from "../hubspot/vertical-inference";
-import { enqueueJob } from "../queue";
+import { enqueueChannelLlmJobs, enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
 import {
@@ -68,8 +66,35 @@ type BulkEnrichmentChannelRow = {
   } | null;
 };
 
-const BULK_CHANNEL_ENRICHMENT_CHUNK_SIZE = 500;
-const BULK_CHANNEL_ENRICHMENT_ENQUEUE_CONCURRENCY = 8;
+const BULK_CHANNEL_ENRICHMENT_DB_CHUNK_SIZE = 500;
+const BULK_CHANNEL_ENRICHMENT_QUEUE_CHUNK_SIZE = 100;
+let activeChannelLlmEnrichments = 0;
+
+type ChannelEnrichmentTimings = {
+  queueWaitMs: number;
+  youtubeContextMs: number;
+  openAiMs: number;
+  pageExtractionMs: number;
+  persistenceMs: number;
+};
+
+function logChannelEnrichmentTiming(input: {
+  channelId: string;
+  outcome: "completed" | "failed";
+  timings: ChannelEnrichmentTimings;
+  totalMs: number;
+  providerErrorClass?: string;
+}): void {
+  console.log(JSON.stringify({
+    type: "channel_enrichment_timing",
+    channelId: input.channelId,
+    outcome: input.outcome,
+    activeConcurrency: activeChannelLlmEnrichments,
+    ...input.timings,
+    totalMs: input.totalMs,
+    ...(input.providerErrorClass ? { providerErrorClass: input.providerErrorClass } : {}),
+  }));
+}
 
 function formatErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -96,32 +121,6 @@ function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
   }
 
   return chunks;
-}
-
-async function mapWithConcurrencyLimit<Input>(
-  items: readonly Input[],
-  concurrencyLimit: number,
-  mapper: (item: Input) => Promise<void>,
-): Promise<void> {
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (true) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      const item = items[currentIndex];
-
-      if (item === undefined) {
-        return;
-      }
-
-      await mapper(item);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => worker()),
-  );
 }
 
 function shouldQueueBulkChannelEnrichment(
@@ -298,9 +297,8 @@ async function persistYoutubeSignals(input: {
     shouldUpdateWithoutOverride: true,
   });
 
-  updateData.contentLanguage =
-    mapYoutubeLanguageToHubspot(input.youtubeMetrics.context.defaultLanguage ?? "")
-    || input.channel.contentLanguage
+  updateData.contentLanguage = input.channel.contentLanguage
+    || mapYoutubeLanguageToHubspot(input.youtubeMetrics.context.defaultLanguage ?? "")
     || null;
 
   await input.tx.channelYoutubeContext.update({
@@ -417,15 +415,6 @@ function shouldReplaceChannelTitleWithYoutubeTitle(input: {
     || (urlPlaceholder.length > 0 && normalizedCurrentTitle === urlPlaceholder);
 }
 
-const CHANNEL_PROFILE_RESULT_FIELD_BY_KEY = {
-  email: "Email",
-  influencerType: "Influencer Type",
-  influencerVertical: "Influencer Vertical",
-  countryRegion: "Country/Region",
-  language: "Language",
-} as const;
-
-type ChannelProfileFieldKey = keyof typeof CHANNEL_PROFILE_RESULT_FIELD_BY_KEY;
 type DropdownOptions = Awaited<ReturnType<typeof listDropdownOptions>>;
 type DropdownUpdate =
   | { op: "set"; value: string }
@@ -647,13 +636,6 @@ function coerceFirstDropdownOption(options: readonly string[], value: string): s
   return "";
 }
 
-function getProfileResultValue(
-  result: Record<string, string> | undefined,
-  field: ChannelProfileFieldKey,
-): string {
-  return result?.[CHANNEL_PROFILE_RESULT_FIELD_BY_KEY[field]]?.trim() ?? "";
-}
-
 function resolveDropdownUpdate(input: {
   currentValue: string | null | undefined;
   options: readonly string[];
@@ -695,77 +677,6 @@ function applyDropdownUpdate(
   return update.op === "set" ? update.value : null;
 }
 
-function buildChannelCreatorProfileContextText(input: {
-  channel: {
-    title: string;
-    youtubeChannelId: string;
-    handle: string | null;
-    youtubeUrl: string | null;
-    description: string | null;
-  };
-  youtubeContext: YoutubeChannelContext;
-  pageSignal: YoutubeChannelPageEmailSignal | null;
-}): string {
-  const contextFields: Array<[string, string]> = [
-    ["Channel Name", input.channel.title],
-    ["YouTube Handle", input.youtubeContext.handle ?? input.channel.handle ?? ""],
-    [
-      "YouTube URL",
-      input.channel.youtubeUrl
-        ?? (input.youtubeContext.handle
-          ? `https://www.youtube.com/${input.youtubeContext.handle.startsWith("@") ? input.youtubeContext.handle : `@${input.youtubeContext.handle}`}`
-          : `https://www.youtube.com/channel/${input.channel.youtubeChannelId}`),
-    ],
-    ["Channel Description", input.channel.description ?? input.youtubeContext.description ?? ""],
-    ["Resolved YouTube Language", input.youtubeContext.defaultLanguage ?? ""],
-  ];
-  const lines = contextFields.flatMap(([label, value]) =>
-    value.trim() ? [`${label}: ${value.trim()}`] : []);
-
-  const pageEmails = extractExplicitEmailsFromTextList(getPageSignalTextValues(input.pageSignal));
-
-  if (pageEmails.length > 0) {
-    lines.push(`Explicit Emails From Channel Page: ${pageEmails.join(" | ")}`);
-  }
-
-  if (input.pageSignal?.snippet) {
-    lines.push(`Channel Page/About Snippet: ${input.pageSignal.snippet}`);
-  }
-
-  const categoryNames = Array.from(
-    new Set(
-      input.youtubeContext.recentVideos
-        .map((video) => video.categoryName ?? "")
-        .filter((categoryName) => categoryName.trim().length > 0),
-    ),
-  );
-
-  if (categoryNames.length > 0) {
-    lines.push(`Resolved YouTube Categories: ${categoryNames.slice(0, 5).join(" | ")}`);
-  }
-
-  const sampledTitles = input.youtubeContext.recentVideos
-    .map((video) => video.title)
-    .filter((title) => title.trim().length > 0)
-    .slice(0, 10);
-
-  if (sampledTitles.length > 0) {
-    lines.push(`Sampled Video Titles: ${sampledTitles.join(" | ")}`);
-  }
-
-  const sampledDescriptions = input.youtubeContext.recentVideos
-    .map((video) => video.description ?? "")
-    .filter((description) => description.trim().length > 0)
-    .slice(0, 3)
-    .map((description) => description.slice(0, 280));
-
-  if (sampledDescriptions.length > 0) {
-    lines.push(`Sampled Video Descriptions: ${sampledDescriptions.join(" || ")}`);
-  }
-
-  return lines.join("\n");
-}
-
 async function fetchChannelPageSignalBestEffort(
   canonicalUrl: string,
 ): Promise<YoutubeChannelPageEmailSignal | null> {
@@ -780,83 +691,6 @@ async function fetchChannelPageSignalBestEffort(
   }
 }
 
-async function enrichChannelCreatorProfileFieldsBestEffort(input: {
-  channel: {
-    id: string;
-    title: string;
-    youtubeChannelId: string;
-    handle: string | null;
-    youtubeUrl: string | null;
-    description: string | null;
-    influencerType: string | null;
-    influencerVertical: string | null;
-    countryRegion: string | null;
-    contentLanguage: string | null;
-    contacts: Array<{ email: string }>;
-  };
-  youtubeContext: YoutubeChannelContext;
-  pageSignal: YoutubeChannelPageEmailSignal | null;
-  dropdownOptions: DropdownOptions;
-}): Promise<Record<string, string>> {
-  const requestedFields = (
-    [
-      "email",
-      "influencerType",
-      "influencerVertical",
-      "countryRegion",
-      "language",
-    ] as const
-  ).filter((field) => {
-    if (field === "email") {
-      return input.channel.contacts.length === 0;
-    }
-
-    const options = input.dropdownOptions[field];
-    const currentValue = field === "language"
-      ? input.channel.contentLanguage
-      : input.channel[field];
-
-    return Boolean(resolveDropdownUpdate({
-      currentValue,
-      options,
-      candidates: [],
-    }));
-  }).map((field) => CHANNEL_PROFILE_RESULT_FIELD_BY_KEY[field]);
-
-  if (requestedFields.length === 0) {
-    return {};
-  }
-
-  try {
-    const [result] = await enrichCreatorProfilesWithOpenAi({
-      requests: [
-        {
-          rowKey: input.channel.id,
-          channelName: input.channel.title,
-          channelUrl: input.channel.youtubeUrl ?? "",
-          campaignName: "",
-          requestedFields,
-          contextText: buildChannelCreatorProfileContextText({
-            channel: input.channel,
-            youtubeContext: input.youtubeContext,
-            pageSignal: input.pageSignal,
-          }),
-        },
-      ],
-      dropdownOptions: {
-        "Influencer Type": input.dropdownOptions.influencerType,
-        "Influencer Vertical": input.dropdownOptions.influencerVertical,
-        "Country/Region": input.dropdownOptions.countryRegion,
-        Language: input.dropdownOptions.language,
-      },
-    });
-
-    return result?.values ?? {};
-  } catch {
-    return {};
-  }
-}
-
 function getCachedYoutubeContext(row: ChannelYoutubeContextCacheRow | null) {
   if (!row?.context) {
     return null;
@@ -868,9 +702,15 @@ function getCachedYoutubeContext(row: ChannelYoutubeContextCacheRow | null) {
 
 function extractProfileFromRawPayload(
   raw: Prisma.JsonValue,
+  dropdownOptions: DropdownOptions,
 ): StoredOpenAiChannelEnrichment {
   try {
-    return extractStoredOpenAiChannelEnrichmentProfileFromRawPayload(raw);
+    return extractStoredOpenAiChannelEnrichmentProfileFromRawPayload(raw, {
+      influencerType: dropdownOptions.influencerType,
+      influencerVertical: dropdownOptions.influencerVertical,
+      countryRegion: dropdownOptions.countryRegion,
+      language: dropdownOptions.language,
+    });
   } catch {
     throw new ServiceError(
       "OPENAI_INVALID_STORED_PAYLOAD",
@@ -1019,7 +859,7 @@ export async function requestBulkChannelLlmEnrichment(input: {
   let alreadyQueuedCount = 0;
   const queuedChannelIds: string[] = [];
 
-  for (const channelIdChunk of chunkArray(channelIds, BULK_CHANNEL_ENRICHMENT_CHUNK_SIZE)) {
+  for (const channelIdChunk of chunkArray(channelIds, BULK_CHANNEL_ENRICHMENT_DB_CHUNK_SIZE)) {
     const chunkQueuedChannelIds = await withDbTransaction(async (tx) => {
       const channels = await tx.channel.findMany({
         where: {
@@ -1112,25 +952,29 @@ export async function requestBulkChannelLlmEnrichment(input: {
   let queuedCount = 0;
   let failedCount = 0;
 
-  await mapWithConcurrencyLimit(
+  for (const channelIdChunk of chunkArray(
     queuedChannelIds,
-    BULK_CHANNEL_ENRICHMENT_ENQUEUE_CONCURRENCY,
-    async (channelId) => {
-      try {
-        await enqueueJob("channels.enrich.llm", {
+    BULK_CHANNEL_ENRICHMENT_QUEUE_CHUNK_SIZE,
+  )) {
+    try {
+      await enqueueChannelLlmJobs(
+        channelIdChunk.map((channelId) => ({
           channelId,
           requestedByUserId: input.requestedByUserId,
-        });
-        queuedCount += 1;
-      } catch (error) {
-        failedCount += 1;
+        })),
+        { priority: 10 },
+      );
+      queuedCount += channelIdChunk.length;
+    } catch (error) {
+      failedCount += channelIdChunk.length;
+      await Promise.all(channelIdChunk.map(async (channelId) => {
         await markChannelLlmEnrichmentFailed({
           channelId,
           error,
         });
-      }
-    },
-  );
+      }));
+    }
+  }
 
   return {
     requestedCount: channelIds.length,
@@ -1251,7 +1095,7 @@ export async function requestChannelLlmEnrichment(input: {
       await enqueueJob("channels.enrich.llm", {
         channelId: input.channelId,
         requestedByUserId: input.requestedByUserId,
-      });
+      }, { priority: 10 });
     } catch (error) {
       await markChannelLlmEnrichmentFailed({
         channelId: input.channelId,
@@ -1455,6 +1299,14 @@ export async function executeChannelLlmEnrichment(input: {
   requestedByUserId: string;
 }): Promise<void> {
   const startedAt = new Date();
+  const totalStartedAt = Date.now();
+  const timings: ChannelEnrichmentTimings = {
+    queueWaitMs: 0,
+    youtubeContextMs: 0,
+    openAiMs: 0,
+    pageExtractionMs: 0,
+    persistenceMs: 0,
+  };
   const enrichment = await prisma.channelEnrichment.findUnique({
     where: {
       channelId: input.channelId,
@@ -1490,6 +1342,8 @@ export async function executeChannelLlmEnrichment(input: {
     return;
   }
 
+  activeChannelLlmEnrichments += 1;
+
   try {
     const executionState = await prisma.channelEnrichment.findUnique({
       where: {
@@ -1498,6 +1352,7 @@ export async function executeChannelLlmEnrichment(input: {
       select: {
         channelId: true,
         requestedByUserId: true,
+        requestedAt: true,
         rawOpenaiPayload: true,
         rawOpenaiPayloadFetchedAt: true,
         youtubeFetchedAt: true,
@@ -1556,6 +1411,11 @@ export async function executeChannelLlmEnrichment(input: {
       return;
     }
 
+    timings.queueWaitMs = Math.max(
+      0,
+      startedAt.getTime() - executionState.requestedAt.getTime(),
+    );
+
     const youtubeApiKey = await getUserYoutubeApiKey(executionState.requestedByUserId);
 
     if (!youtubeApiKey) {
@@ -1565,6 +1425,8 @@ export async function executeChannelLlmEnrichment(input: {
         "Assigned YouTube API key is required before executing enrichment",
       );
     }
+
+    const dropdownOptionsPromise = listDropdownOptions();
 
     let youtubeContext: YoutubeChannelContext;
     const youtubeRetryAttempt = executionState.youtubeFetchedAt !== null;
@@ -1600,6 +1462,15 @@ export async function executeChannelLlmEnrichment(input: {
       });
     } else {
       const youtubeContextStartedAt = Date.now();
+      const cachedYoutubeContext = getCachedYoutubeContext(
+        executionState.channel.youtubeContext,
+      );
+      const reusedFreshYoutubeCache = Boolean(
+        cachedYoutubeContext
+        && isYoutubeContextFresh({
+          fetchedAt: executionState.channel.youtubeContext?.fetchedAt,
+        }),
+      );
       youtubeContext = await (async () => {
         try {
           return await refreshYoutubeContext({
@@ -1609,6 +1480,7 @@ export async function executeChannelLlmEnrichment(input: {
             cachedContextRow: executionState.channel.youtubeContext,
           });
         } catch (error) {
+          timings.youtubeContextMs = Date.now() - youtubeContextStartedAt;
           logProviderSpend({
             provider: "youtube_context",
             operation: "refresh_context",
@@ -1628,10 +1500,11 @@ export async function executeChannelLlmEnrichment(input: {
       logProviderSpend({
         provider: "youtube_context",
         operation: "refresh_context",
-        outcome: "fresh_call",
+        outcome: reusedFreshYoutubeCache ? "cache_hit" : "fresh_call",
         retryAttempt: youtubeRetryAttempt,
         durationMs: Date.now() - youtubeContextStartedAt,
       });
+      timings.youtubeContextMs = Date.now() - youtubeContextStartedAt;
 
       await prisma.channelEnrichment.update({
         where: {
@@ -1644,11 +1517,13 @@ export async function executeChannelLlmEnrichment(input: {
     }
 
     let youtubeMetrics: ReturnType<typeof deriveYoutubeMetrics> | null = null;
+    let pageSignal: YoutubeChannelPageEmailSignal | null = null;
     let enrichmentResult: {
       profile: ReturnType<typeof extractProfileFromRawPayload>;
       rawPayload: unknown;
     };
     const openAiRetryAttempt = executionState.rawOpenaiPayloadFetchedAt !== null;
+    const dropdownOptions = await dropdownOptionsPromise;
 
     if (executionState.rawOpenaiPayloadFetchedAt !== null) {
       if (executionState.rawOpenaiPayload === null) {
@@ -1660,7 +1535,10 @@ export async function executeChannelLlmEnrichment(input: {
       }
 
       enrichmentResult = {
-        profile: extractProfileFromRawPayload(executionState.rawOpenaiPayload),
+        profile: extractProfileFromRawPayload(
+          executionState.rawOpenaiPayload,
+          dropdownOptions,
+        ),
         rawPayload: executionState.rawOpenaiPayload,
       };
       logProviderSpend({
@@ -1673,6 +1551,13 @@ export async function executeChannelLlmEnrichment(input: {
     } else {
       youtubeMetrics = deriveYoutubeMetrics(youtubeContext);
       const openAiStartedAt = Date.now();
+      const pageExtractionStartedAt = Date.now();
+      const pageSignalPromise = fetchChannelPageSignalBestEffort(
+        youtubeMetrics.canonicalUrl,
+      ).then((signal) => {
+        timings.pageExtractionMs = Date.now() - pageExtractionStartedAt;
+        return signal;
+      });
       const result = await (async () => {
         try {
           return await enrichChannelWithOpenAi({
@@ -1684,8 +1569,15 @@ export async function executeChannelLlmEnrichment(input: {
             },
             youtubeContext: youtubeMetrics.context,
             derivedSignals: deriveChannelClassificationSignals(youtubeMetrics.context),
+            crmDropdownOptions: {
+              influencerType: dropdownOptions.influencerType,
+              influencerVertical: dropdownOptions.influencerVertical,
+              countryRegion: dropdownOptions.countryRegion,
+              language: dropdownOptions.language,
+            },
           });
         } catch (error) {
+          timings.openAiMs = Date.now() - openAiStartedAt;
           logProviderSpend({
             provider: "openai",
             operation: "enrich_channel",
@@ -1701,6 +1593,7 @@ export async function executeChannelLlmEnrichment(input: {
           throw error;
         }
       })();
+      timings.openAiMs = Date.now() - openAiStartedAt;
 
       const tokenUsage = extractTokenUsage(result.rawPayload);
 
@@ -1734,58 +1627,40 @@ export async function executeChannelLlmEnrichment(input: {
       });
 
       enrichmentResult = result;
+      pageSignal = await pageSignalPromise;
     }
 
     youtubeMetrics ??= deriveYoutubeMetrics(youtubeContext);
-    const [dropdownOptions, pageSignal] = await Promise.all([
-      listDropdownOptions(),
-      fetchChannelPageSignalBestEffort(youtubeMetrics.canonicalUrl),
-    ]);
-    const profileValues = await enrichChannelCreatorProfileFieldsBestEffort({
-      channel: executionState.channel,
-      youtubeContext: youtubeMetrics.context,
-      pageSignal,
-      dropdownOptions,
-    });
-    const inferredVerticals = inferVerticalsForHubspot({
-      structuredProfile: enrichmentResult.profile.structuredProfile,
-      topics: enrichmentResult.profile.topics,
-      audienceInterests: null,
-    });
+    const crmClassifications = enrichmentResult.profile.crmClassifications;
     const influencerTypeUpdate = resolveDropdownUpdate({
       currentValue: executionState.channel.influencerType,
       options: dropdownOptions.influencerType,
-      candidates: [getProfileResultValue(profileValues, "influencerType")],
+      candidates: [crmClassifications?.influencerType ?? ""],
     });
     const influencerVerticalUpdate = resolveDropdownUpdate({
       currentValue: executionState.channel.influencerVertical,
       options: dropdownOptions.influencerVertical,
       candidates: [
-        getProfileResultValue(profileValues, "influencerVertical"),
-        ...inferredVerticals,
-        ...enrichmentResult.profile.topics,
+        ...(crmClassifications?.verticals ?? []),
       ],
     });
     const countryRegionUpdate = resolveDropdownUpdate({
       currentValue: executionState.channel.countryRegion,
       options: dropdownOptions.countryRegion,
       candidates: [
-        getProfileResultValue(profileValues, "countryRegion"),
-        ...(enrichmentResult.profile.structuredProfile?.geoHints ?? []),
+        crmClassifications?.countryRegion ?? "",
       ],
     });
     const languageUpdate = resolveDropdownUpdate({
       currentValue: executionState.channel.contentLanguage,
       options: dropdownOptions.language,
       candidates: [
-        getProfileResultValue(profileValues, "language"),
+        crmClassifications?.language ?? "",
         mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage ?? ""),
-        enrichmentResult.profile.structuredProfile?.language ?? "",
       ],
     });
     const preferredEmail = executionState.channel.contacts.length === 0
       ? getPreferredCreatorEmail(youtubeMetrics.context, pageSignal)
-        || extractExplicitEmailsFromText(getProfileResultValue(profileValues, "email"))[0]
         || ""
       : "";
     const influencerTypeValue = applyDropdownUpdate(influencerTypeUpdate);
@@ -1793,6 +1668,7 @@ export async function executeChannelLlmEnrichment(input: {
     const countryRegionValue = applyDropdownUpdate(countryRegionUpdate);
     const languageValue = applyDropdownUpdate(languageUpdate);
 
+    const persistenceStartedAt = Date.now();
     await prisma.$transaction(async (tx) => {
       await persistYoutubeSignals({
         tx,
@@ -1805,8 +1681,9 @@ export async function executeChannelLlmEnrichment(input: {
           id: executionState.channel.id,
         },
         data: {
-          contentLanguage: languageValue
-            ?? (mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage) || null),
+          ...(languageValue !== undefined
+            ? { contentLanguage: languageValue }
+            : {}),
           ...(influencerTypeValue !== undefined
             ? { influencerType: influencerTypeValue }
             : {}),
@@ -1854,13 +1731,34 @@ export async function executeChannelLlmEnrichment(input: {
         },
       });
     });
+    timings.persistenceMs = Date.now() - persistenceStartedAt;
+    logChannelEnrichmentTiming({
+      channelId: input.channelId,
+      outcome: "completed",
+      timings,
+      totalMs: Date.now() - totalStartedAt,
+    });
   } catch (error) {
     await markChannelLlmEnrichmentFailed({
       channelId: input.channelId,
       error,
     });
 
+    logChannelEnrichmentTiming({
+      channelId: input.channelId,
+      outcome: "failed",
+      timings,
+      totalMs: Date.now() - totalStartedAt,
+      providerErrorClass: error instanceof ServiceError
+        ? error.code
+        : error instanceof Error
+          ? error.name
+          : typeof error,
+    });
+
     throw error;
+  } finally {
+    activeChannelLlmEnrichments = Math.max(0, activeChannelLlmEnrichments - 1);
   }
 }
 

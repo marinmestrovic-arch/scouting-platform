@@ -12,8 +12,7 @@ type HubspotObjectSyncJob = {
 };
 
 export const hubspotObjectSyncWorkerOptions: WorkerJobOptions = {
-  teamSize: 1,
-  teamConcurrency: 1,
+  localConcurrency: 1,
   batchSize: 1,
 };
 

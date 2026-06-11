@@ -14,8 +14,7 @@ type RunsAssessChannelFitJob = {
 };
 
 export const runsAssessChannelFitWorkerOptions: WorkerJobOptions = {
-  teamSize: 1,
-  teamConcurrency: 2,
+  localConcurrency: 2,
   batchSize: 1,
   includeMetadata: true,
 };

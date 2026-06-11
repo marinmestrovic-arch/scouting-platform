@@ -55,6 +55,7 @@ export function startContinuousEnrichmentMonitor(
           queuedTimeoutMs: options.queuedTimeoutMs,
           enqueue: async (payload) => {
             await boss.send("channels.enrich.llm", payload, {
+              priority: 0,
               retryLimit: 5,
               retryDelay: 30,
               retryBackoff: true,

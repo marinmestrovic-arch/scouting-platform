@@ -2,6 +2,7 @@ import { ChannelEnrichmentStatus } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  enqueueChannelLlmJobsMock,
   enqueueJobMock,
   listAllChannelIdsForCatalogFiltersMock,
   prismaMock,
@@ -25,6 +26,7 @@ const {
   };
 
   return {
+    enqueueChannelLlmJobsMock: vi.fn(),
     enqueueJobMock: vi.fn(),
     listAllChannelIdsForCatalogFiltersMock: vi.fn(),
     prismaMock: prisma,
@@ -45,6 +47,7 @@ vi.mock("./channels", () => ({
 }));
 
 vi.mock("./queue", () => ({
+  enqueueChannelLlmJobs: enqueueChannelLlmJobsMock,
   enqueueJob: enqueueJobMock,
 }));
 
@@ -67,6 +70,7 @@ describe("bulk channel LLM enrichment requests", () => {
     prismaMock.channelEnrichment.createMany.mockResolvedValue({ count: 1 });
     prismaMock.auditEvent.createMany.mockResolvedValue({ count: 2 });
     enqueueJobMock.mockResolvedValue(undefined);
+    enqueueChannelLlmJobsMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -148,15 +152,13 @@ describe("bulk channel LLM enrichment requests", () => {
         ],
       }),
     );
-    expect(enqueueJobMock).toHaveBeenCalledTimes(2);
-    expect(enqueueJobMock).toHaveBeenCalledWith("channels.enrich.llm", {
-      channelId: missingChannelId,
-      requestedByUserId,
-    });
-    expect(enqueueJobMock).toHaveBeenCalledWith("channels.enrich.llm", {
-      channelId: failedChannelId,
-      requestedByUserId,
-    });
+    expect(enqueueChannelLlmJobsMock).toHaveBeenCalledWith(
+      [
+        { channelId: missingChannelId, requestedByUserId },
+        { channelId: failedChannelId, requestedByUserId },
+      ],
+      { priority: 10 },
+    );
   });
 
   it("requires a YouTube credential before queueing bulk enrichment", async () => {
@@ -175,5 +177,43 @@ describe("bulk channel LLM enrichment requests", () => {
 
     expect(withDbTransactionMock).not.toHaveBeenCalled();
     expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(enqueueChannelLlmJobsMock).not.toHaveBeenCalled();
+  });
+
+  it("bulk inserts in chunks of 100 and counts a failed chunk accurately", async () => {
+    const channelIds = Array.from({ length: 201 }, (_, index) =>
+      `${String(index + 1).padStart(8, "0")}-1111-4111-8111-111111111111`,
+    );
+    listAllChannelIdsForCatalogFiltersMock.mockResolvedValue(channelIds);
+    prismaMock.channel.findMany.mockResolvedValue(channelIds.map((id) => ({
+      id,
+      updatedAt: new Date("2026-05-01T00:00:00.000Z"),
+      enrichment: null,
+    })));
+    prismaMock.channelEnrichment.findUnique.mockResolvedValue(null);
+    enqueueChannelLlmJobsMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("bulk insert failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await requestBulkChannelLlmEnrichment({
+      requestedByUserId,
+      filters: {},
+    });
+
+    expect(enqueueChannelLlmJobsMock).toHaveBeenCalledTimes(3);
+    expect(enqueueChannelLlmJobsMock.mock.calls.map(([payloads]) => payloads.length)).toEqual([
+      100,
+      100,
+      1,
+    ]);
+    expect(enqueueChannelLlmJobsMock.mock.calls.every(([, options]) =>
+      options.priority === 10)).toBe(true);
+    expect(result).toEqual({
+      requestedCount: 201,
+      queuedCount: 101,
+      alreadyQueuedCount: 0,
+      failedCount: 100,
+    });
   });
 });
