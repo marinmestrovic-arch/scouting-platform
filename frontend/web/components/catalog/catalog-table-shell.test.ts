@@ -213,6 +213,7 @@ function renderView(
       isAdmin: options?.isAdmin ?? false,
       requestState,
       onClearSelection: vi.fn(),
+      onCancelSelectedEnrichment: vi.fn(),
       onDeleteSelectedChannels: vi.fn(),
       onQueryChange: vi.fn(),
       onExportSelectedChannels: vi.fn(),
@@ -822,6 +823,7 @@ describe("catalog table shell view", () => {
     );
 
     expect(html).toContain("Enrich selected (2)");
+    expect(html).toContain("Cancel enrichment (2)");
     expect(html).toContain("Export selected (2)");
     expect(html).not.toContain("Delete selected");
     expect(html).not.toContain("Push to HubSpot");

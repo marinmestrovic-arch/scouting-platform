@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiRequestError,
   cancelChannelEnrichment,
+  cancelChannelEnrichmentBatch,
   deleteChannelsBatch,
   deleteFilteredChannels,
   fetchChannelDetail,
@@ -370,6 +371,27 @@ describe("channels api helpers", () => {
       method: "DELETE",
     });
     expect(response.enrichment.status).toBe("cancelled");
+  });
+
+  it("bulk stops selected channel enrichments", async () => {
+    const channelId = "53adac17-f39d-4731-a61f-194150fbc431";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({ requestedCount: 1, cancelledCount: 1, notActiveCount: 0 }),
+    );
+
+    await expect(cancelChannelEnrichmentBatch({
+      type: "selected",
+      channelIds: [channelId],
+    })).resolves.toEqual({
+      requestedCount: 1,
+      cancelledCount: 1,
+      notActiveCount: 0,
+    });
+    expect(fetchSpy).toHaveBeenCalledWith("/api/channels/enrichment/bulk-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "selected", channelIds: [channelId] }),
+    });
   });
 
   it("deletes channels through the admin bulk delete endpoint", async () => {

@@ -299,6 +299,27 @@ export const bulkRetryChannelEnrichmentResponseSchema = z.object({
   failedCount: z.number().int().nonnegative(),
 });
 
+const bulkCancelSelectedChannelEnrichmentRequestSchema = z.object({
+  type: z.literal("selected"),
+  channelIds: z.array(z.uuid()).min(1).max(500),
+});
+
+const bulkCancelFilteredChannelEnrichmentRequestSchema = z.object({
+  type: z.literal("filtered"),
+  filters: catalogChannelFiltersSchema,
+});
+
+export const bulkCancelChannelEnrichmentRequestSchema = z.discriminatedUnion("type", [
+  bulkCancelSelectedChannelEnrichmentRequestSchema,
+  bulkCancelFilteredChannelEnrichmentRequestSchema,
+]);
+
+export const bulkCancelChannelEnrichmentResponseSchema = z.object({
+  requestedCount: z.number().int().nonnegative(),
+  cancelledCount: z.number().int().nonnegative(),
+  notActiveCount: z.number().int().nonnegative(),
+});
+
 const bulkDeleteSelectedChannelsRequestSchema = z.object({
   channelIds: z.array(z.uuid()).min(1).max(100),
 });
@@ -344,6 +365,12 @@ export type BulkRetryChannelEnrichmentRequest = z.infer<
 >;
 export type BulkRetryChannelEnrichmentResponse = z.infer<
   typeof bulkRetryChannelEnrichmentResponseSchema
+>;
+export type BulkCancelChannelEnrichmentRequest = z.infer<
+  typeof bulkCancelChannelEnrichmentRequestSchema
+>;
+export type BulkCancelChannelEnrichmentResponse = z.infer<
+  typeof bulkCancelChannelEnrichmentResponseSchema
 >;
 export type BulkDeleteChannelsRequest = z.infer<typeof bulkDeleteChannelsRequestSchema>;
 export type BulkDeleteChannelsResponse = z.infer<typeof bulkDeleteChannelsResponseSchema>;

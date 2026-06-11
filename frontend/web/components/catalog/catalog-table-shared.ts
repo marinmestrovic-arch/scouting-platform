@@ -404,6 +404,31 @@ export function getFilteredEnrichmentSubmittingMessage(totalCount: number): stri
   return `Requesting enrichment for ${formatSelectedChannelCount(totalCount)} matching the current filters.`;
 }
 
+export function getBulkEnrichmentCancellationSubmittingMessage(selectedCount: number): string {
+  return `Stopping enrichment for ${formatSelectedChannelCount(selectedCount)}.`;
+}
+
+export function summarizeBulkEnrichmentCancellation(input: {
+  cancelledCount: number;
+  notActiveCount: number;
+}): BatchEnrichmentActionState {
+  if (input.cancelledCount === 0) {
+    return {
+      type: "success",
+      message: "No selected channels had active enrichment to stop.",
+    };
+  }
+
+  const stopped = `Stopped enrichment for ${formatSelectedChannelCount(input.cancelledCount)}.`;
+
+  return {
+    type: "success",
+    message: input.notActiveCount > 0
+      ? `${stopped} ${formatSelectedChannelCount(input.notActiveCount)} were already inactive.`
+      : stopped,
+  };
+}
+
 export function getCatalogChannelDeleteSubmittingMessage(selectedCount: number): string {
   return `Deleting ${formatSelectedChannelCount(selectedCount)}.`;
 }

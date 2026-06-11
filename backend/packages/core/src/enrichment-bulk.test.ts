@@ -17,7 +17,9 @@ const {
     },
     channelEnrichment: {
       updateMany: vi.fn(),
+      updateManyAndReturn: vi.fn(),
       createMany: vi.fn(),
+      findMany: vi.fn(),
       findUnique: vi.fn(),
     },
     auditEvent: {
@@ -51,7 +53,10 @@ vi.mock("./queue", () => ({
   enqueueJob: enqueueJobMock,
 }));
 
-import { requestBulkChannelLlmEnrichment } from "./enrichment";
+import {
+  cancelBulkChannelLlmEnrichment,
+  requestBulkChannelLlmEnrichment,
+} from "./enrichment";
 
 const requestedByUserId = "11111111-1111-4111-8111-111111111111";
 const missingChannelId = "22222222-2222-4222-8222-222222222222";
@@ -214,6 +219,81 @@ describe("bulk channel LLM enrichment requests", () => {
       queuedCount: 101,
       alreadyQueuedCount: 0,
       failedCount: 100,
+    });
+  });
+});
+
+describe("bulk channel LLM enrichment cancellation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.channelEnrichment.findMany.mockResolvedValue([
+      { channelId: queuedChannelId, status: ChannelEnrichmentStatus.QUEUED },
+      { channelId: completedChannelId, status: ChannelEnrichmentStatus.RUNNING },
+    ]);
+    prismaMock.channelEnrichment.updateManyAndReturn.mockResolvedValue([
+      { channelId: queuedChannelId },
+      { channelId: completedChannelId },
+    ]);
+    prismaMock.auditEvent.createMany.mockResolvedValue({ count: 2 });
+  });
+
+  it("cancels selected active enrichments and audits exact transitions", async () => {
+    const result = await cancelBulkChannelLlmEnrichment({
+      actorUserId: requestedByUserId,
+      scope: {
+        type: "selected",
+        channelIds: [queuedChannelId, completedChannelId, failedChannelId],
+      },
+    });
+
+    expect(result).toEqual({
+      requestedCount: 3,
+      cancelledCount: 2,
+      notActiveCount: 1,
+    });
+    expect(prismaMock.channelEnrichment.updateManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: ChannelEnrichmentStatus.CANCELLED,
+          lastError: null,
+          nextRetryAt: null,
+        }),
+      }),
+    );
+    expect(prismaMock.auditEvent.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          actorUserId: requestedByUserId,
+          action: "channel.enrichment.cancelled",
+          entityId: queuedChannelId,
+          metadata: { previousStatus: "queued", bulk: true },
+        }),
+        expect.objectContaining({
+          actorUserId: requestedByUserId,
+          action: "channel.enrichment.cancelled",
+          entityId: completedChannelId,
+          metadata: { previousStatus: "running", bulk: true },
+        }),
+      ],
+    });
+  });
+
+  it("resolves filter-wide cancellation through the catalog query", async () => {
+    listAllChannelIdsForCatalogFiltersMock.mockResolvedValue([queuedChannelId]);
+    prismaMock.channelEnrichment.findMany.mockResolvedValue([
+      { channelId: queuedChannelId, status: ChannelEnrichmentStatus.QUEUED },
+    ]);
+    prismaMock.channelEnrichment.updateManyAndReturn.mockResolvedValue([
+      { channelId: queuedChannelId },
+    ]);
+
+    await cancelBulkChannelLlmEnrichment({
+      actorUserId: requestedByUserId,
+      scope: { type: "filtered", filters: { enrichmentStatus: ["running"] } },
+    });
+
+    expect(listAllChannelIdsForCatalogFiltersMock).toHaveBeenCalledWith({
+      enrichmentStatus: ["running"],
     });
   });
 });

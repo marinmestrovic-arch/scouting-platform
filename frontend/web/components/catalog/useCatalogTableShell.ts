@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  cancelChannelEnrichmentBatch,
   deleteChannelsBatch,
   deleteFilteredChannels,
   requestChannelEnrichmentBatch,
@@ -43,6 +44,7 @@ import type {
 import {
   ALL_FILTERED_CHANNELS_SELECTION,
   getBatchEnrichmentSubmittingMessage,
+  getBulkEnrichmentCancellationSubmittingMessage,
   getFilteredEnrichmentSubmittingMessage,
   getCatalogChannelDeleteErrorMessage,
   getCatalogChannelDeleteSubmittingMessage,
@@ -57,6 +59,7 @@ import {
   shouldPollCatalogEnrichmentRows,
   sortSavedSegments,
   summarizeCatalogBatchEnrichmentResults,
+  summarizeBulkEnrichmentCancellation,
   summarizeCatalogFilteredEnrichmentResult,
   toggleCatalogChannelSelection,
   toggleCatalogPageSelection,
@@ -648,6 +651,62 @@ export function useCatalogTableShellModel({
     }
   }
 
+  async function handleCancelSelectedEnrichment(): Promise<void> {
+    if (requestState.status !== "ready") {
+      return;
+    }
+
+    const allFilteredSelected = selectedChannelIds.includes(ALL_FILTERED_CHANNELS_SELECTION);
+    const channelIds = [...new Set(selectedChannelIds.filter(
+      (channelId) => channelId !== ALL_FILTERED_CHANNELS_SELECTION,
+    ))];
+    const selectedCount = allFilteredSelected ? requestState.data.total : channelIds.length;
+
+    if (selectedCount === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Stop active enrichment for ${selectedCount} selected channel${selectedCount === 1 ? "" : "s"}?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBatchEnrichmentActionState({
+      type: "submitting",
+      message: getBulkEnrichmentCancellationSubmittingMessage(selectedCount),
+    });
+
+    try {
+      const result = await cancelChannelEnrichmentBatch(
+        allFilteredSelected
+          ? {
+              type: "filtered",
+              filters: buildCatalogChannelFilters(appliedState.filters),
+            }
+          : {
+              type: "selected",
+              channelIds,
+            },
+      );
+
+      setBatchEnrichmentActionState(summarizeBulkEnrichmentCancellation(result));
+
+      if (result.cancelledCount > 0) {
+        setReloadToken((current) => current + 1);
+      }
+    } catch (error) {
+      setBatchEnrichmentActionState({
+        type: "error",
+        message: error instanceof Error && error.message
+          ? error.message
+          : "Unable to stop channel enrichment. Please try again.",
+      });
+    }
+  }
+
   async function handleRequestFilteredEnrichment(): Promise<void> {
     if (requestState.status !== "ready" || requestState.data.total === 0) {
       return;
@@ -772,6 +831,7 @@ export function useCatalogTableShellModel({
     onClearSelection: () => {
       setSelectedChannelIds([]);
     },
+    onCancelSelectedEnrichment: handleCancelSelectedEnrichment,
     onCreateSegment: handleCreateSegment,
     onDeleteSegment: handleDeleteSegment,
     onDeleteSelectedChannels: handleDeleteSelectedChannels,

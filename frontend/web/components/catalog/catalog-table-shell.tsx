@@ -115,6 +115,7 @@ type CatalogTableShellViewProps = {
   onRequestSelectedEnrichment: () => void | Promise<void>;
   onSelectAllFilteredChannels: () => void;
   onClearSelection: () => void;
+  onCancelSelectedEnrichment: () => void | Promise<void>;
   onResetFilters: () => void;
   onRetry: () => void;
   onPreviousPage: () => void;
@@ -147,6 +148,7 @@ export function CatalogTableShellView({
   onRequestSelectedEnrichment,
   onSelectAllFilteredChannels,
   onClearSelection,
+  onCancelSelectedEnrichment,
   onResetFilters,
   onRetry,
   onPreviousPage,
@@ -202,6 +204,7 @@ export function CatalogTableShellView({
           isAdmin={isAdmin}
           latestCsvExportBatch={latestCsvExportBatch}
           onClearSelection={onClearSelection}
+          onCancelSelectedEnrichment={onCancelSelectedEnrichment}
           onDeleteSelectedChannels={onDeleteSelectedChannels}
           onExportSelectedChannels={onExportSelectedChannels}
           onNextPage={onNextPage}

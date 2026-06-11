@@ -161,6 +161,7 @@ type CatalogTableProps = Readonly<{
   selectedChannelIds: readonly string[];
   viewMode?: CatalogViewMode;
   onClearSelection: () => void;
+  onCancelSelectedEnrichment: () => void | Promise<void>;
   onDeleteSelectedChannels: () => void | Promise<void>;
   onExportSelectedChannels: () => void | Promise<void>;
   onNextPage: () => void;
@@ -181,6 +182,7 @@ export function CatalogTable({
   selectedChannelIds,
   viewMode = "table",
   onClearSelection,
+  onCancelSelectedEnrichment,
   onDeleteSelectedChannels,
   onExportSelectedChannels,
   onNextPage,
@@ -266,6 +268,17 @@ export function CatalogTable({
                 type="button"
               >
                 {isRequestingBatchEnrichment ? "Requesting..." : `Enrich selected (${selectedCount})`}
+              </button>
+              <button
+                className="catalog-table__button catalog-table__button--secondary"
+                disabled={isRequestingBatchEnrichment}
+                onClick={() => {
+                  void onCancelSelectedEnrichment();
+                }}
+                suppressHydrationWarning
+                type="button"
+              >
+                {isRequestingBatchEnrichment ? "Stopping..." : `Cancel enrichment (${selectedCount})`}
               </button>
               <button
                 className="catalog-table__button"

@@ -7,6 +7,8 @@ import {
 } from "@prisma/client";
 import type {
   BulkRetryChannelEnrichmentResponse,
+  BulkCancelChannelEnrichmentResponse,
+  BulkCancelChannelEnrichmentRequest,
   CatalogChannelFilters,
   RequestChannelEnrichmentResponse,
 } from "@scouting-platform/contracts";
@@ -1005,6 +1007,90 @@ export async function requestBulkChannelLlmEnrichment(input: {
     queuedCount,
     alreadyQueuedCount,
     failedCount,
+  };
+}
+
+export async function cancelBulkChannelLlmEnrichment(input: {
+  actorUserId: string;
+  scope: BulkCancelChannelEnrichmentRequest;
+}): Promise<BulkCancelChannelEnrichmentResponse> {
+  const channelIds = input.scope.type === "selected"
+    ? [...new Set(input.scope.channelIds)]
+    : await listAllChannelIdsForCatalogFilters(input.scope.filters);
+  let cancelledCount = 0;
+
+  for (const channelIdChunk of chunkArray(channelIds, BULK_CHANNEL_ENRICHMENT_DB_CHUNK_SIZE)) {
+    cancelledCount += await withDbTransaction(async (tx) => {
+      const activeEnrichments = await tx.channelEnrichment.findMany({
+        where: {
+          channelId: { in: channelIdChunk },
+          status: {
+            in: [
+              PrismaChannelEnrichmentStatus.QUEUED,
+              PrismaChannelEnrichmentStatus.RUNNING,
+            ],
+          },
+        },
+        select: {
+          channelId: true,
+          status: true,
+        },
+      });
+
+      if (activeEnrichments.length === 0) {
+        return 0;
+      }
+
+      const previousStatuses = new Map(
+        activeEnrichments.map((enrichment) => [enrichment.channelId, enrichment.status]),
+      );
+      const cancelled = await tx.channelEnrichment.updateManyAndReturn({
+        where: {
+          channelId: {
+            in: activeEnrichments.map((enrichment) => enrichment.channelId),
+          },
+          status: {
+            in: [
+              PrismaChannelEnrichmentStatus.QUEUED,
+              PrismaChannelEnrichmentStatus.RUNNING,
+            ],
+          },
+        },
+        data: {
+          status: PrismaChannelEnrichmentStatus.CANCELLED,
+          nextRetryAt: null,
+          lastError: null,
+          youtubeFetchedAt: null,
+          rawOpenaiPayloadFetchedAt: null,
+        },
+        select: {
+          channelId: true,
+        },
+      });
+
+      if (cancelled.length > 0) {
+        await tx.auditEvent.createMany({
+          data: cancelled.map((enrichment) => ({
+            actorUserId: input.actorUserId,
+            action: "channel.enrichment.cancelled",
+            entityType: "channel",
+            entityId: enrichment.channelId,
+            metadata: {
+              previousStatus: previousStatuses.get(enrichment.channelId)?.toLowerCase(),
+              bulk: true,
+            },
+          })),
+        });
+      }
+
+      return cancelled.length;
+    });
+  }
+
+  return {
+    requestedCount: channelIds.length,
+    cancelledCount,
+    notActiveCount: channelIds.length - cancelledCount,
   };
 }
 

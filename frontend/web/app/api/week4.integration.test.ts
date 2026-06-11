@@ -24,6 +24,7 @@ integration("week 4 API integration", () => {
   let channelsRoute: typeof import("./channels/route");
   let channelDetailRoute: typeof import("./channels/[id]/route");
   let channelEnrichRoute: typeof import("./channels/[id]/enrich/route");
+  let channelBulkCancelRoute: typeof import("./channels/enrichment/bulk-cancel/route");
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -38,6 +39,7 @@ integration("week 4 API integration", () => {
     channelsRoute = await import("./channels/route");
     channelDetailRoute = await import("./channels/[id]/route");
     channelEnrichRoute = await import("./channels/[id]/enrich/route");
+    channelBulkCancelRoute = await import("./channels/enrichment/bulk-cancel/route");
   });
 
   beforeEach(async () => {
@@ -207,6 +209,68 @@ integration("week 4 API integration", () => {
       actorUserId: user.id,
       metadata: { previousStatus: "running" },
     });
+  });
+
+  it("bulk cancels selected active enrichments and leaves terminal rows unchanged", async () => {
+    const user = await createUser("bulk-cancel-manager@example.com");
+    const activeChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-API-BULK-CANCEL-ACTIVE",
+        title: "Active Channel",
+        enrichment: {
+          create: {
+            status: PrismaChannelEnrichmentStatus.RUNNING,
+            requestedByUserId: user.id,
+            requestedAt: new Date(),
+            startedAt: new Date(),
+          },
+        },
+      },
+      select: { id: true },
+    });
+    const completedChannel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-API-BULK-CANCEL-COMPLETED",
+        title: "Completed Channel",
+        enrichment: {
+          create: {
+            status: PrismaChannelEnrichmentStatus.COMPLETED,
+            requestedByUserId: user.id,
+            requestedAt: new Date(),
+            completedAt: new Date(),
+          },
+        },
+      },
+      select: { id: true },
+    });
+    currentSessionUser = { id: user.id, role: "user" };
+
+    const response = await channelBulkCancelRoute.POST(new Request(
+      "http://localhost/api/channels/enrichment/bulk-cancel",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "selected",
+          channelIds: [activeChannel.id, completedChannel.id],
+        }),
+      },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      requestedCount: 2,
+      cancelledCount: 1,
+      notActiveCount: 1,
+    });
+    await expect(prisma.channelEnrichment.findUnique({
+      where: { channelId: activeChannel.id },
+      select: { status: true },
+    })).resolves.toEqual({ status: PrismaChannelEnrichmentStatus.CANCELLED });
+    await expect(prisma.channelEnrichment.findUnique({
+      where: { channelId: completedChannel.id },
+      select: { status: true },
+    })).resolves.toEqual({ status: PrismaChannelEnrichmentStatus.COMPLETED });
   });
 
   it("includes enrichment state on channel list and detail responses", async () => {

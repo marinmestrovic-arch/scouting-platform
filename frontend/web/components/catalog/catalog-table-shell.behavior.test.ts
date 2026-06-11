@@ -7,6 +7,7 @@ import type {
 } from "../../lib/catalog-filters";
 
 const {
+  cancelChannelEnrichmentBatchMock,
   createCsvExportBatchMock,
   createSavedSegmentMock,
   deleteChannelsBatchMock,
@@ -26,6 +27,7 @@ const {
   useSearchParamsMock,
   useStateMock,
 } = vi.hoisted(() => ({
+  cancelChannelEnrichmentBatchMock: vi.fn(),
   createCsvExportBatchMock: vi.fn(),
   createSavedSegmentMock: vi.fn(),
   deleteChannelsBatchMock: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../../lib/channels-api", () => ({
+  cancelChannelEnrichmentBatch: cancelChannelEnrichmentBatchMock,
   deleteChannelsBatch: deleteChannelsBatchMock,
   deleteFilteredChannels: deleteFilteredChannelsMock,
   fetchChannels: fetchChannelsMock,
@@ -96,6 +99,7 @@ import {
 
 type CatalogShellElement = ReactElement<{
   onClearSelection: () => void;
+  onCancelSelectedEnrichment: () => Promise<void> | void;
   onCreateSegment: () => Promise<void> | void;
   onDeleteSegment: (segment: SegmentResponse) => Promise<void> | void;
   onDeleteSelectedChannels: () => Promise<void> | void;
@@ -438,6 +442,11 @@ describe("catalog table shell behavior", () => {
       pageSize: 20,
     } satisfies ListChannelsResponse);
     createCsvExportBatchMock.mockResolvedValue(createCsvExportBatchSummary());
+    cancelChannelEnrichmentBatchMock.mockResolvedValue({
+      requestedCount: 1,
+      cancelledCount: 1,
+      notActiveCount: 0,
+    });
     fetchCsvExportBatchDetailMock.mockResolvedValue(createCsvExportBatchDetail());
     fetchSavedSegmentsMock.mockResolvedValue([createSavedSegment()]);
     deleteChannelsBatchMock.mockResolvedValue({
@@ -985,6 +994,39 @@ describe("catalog table shell behavior", () => {
     });
     expect(requestFilteredChannelEnrichmentMock).toHaveBeenCalledWith(filters);
     expect(deleteFilteredChannelsMock).toHaveBeenCalledWith(filters);
+  });
+
+  it("bulk cancels selected active enrichments", async () => {
+    const selectedChannel = createChannel(
+      "00000000-0000-0000-0000-000000000221",
+      "Running Channel",
+    );
+    const confirmMock = vi.fn(() => true);
+    vi.stubGlobal("window", { confirm: confirmMock });
+    const { element, setBatchEnrichmentActionState, setReloadToken } = renderShell({
+      requestState: createReadyState({
+        items: [selectedChannel],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+      selectedChannelIds: [selectedChannel.id],
+    });
+
+    await element.props.onCancelSelectedEnrichment();
+
+    expect(confirmMock).toHaveBeenCalledWith(
+      "Stop active enrichment for 1 selected channel?",
+    );
+    expect(cancelChannelEnrichmentBatchMock).toHaveBeenCalledWith({
+      type: "selected",
+      channelIds: [selectedChannel.id],
+    });
+    expect(setBatchEnrichmentActionState).toHaveBeenLastCalledWith({
+      type: "success",
+      message: "Stopped enrichment for 1 channel.",
+    });
+    expect(setReloadToken).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it("deletes selected channels for admins after confirmation", async () => {
