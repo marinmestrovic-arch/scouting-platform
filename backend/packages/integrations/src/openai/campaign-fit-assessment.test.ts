@@ -253,6 +253,54 @@ describe("enrichCampaignFitWithOpenAi", () => {
     );
   });
 
+  it("instructs Mini to return short card-ready rationale", async () => {
+    const create = vi.fn<
+      (input: Record<string, unknown>) => Promise<{ choices: Array<{ message: { content: string } }> }>
+    >(async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify(createValidAssessment()),
+          },
+        },
+      ],
+    }));
+
+    await enrichCampaignFitWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create,
+          },
+        },
+      },
+    });
+
+    const request = create.mock.calls[0]?.[0] as
+      | { messages?: Array<{ role: string; content: string }> }
+      | undefined;
+    const systemMessage = request?.messages?.find((message) => message.role === "system");
+    const userMessage = request?.messages?.find((message) => message.role === "user");
+    const prompt = JSON.parse(userMessage?.content ?? "{}") as {
+      instructions?: {
+        brevity?: string;
+        fitReasons?: string;
+        fitConcerns?: string;
+        recommendedAngles?: string;
+        avoidTopics?: string;
+      };
+    };
+
+    expect(systemMessage?.content).toContain("short signal bullets");
+    expect(prompt.instructions?.brevity).toContain("under 80 characters");
+    expect(prompt.instructions?.fitReasons).toContain("List every useful fit signal");
+    expect(prompt.instructions?.fitReasons).toContain("Past sponsors: CarVertical, HelloFresh");
+    expect(prompt.instructions?.fitConcerns).toContain("Return an empty array");
+    expect(prompt.instructions?.recommendedAngles).toContain("Return an empty array");
+    expect(prompt.instructions?.avoidTopics).toContain("Return an empty array");
+  });
+
   it("parses valid assessment output", async () => {
     const result = await enrichCampaignFitWithOpenAi({
       ...TEST_INPUT,
@@ -274,7 +322,12 @@ describe("enrichCampaignFitWithOpenAi", () => {
       },
     });
 
-    expect(result.profile).toEqual(createValidAssessment());
+    expect(result.profile).toEqual({
+      ...createValidAssessment(),
+      fitConcerns: [],
+      recommendedAngles: [],
+      avoidTopics: [],
+    });
     expect(result.rawPayload.id).toBe("resp-1");
     expect(result.model).toBe("gpt-4.1-mini");
   });
@@ -372,6 +425,87 @@ describe("enrichCampaignFitWithOpenAi", () => {
         code: "OPENAI_INVALID_RESPONSE",
         status: 502,
       } satisfies Partial<OpenAiCampaignFitError>),
+    );
+  });
+
+  it("compacts verbose assessment output before returning it", async () => {
+    const result = await enrichCampaignFitWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify(
+                      createValidAssessment({
+                        fitReasons: [
+                          "Audience aligns with the brief.",
+                          "Review format matches the campaign.",
+                          "Hardware topics recur.",
+                          "Past sponsors: CarVertical, HelloFresh.",
+                        ],
+                        fitConcerns: [
+                          "Limited local-language reach.",
+                          "Some console-only content.",
+                          "This third concern is too much.",
+                        ],
+                        recommendedAngles: [
+                          "Benchmark-style review.",
+                          "This second angle is too much.",
+                        ],
+                        avoidTopics: [
+                          "Console-only positioning.",
+                          "This second avoid topic is too much.",
+                        ],
+                      }),
+                    ),
+                  },
+                },
+              ],
+            }),
+          },
+        },
+      },
+    });
+
+    expect(result.profile.fitReasons).toHaveLength(4);
+    expect(result.profile.fitReasons).toContain("Past sponsors: CarVertical, HelloFresh.");
+    expect(result.profile.fitConcerns).toEqual([]);
+    expect(result.profile.recommendedAngles).toEqual([]);
+    expect(result.profile.avoidTopics).toEqual([]);
+  });
+
+  it("compacts long assessment bullets before returning them", async () => {
+    const result = await enrichCampaignFitWithOpenAi({
+      ...TEST_INPUT,
+      client: {
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify(
+                      createValidAssessment({
+                        fitReasons: [
+                          "This sentence is intentionally far too long for the scouting result card because it reads like a report paragraph instead of a compact bullet.",
+                        ],
+                      }),
+                    ),
+                  },
+                },
+              ],
+            }),
+          },
+        },
+      },
+    });
+
+    expect(result.profile.fitReasons[0]?.length).toBeLessThanOrEqual(80);
+    expect(result.profile.fitReasons[0]).toBe(
+      "This sentence is intentionally far too long for the scouting result card...",
     );
   });
 

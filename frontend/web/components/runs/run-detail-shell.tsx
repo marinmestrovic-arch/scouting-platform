@@ -123,13 +123,69 @@ function getFitScorePresentation(score: number): {
   return { label: `${percentage}% fit - Low fit`, tone: "low" };
 }
 
-function renderAssessmentList(title: string, items: string[] | null, tone: "positive" | "caution") {
-  if (!items || items.length === 0) {
+function toTitleCaseStart(value: string): string {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
+}
+
+function compactFitReason(item: string): string {
+  const normalized = item.replace(/\s+/g, " ").trim();
+  const withoutChannelLead = normalized
+    .replace(/^The channel ['"][^'"]+['"] is\s+/i, "")
+    .replace(/^The channel is\s+/i, "")
+    .replace(/^The channel's\s+/i, "")
+    .replace(/^The channel\s+/i, "");
+  const weeklyMatch = withoutChannelLead.match(/\bpublishes?\s+(daily|weekly|monthly|regularly)\b/i);
+  const sponsorshipMatch = withoutChannelLead.match(
+    /\b(?:previous|past)\s+sponsorships?\s+by\s+(.+?)(?:\s+suggest|\s+indicate|,|\.|$)/i,
+  );
+  const subscriberMatch =
+    withoutChannelLead.match(/\b(\d+(?:\.\d+)?\s*[kmb]?)\s+subscribers?\b/i) ??
+    withoutChannelLead.match(/\bsubscriber base of\s+(\d+(?:\.\d+)?\s*[kmb]?)/i);
+  const audienceMatch = withoutChannelLead.match(/\b(French|German|English|Spanish|Italian|Portuguese|Francophone|DACH|US|UK)[-\s]speaking audience\b/i);
+  const dedicatedMatch = withoutChannelLead.match(/\b(?:fully\s+)?dedicated to\s+([^,.]+?)(?:\s+content)?(?:,|\.|$)/i);
+
+  if (sponsorshipMatch?.[1]) {
+    return `Past sponsors: ${sponsorshipMatch[1].replace(/\s+and\s+/i, ", ")}`;
+  }
+
+  if (weeklyMatch?.[1]) {
+    return `Publishes ${weeklyMatch[1].toLowerCase()}`;
+  }
+
+  if (subscriberMatch?.[1]) {
+    return `${subscriberMatch[1].replace(/\s+/g, "")} subscribers`;
+  }
+
+  if (audienceMatch?.[0]) {
+    return toTitleCaseStart(audienceMatch[0]);
+  }
+
+  if (dedicatedMatch?.[1]) {
+    return `Dedicated to ${dedicatedMatch[1].trim()}`;
+  }
+
+  const firstClause = withoutChannelLead.split(/[.;]/)[0]?.split(/,\s+(?:matching|consistent|indicating|which|fitting|supporting|allowing)\b/i)[0]?.trim();
+  const compact = firstClause || withoutChannelLead;
+
+  if (compact.length <= 80) {
+    return toTitleCaseStart(compact);
+  }
+
+  const cutoff = compact.lastIndexOf(" ", 77);
+  return `${toTitleCaseStart(compact.slice(0, cutoff > 30 ? cutoff : 77).trimEnd())}...`;
+}
+
+function getCompactFitReasons(items: string[] | null): string[] {
+  return (items ?? []).map(compactFitReason).filter(Boolean);
+}
+
+function renderAssessmentList(title: string, items: string[]) {
+  if (items.length === 0) {
     return null;
   }
 
   return (
-    <div className={`run-detail__assessment-group run-detail__assessment-group--${tone}`}>
+    <div className="run-detail__assessment-group run-detail__assessment-group--positive">
       <h5>{title}</h5>
       <ul>
         {items.map((item) => (
@@ -177,6 +233,7 @@ function renderAssessment(assessment: RunChannelAssessmentItem | undefined) {
   const fitScore = assessment.fitScore === null
     ? null
     : getFitScorePresentation(assessment.fitScore);
+  const fitReasons = getCompactFitReasons(assessment.fitReasons);
 
   return (
     <section className="run-detail__assessment run-detail__assessment--completed">
@@ -189,12 +246,9 @@ function renderAssessment(assessment: RunChannelAssessmentItem | undefined) {
         ) : null}
       </div>
       <div className="run-detail__assessment-grid">
-        {renderAssessmentList("Why it fits", assessment.fitReasons, "positive")}
-        {renderAssessmentList("Concerns", assessment.fitConcerns, "caution")}
-        {renderAssessmentList("Recommended angles", assessment.recommendedAngles, "positive")}
-        {renderAssessmentList("Topics to avoid", assessment.avoidTopics, "caution")}
+        {renderAssessmentList("Why it fits", fitReasons)}
       </div>
-      {!assessment.fitReasons?.length && !assessment.fitConcerns?.length ? (
+      {fitReasons.length === 0 ? (
         <p>No written rationale was returned for this assessment.</p>
       ) : null}
     </section>

@@ -240,8 +240,16 @@ describe("run detail shell", () => {
             status: "completed",
             model: "gpt-4.1-mini",
             fitScore: 0.81,
-            fitReasons: ["Strong audience overlap"],
-            fitConcerns: ["Limited local-language reach"],
+            fitReasons: [
+              "The channel publishes weekly, consistent with the campaign's likely need for regular brand exposure.",
+              "Previous sponsorships by CarVertical and HelloFresh suggest some openness to brand partnerships, indicating potential campaign compatibility.",
+              "Large subscriber base of 2.27M indicates strong reach within the Francophone true crime community relevant for French-language campaigns.",
+              "The channel 'McSkyz' is fully dedicated to true crime content, matching the True Crime / Crime niche specified in the campaign brief.",
+            ],
+            fitConcerns: [
+              "Limited local-language reach",
+              "Some console-only content",
+            ],
             recommendedAngles: ["Benchmark-style review"],
             avoidTopics: ["Console-only positioning"],
             assessedAt: "2026-03-10T10:03:00.000Z",
@@ -258,13 +266,14 @@ describe("run detail shell", () => {
     expect(html).toContain("81% fit");
     expect(html).toContain("Strong fit");
     expect(html).toContain("Why it fits");
-    expect(html).toContain("Strong audience overlap");
-    expect(html).toContain("Concerns");
-    expect(html).toContain("Limited local-language reach");
-    expect(html).toContain("Recommended angles");
-    expect(html).toContain("Benchmark-style review");
-    expect(html).toContain("Topics to avoid");
-    expect(html).toContain("Console-only positioning");
+    expect(html).toContain("Publishes weekly");
+    expect(html).toContain("Past sponsors: CarVertical, HelloFresh");
+    expect(html).toContain("2.27M subscribers");
+    expect(html).toContain("Dedicated to true crime");
+    expect(html).not.toContain("Watch-outs");
+    expect(html).not.toContain("Limited local-language reach");
+    expect(html).not.toContain("Angle: Benchmark-style review");
+    expect(html).not.toContain("Avoid: Console-only positioning");
   });
 
   it("renders explicit failed job feedback and empty snapshot guidance", () => {

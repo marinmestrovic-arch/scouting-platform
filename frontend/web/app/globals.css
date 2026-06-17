@@ -963,7 +963,7 @@ a {
 
 .run-detail__assessment-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
 
@@ -972,10 +972,6 @@ a {
   padding-left: var(--space-3);
   display: grid;
   gap: var(--space-1);
-}
-
-.run-detail__assessment-group--caution {
-  border-left-color: var(--color-warning);
 }
 
 .run-detail__assessment-group ul {

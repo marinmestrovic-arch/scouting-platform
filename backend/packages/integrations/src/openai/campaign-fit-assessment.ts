@@ -6,8 +6,10 @@ import { z } from "zod";
 import type { YoutubeChannelContext } from "../youtube/context";
 
 const OPENAI_MODEL = "gpt-4.1-mini" as const;
+const MAX_FIT_REASONS = 10;
+const MAX_ASSESSMENT_BULLET_LENGTH = 80;
 
-const outputSchema = z.object({
+const rawOutputSchema = z.object({
   fitScore: z.number().min(0).max(1),
   fitReasons: z.array(z.string().trim().min(1)).min(1).max(10),
   fitConcerns: z.array(z.string().trim().min(1)).max(10),
@@ -15,7 +17,7 @@ const outputSchema = z.object({
   avoidTopics: z.array(z.string().trim().min(1)).max(10),
 });
 
-export type OpenAiCampaignFitAssessment = z.infer<typeof outputSchema>;
+export type OpenAiCampaignFitAssessment = z.infer<typeof rawOutputSchema>;
 
 const campaignBriefSchema = z.object({
   client: z.string().nullable(),
@@ -171,16 +173,56 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
     instructions: {
       fitScore:
         "Return a number from 0 to 1 scoring how well this creator fits THIS specific free-text brief. 0 = clearly wrong fit, 1 = perfect fit. Weight: category and niche alignment, audience match, content style alignment, brand safety for this client's industry, presence of campaign-required themes.",
+      brevity:
+        "Be extremely concise. The UI shows this as short bullets inside a scouting-result card, not a report. Each bullet should be a terse signal under 80 characters, often 2-7 words.",
       fitReasons:
-        "List 1-10 concrete reasons this creator fits the free-text brief. Each reason must cite a specific signal and tie it to a brief requirement. Avoid generic platitudes.",
+        "List every useful fit signal, up to 10. Use short fragments like 'Publishes weekly', 'French-speaking audience', '2.27M subscribers', or 'Past sponsors: CarVertical, HelloFresh'. Include past sponsorship/brand partnership evidence whenever the channel context shows it.",
       fitConcerns:
-        "List 0-10 concrete concerns or misfit signals. Include audience mismatches, content-restriction violations, brand-safety risks for this client's industry, and competitor conflicts. Empty array if no concerns.",
+        "Return an empty array. Concerns are not shown in this UI.",
       recommendedAngles:
-        "List 0-10 creative angles that would work for this creator for this campaign. Be specific and reference recurring content formats when possible.",
+        "Return an empty array. Recommended angles are not shown in this UI.",
       avoidTopics:
-        "List 0-10 topics or content directions this creator should avoid for this campaign to preserve brief alignment and brand safety.",
+        "Return an empty array. Topics to avoid are not shown in this UI.",
     },
   });
+}
+
+function compactAssessmentBullet(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= MAX_ASSESSMENT_BULLET_LENGTH) {
+    return normalized;
+  }
+
+  const firstSentence = normalized.match(/^.{1,80}[.!?](?=\s|$)/)?.[0];
+
+  if (firstSentence) {
+    return firstSentence;
+  }
+
+  const cutoff = normalized.lastIndexOf(" ", MAX_ASSESSMENT_BULLET_LENGTH - 3);
+  const end = cutoff > 40 ? cutoff : MAX_ASSESSMENT_BULLET_LENGTH - 3;
+
+  return `${normalized.slice(0, end).trimEnd()}...`;
+}
+
+function compactAssessmentItems(items: string[], limit: number): string[] {
+  return items
+    .map(compactAssessmentBullet)
+    .filter((item) => item.length > 0)
+    .slice(0, limit);
+}
+
+function compactAssessmentOutput(
+  output: z.infer<typeof rawOutputSchema>,
+): OpenAiCampaignFitAssessment {
+  return {
+    fitScore: output.fitScore,
+    fitReasons: compactAssessmentItems(output.fitReasons, MAX_FIT_REASONS),
+    fitConcerns: [],
+    recommendedAngles: [],
+    avoidTopics: [],
+  };
 }
 
 function extractTextContent(content: unknown): string | null {
@@ -276,7 +318,7 @@ export function extractOpenAiCampaignFitFromRawPayload(
     );
   }
 
-  const parsed = outputSchema.safeParse(parsedContent);
+  const parsed = rawOutputSchema.safeParse(parsedContent);
 
   if (!parsed.success) {
     throw new OpenAiCampaignFitError(
@@ -286,7 +328,7 @@ export function extractOpenAiCampaignFitFromRawPayload(
     );
   }
 
-  return parsed.data;
+  return compactAssessmentOutput(parsed.data);
 }
 
 export type EnrichCampaignFitResult = {
@@ -314,7 +356,7 @@ export async function enrichCampaignFitWithOpenAi(
         {
           role: "system",
           content:
-            "You assess a YouTube creator's fit for a specific marketing campaign free-text brief after hard filters have already selected candidate channels. Return valid JSON with fitScore, fitReasons, fitConcerns, recommendedAngles, and avoidTopics.",
+            "You assess a YouTube creator's fit for a specific marketing campaign free-text brief after hard filters have already selected candidate channels. Return concise valid JSON with fitScore, fitReasons, fitConcerns, recommendedAngles, and avoidTopics. Keep fitReasons as short signal bullets; return empty arrays for fitConcerns, recommendedAngles, and avoidTopics.",
         },
         {
           role: "user",
