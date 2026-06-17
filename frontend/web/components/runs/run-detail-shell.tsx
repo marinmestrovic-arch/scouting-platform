@@ -1,6 +1,11 @@
 "use client";
 
-import { isCatalogScoutingQuery, type RunResultItem, type RunStatusResponse } from "@scouting-platform/contracts";
+import {
+  isCatalogScoutingQuery,
+  type RunChannelAssessmentItem,
+  type RunResultItem,
+  type RunStatusResponse,
+} from "@scouting-platform/contracts";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
@@ -101,10 +106,160 @@ function getResultIdentityFallback(result: RunResultItem): string {
   return result.channel.title.trim().charAt(0).toUpperCase() || "?";
 }
 
+function getFitScorePresentation(score: number): {
+  label: string;
+  tone: "strong" | "mixed" | "low";
+} {
+  const percentage = Math.round(score * 100);
+
+  if (score >= 0.7) {
+    return { label: `${percentage}% fit - Strong fit`, tone: "strong" };
+  }
+
+  if (score >= 0.4) {
+    return { label: `${percentage}% fit - Mixed fit`, tone: "mixed" };
+  }
+
+  return { label: `${percentage}% fit - Low fit`, tone: "low" };
+}
+
+function toTitleCaseStart(value: string): string {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
+}
+
+function compactFitReason(item: string): string {
+  const normalized = item.replace(/\s+/g, " ").trim();
+  const withoutChannelLead = normalized
+    .replace(/^The channel ['"][^'"]+['"] is\s+/i, "")
+    .replace(/^The channel is\s+/i, "")
+    .replace(/^The channel's\s+/i, "")
+    .replace(/^The channel\s+/i, "");
+  const weeklyMatch = withoutChannelLead.match(/\bpublishes?\s+(daily|weekly|monthly|regularly)\b/i);
+  const sponsorshipMatch = withoutChannelLead.match(
+    /\b(?:previous|past)\s+sponsorships?\s+by\s+(.+?)(?:\s+suggest|\s+indicate|,|\.|$)/i,
+  );
+  const subscriberMatch =
+    withoutChannelLead.match(/\b(\d+(?:\.\d+)?\s*[kmb]?)\s+subscribers?\b/i) ??
+    withoutChannelLead.match(/\bsubscriber base of\s+(\d+(?:\.\d+)?\s*[kmb]?)/i);
+  const audienceMatch = withoutChannelLead.match(/\b(French|German|English|Spanish|Italian|Portuguese|Francophone|DACH|US|UK)[-\s]speaking audience\b/i);
+  const dedicatedMatch = withoutChannelLead.match(/\b(?:fully\s+)?dedicated to\s+([^,.]+?)(?:\s+content)?(?:,|\.|$)/i);
+
+  if (sponsorshipMatch?.[1]) {
+    return `Past sponsors: ${sponsorshipMatch[1].replace(/\s+and\s+/i, ", ")}`;
+  }
+
+  if (weeklyMatch?.[1]) {
+    return `Publishes ${weeklyMatch[1].toLowerCase()}`;
+  }
+
+  if (subscriberMatch?.[1]) {
+    return `${subscriberMatch[1].replace(/\s+/g, "")} subscribers`;
+  }
+
+  if (audienceMatch?.[0]) {
+    return toTitleCaseStart(audienceMatch[0]);
+  }
+
+  if (dedicatedMatch?.[1]) {
+    return `Dedicated to ${dedicatedMatch[1].trim()}`;
+  }
+
+  const firstClause = withoutChannelLead.split(/[.;]/)[0]?.split(/,\s+(?:matching|consistent|indicating|which|fitting|supporting|allowing)\b/i)[0]?.trim();
+  const compact = firstClause || withoutChannelLead;
+
+  if (compact.length <= 80) {
+    return toTitleCaseStart(compact);
+  }
+
+  const cutoff = compact.lastIndexOf(" ", 77);
+  return `${toTitleCaseStart(compact.slice(0, cutoff > 30 ? cutoff : 77).trimEnd())}...`;
+}
+
+function getCompactFitReasons(items: string[] | null): string[] {
+  return (items ?? []).map(compactFitReason).filter(Boolean);
+}
+
+function renderAssessmentList(title: string, items: string[]) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="run-detail__assessment-group run-detail__assessment-group--positive">
+      <h5>{title}</h5>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function renderAssessment(assessment: RunChannelAssessmentItem | undefined) {
+  if (!assessment) {
+    return (
+      <section className="run-detail__assessment run-detail__assessment--unavailable">
+        <h4>Mini fit assessment</h4>
+        <p>No Mini assessment was generated for this channel.</p>
+      </section>
+    );
+  }
+
+  if (assessment.status === "queued" || assessment.status === "running") {
+    return (
+      <section className="run-detail__assessment run-detail__assessment--pending">
+        <div className="run-detail__assessment-heading">
+          <h4>Mini fit assessment</h4>
+          <StatusPill status={assessment.status} />
+        </div>
+        <p>Mini is reviewing this channel against the campaign brief.</p>
+      </section>
+    );
+  }
+
+  if (assessment.status === "failed") {
+    return (
+      <section className="run-detail__assessment run-detail__assessment--failed">
+        <div className="run-detail__assessment-heading">
+          <h4>Mini fit assessment</h4>
+          <StatusPill status="failed" />
+        </div>
+        <p>{assessment.lastError || "Mini could not complete the fit assessment for this channel."}</p>
+      </section>
+    );
+  }
+
+  const fitScore = assessment.fitScore === null
+    ? null
+    : getFitScorePresentation(assessment.fitScore);
+  const fitReasons = getCompactFitReasons(assessment.fitReasons);
+
+  return (
+    <section className="run-detail__assessment run-detail__assessment--completed">
+      <div className="run-detail__assessment-heading">
+        <h4>Mini fit assessment</h4>
+        {fitScore ? (
+          <strong className={`run-detail__fit-score run-detail__fit-score--${fitScore.tone}`}>
+            {fitScore.label}
+          </strong>
+        ) : null}
+      </div>
+      <div className="run-detail__assessment-grid">
+        {renderAssessmentList("Why it fits", fitReasons)}
+      </div>
+      {fitReasons.length === 0 ? (
+        <p>No written rationale was returned for this assessment.</p>
+      ) : null}
+    </section>
+  );
+}
+
 function renderResultCard(
   runId: string,
   runStatus: RunStatusResponse["status"],
   result: RunResultItem,
+  assessment: RunChannelAssessmentItem | undefined,
 ) {
   return (
     <li className="run-detail__result-card" key={result.id}>
@@ -145,6 +300,7 @@ function renderResultCard(
         <div className="run-detail__result-actions">
           <Link href={`/catalog/${result.channelId}`}>Open catalog detail</Link>
         </div>
+        {renderAssessment(assessment)}
         <RunResultRating
           disabled={runStatus !== "completed"}
           initialRating={result.rating ?? null}
@@ -302,7 +458,14 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
 
         {run.results.length > 0 ? (
           <ul className="run-detail__results-list">
-            {run.results.map((result) => renderResultCard(run.id, run.status, result))}
+            {run.results.map((result) =>
+              renderResultCard(
+                run.id,
+                run.status,
+                result,
+                run.assessments.find((assessment) => assessment.channelId === result.channelId),
+              ),
+            )}
           </ul>
         ) : (
           <p className="run-detail__empty-state">{getRunResultsEmptyMessage({

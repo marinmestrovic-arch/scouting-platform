@@ -888,6 +888,98 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
+.run-detail__assessment {
+  margin-top: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas-soft);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.run-detail__assessment--failed {
+  border-color: rgba(180, 35, 24, 0.24);
+  background: var(--color-danger-soft);
+}
+
+.run-detail__assessment--pending {
+  border-color: rgba(53, 98, 255, 0.2);
+  background: var(--color-info-soft);
+}
+
+.run-detail__assessment-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.run-detail__assessment h4,
+.run-detail__assessment h5,
+.run-detail__assessment p,
+.run-detail__assessment ul {
+  margin: 0;
+}
+
+.run-detail__assessment h4 {
+  font-size: var(--font-size-400);
+}
+
+.run-detail__assessment h5 {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-100);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.run-detail__assessment p,
+.run-detail__assessment li {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-300);
+}
+
+.run-detail__fit-score {
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-200);
+}
+
+.run-detail__fit-score--strong {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.run-detail__fit-score--mixed {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.run-detail__fit-score--low {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.run-detail__assessment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.run-detail__assessment-group {
+  border-left: 3px solid var(--color-success);
+  padding-left: var(--space-3);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.run-detail__assessment-group ul {
+  padding-left: var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+}
+
 .run-result-rating {
   border: 0;
   margin: var(--space-1) 0 0;
@@ -11270,6 +11362,12 @@ textarea:focus-visible,
   .recent-runs__result-card {
     grid-template-columns: minmax(0, 1fr);
     justify-items: start;
+  }
+
+  .run-detail__assessment,
+  .run-detail__assessment-grid {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* Stacks ALL toolbar / hero / detail-header flex rows */

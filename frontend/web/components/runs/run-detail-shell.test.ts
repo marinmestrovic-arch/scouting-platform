@@ -91,6 +91,22 @@ function buildRunStatusPayload(
     updatedAt: string;
     completedAt: string | null;
     results: RunResultPayload[];
+    assessments: Array<{
+      id: string;
+      runRequestId: string;
+      channelId: string;
+      status: "queued" | "running" | "completed" | "failed";
+      model: string | null;
+      fitScore: number | null;
+      fitReasons: string[] | null;
+      fitConcerns: string[] | null;
+      recommendedAngles: string[] | null;
+      avoidTopics: string[] | null;
+      assessedAt: string | null;
+      lastError: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>;
   }>,
 ) {
   const status = overrides?.status ?? "completed";
@@ -118,7 +134,7 @@ function buildRunStatusPayload(
       overrides?.completedAt ??
       (status === "completed" || status === "failed" ? "2026-03-10T10:03:00.000Z" : null),
     metadata: buildRunMetadata(),
-    assessments: [],
+    assessments: overrides?.assessments ?? [],
     results: overrides?.results ?? [
       {
         id: "24a57b02-3008-4af1-9b3a-340bd0db7d1c",
@@ -209,6 +225,55 @@ describe("run detail shell", () => {
     expect(html).toContain("Campaign manager rating");
     expect(html).toContain("4 out of 5.");
     expect(html).toContain('href="/catalog/24a57b02-3008-4af1-9b3a-340bd0db7d1c"');
+    expect(html).toContain("No Mini assessment was generated for this channel.");
+  });
+
+  it("renders Mini fit rationale for each assessed channel", () => {
+    const html = renderView({
+      status: "ready",
+      data: buildRunStatusPayload({
+        assessments: [
+          {
+            id: "124a57b0-3008-4af1-9b3a-340bd0db7d1c",
+            runRequestId: "53adac17-f39d-4731-a61f-194150fbc431",
+            channelId: "24a57b02-3008-4af1-9b3a-340bd0db7d1c",
+            status: "completed",
+            model: "gpt-4.1-mini",
+            fitScore: 0.81,
+            fitReasons: [
+              "The channel publishes weekly, consistent with the campaign's likely need for regular brand exposure.",
+              "Previous sponsorships by CarVertical and HelloFresh suggest some openness to brand partnerships, indicating potential campaign compatibility.",
+              "Large subscriber base of 2.27M indicates strong reach within the Francophone true crime community relevant for French-language campaigns.",
+              "The channel 'McSkyz' is fully dedicated to true crime content, matching the True Crime / Crime niche specified in the campaign brief.",
+            ],
+            fitConcerns: [
+              "Limited local-language reach",
+              "Some console-only content",
+            ],
+            recommendedAngles: ["Benchmark-style review"],
+            avoidTopics: ["Console-only positioning"],
+            assessedAt: "2026-03-10T10:03:00.000Z",
+            lastError: null,
+            createdAt: "2026-03-10T10:02:00.000Z",
+            updatedAt: "2026-03-10T10:03:00.000Z",
+          },
+        ],
+      }),
+      error: null,
+    });
+
+    expect(html).toContain("Mini fit assessment");
+    expect(html).toContain("81% fit");
+    expect(html).toContain("Strong fit");
+    expect(html).toContain("Why it fits");
+    expect(html).toContain("Publishes weekly");
+    expect(html).toContain("Past sponsors: CarVertical, HelloFresh");
+    expect(html).toContain("2.27M subscribers");
+    expect(html).toContain("Dedicated to true crime");
+    expect(html).not.toContain("Watch-outs");
+    expect(html).not.toContain("Limited local-language reach");
+    expect(html).not.toContain("Angle: Benchmark-style review");
+    expect(html).not.toContain("Avoid: Console-only positioning");
   });
 
   it("renders explicit failed job feedback and empty snapshot guidance", () => {
