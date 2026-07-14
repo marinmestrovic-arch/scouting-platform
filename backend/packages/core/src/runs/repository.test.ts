@@ -105,6 +105,58 @@ describe("run repository assessment ranking", () => {
       }),
     });
   });
+
+  it("removes low-fit and failed assessments instead of filling the target", async () => {
+    prismaMock.runRequest.findUnique.mockResolvedValueOnce({
+      id: "run-1",
+      status: RunRequestStatus.RUNNING,
+      target: 10,
+      results: [
+        {
+          id: "result-1",
+          channelId: "channel-1",
+          rank: 1,
+        },
+        {
+          id: "result-2",
+          channelId: "channel-2",
+          rank: 2,
+        },
+      ],
+      channelAssessments: [
+        {
+          channelId: "channel-1",
+          status: RunChannelAssessmentStatus.COMPLETED,
+          fitScore: 0.54,
+        },
+        {
+          channelId: "channel-2",
+          status: RunChannelAssessmentStatus.FAILED,
+          fitScore: null,
+        },
+      ],
+    });
+
+    await finalizeRunAssessmentRankingIfReady({
+      runRequestId: "run-1",
+    });
+
+    expect(prismaMock.__tx.runResult.deleteMany).toHaveBeenCalledWith({
+      where: {
+        runRequestId: "run-1",
+      },
+    });
+    expect(prismaMock.__tx.runResult.update).not.toHaveBeenCalled();
+    expect(prismaMock.__tx.runRequest.update).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+      },
+      data: expect.objectContaining({
+        status: RunRequestStatus.COMPLETED,
+        lastError: null,
+      }),
+    });
+  });
 });
 
 describe("run result ratings", () => {

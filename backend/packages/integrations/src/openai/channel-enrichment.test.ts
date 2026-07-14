@@ -8,6 +8,7 @@ import {
 } from "./channel-enrichment";
 
 const STRUCTURED_PROFILE = {
+  accountType: "creator",
   primaryNiche: "gaming",
   secondaryNiches: ["commentary_reaction"],
   contentFormats: ["long_form", "live_stream"],
@@ -146,10 +147,15 @@ describe("enrichChannelWithOpenAi", () => {
     const parsed = JSON.parse(content as string) as {
       derivedSignals: typeof TEST_INPUT.derivedSignals;
       taxonomyHints: {
+        accountTypeValues: string[];
         primaryNicheValues: string[];
         contentFormatValues: string[];
         brandFitTagValues: string[];
         crmDropdownOptions: typeof TEST_INPUT.crmDropdownOptions;
+      };
+      instructions: {
+        crmClassifications: string;
+        structuredProfile: string;
       };
       youtubeContext: {
         defaultLanguage: string | null;
@@ -177,11 +183,23 @@ describe("enrichChannelWithOpenAi", () => {
     expect(parsed.youtubeContext.recentVideos[0]?.tags).toEqual(["tag-1"]);
     expect(parsed.derivedSignals).toEqual(TEST_INPUT.derivedSignals);
     expect(parsed.taxonomyHints.primaryNicheValues).toContain("gaming");
+    expect(parsed.taxonomyHints.accountTypeValues).toEqual([
+      "creator",
+      "publisher_media",
+      "brand_organization",
+      "music_artist",
+      "unknown",
+    ]);
     expect(parsed.taxonomyHints.contentFormatValues).toContain("long_form");
     expect(parsed.taxonomyHints.brandFitTagValues).toContain("consumer_tech");
     expect(parsed.taxonomyHints).toMatchObject({
       crmDropdownOptions: TEST_INPUT.crmDropdownOptions,
     });
+    expect(parsed.instructions.crmClassifications).toContain("creator's own base/location");
+    expect(parsed.instructions.crmClassifications).toContain("never an audience country");
+    expect(parsed.instructions.crmClassifications).toContain("dominant spoken content language");
+    expect(parsed.instructions.crmClassifications).toContain("repeated creator-led content");
+    expect(parsed.instructions.structuredProfile).toContain("TV, news, radio");
   });
 
   it("keeps only CRM classifications present in the allowed dropdown values", async () => {
@@ -411,6 +429,7 @@ describe("enrichChannelWithOpenAi", () => {
                       createStructuredResponse({
                         structuredProfile: {
                           ...STRUCTURED_PROFILE,
+                          accountType: "television network",
                           primaryNiche: "unknown vertical",
                           contentFormats: ["short form", "livestream"],
                           brandFitTags: ["technology", "gaming"],
@@ -432,6 +451,7 @@ describe("enrichChannelWithOpenAi", () => {
     });
 
     expect(result.profile.structuredProfile).toMatchObject({
+      accountType: "publisher_media",
       primaryNiche: "other",
       contentFormats: ["shorts", "live_stream"],
       brandFitTags: ["consumer_tech", "gaming_hardware"],
@@ -483,6 +503,7 @@ describe("enrichChannelWithOpenAi", () => {
       brandFitNotes: "No clear brand-fit constraints were identified from the available context.",
       confidence: 0.5,
       structuredProfile: {
+        accountType: "unknown",
         primaryNiche: "other",
         secondaryNiches: [],
         contentFormats: ["mixed"],

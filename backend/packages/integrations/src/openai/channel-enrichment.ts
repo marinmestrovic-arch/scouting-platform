@@ -43,6 +43,14 @@ const structuredProfileContentFormatValues = [
   "clips",
 ] as const;
 
+const structuredProfileAccountTypeValues = [
+  "creator",
+  "publisher_media",
+  "brand_organization",
+  "music_artist",
+  "unknown",
+] as const;
+
 const structuredProfileBrandFitTagValues = [
   "consumer_tech",
   "gaming_hardware",
@@ -94,6 +102,7 @@ const legacyOutputSchema = z.object({
 });
 
 const structuredProfileSchema = z.object({
+  accountType: z.enum(structuredProfileAccountTypeValues).default("unknown"),
   primaryNiche: z.enum(structuredProfilePrimaryNicheValues),
   secondaryNiches: z.array(z.enum(structuredProfilePrimaryNicheValues)).max(3),
   contentFormats: z.array(z.enum(structuredProfileContentFormatValues)).min(1).max(3),
@@ -237,6 +246,7 @@ function slimYoutubeContext(ctx: z.output<typeof inputSchema>["youtubeContext"])
   thumbnailUrl: string | null;
   publishedAt: string | null;
   defaultLanguage: string | null;
+  countryCode: string | null;
   subscriberCount: number | null;
   viewCount: number | null;
   videoCount: number | null;
@@ -262,6 +272,7 @@ function slimYoutubeContext(ctx: z.output<typeof inputSchema>["youtubeContext"])
     thumbnailUrl: ctx.thumbnailUrl,
     publishedAt: ctx.publishedAt,
     defaultLanguage: ctx.defaultLanguage,
+    countryCode: ctx.countryCode ?? null,
     subscriberCount: ctx.subscriberCount,
     viewCount: ctx.viewCount,
     videoCount: ctx.videoCount,
@@ -289,6 +300,7 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
     derivedSignals: input.derivedSignals,
     taxonomyHints: {
       primaryNicheValues: [...structuredProfilePrimaryNicheValues],
+      accountTypeValues: [...structuredProfileAccountTypeValues],
       contentFormatValues: [...structuredProfileContentFormatValues],
       brandFitTagValues: [...structuredProfileBrandFitTagValues],
       brandSafetyStatusValues: [...structuredProfileBrandSafetyStatusValues],
@@ -304,9 +316,9 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
       confidence:
         "Return a number from 0 to 1 reflecting confidence in the profile quality from this context.",
       structuredProfile:
-        "Return evidence-based niche, format, brand-fit, language, geo, sponsor, and brand-safety fields. Be conservative and prefer empty arrays, null, 'other', or 'unknown' when evidence is weak.",
+        "Return evidence-based account type, niche, format, brand-fit, language, geo, sponsor, and brand-safety fields. accountType=creator only for creator-led channels; use publisher_media for TV, news, radio, networks, labels, and media outlets; brand_organization for company channels; music_artist for official artist/music channels. Be conservative and prefer empty arrays, null, 'other', or 'unknown' when evidence is weak.",
       crmClassifications:
-        "Optionally classify influencerType, verticals, countryRegion, and language. Use only exact values from crmDropdownOptions; return null or an empty array when no allowed value is supported by evidence.",
+        "Optionally classify influencerType, verticals, countryRegion, and language. Use only exact values from crmDropdownOptions; return null or an empty array when no allowed value is supported by evidence. When youtubeContext.countryCode maps to an allowed countryRegion, use it as the primary country evidence. Otherwise countryRegion means the creator's own base/location, never an audience country, a place merely discussed, or a language-based guess. language means the dominant spoken content language, not interface metadata or viewer geography. Choose verticals only from repeated creator-led content, not isolated videos or incidental keywords.",
     },
   });
 }
@@ -539,6 +551,25 @@ function normalizeLooseStructuredProfile(value: unknown): OpenAiStructuredProfil
     return null;
   }
 
+  const accountType = normalizeEnumValue(
+    value.accountType,
+    structuredProfileAccountTypeValues,
+    {
+      artist: "music_artist",
+      brand: "brand_organization",
+      business: "brand_organization",
+      company: "brand_organization",
+      media: "publisher_media",
+      music: "music_artist",
+      news: "publisher_media",
+      organization: "brand_organization",
+      publisher: "publisher_media",
+      television: "publisher_media",
+      television_network: "publisher_media",
+      tv: "publisher_media",
+    },
+    "unknown",
+  );
   const primaryNiche = normalizeEnumValue(
     value.primaryNiche,
     structuredProfilePrimaryNicheValues,
@@ -625,6 +656,7 @@ function normalizeLooseStructuredProfile(value: unknown): OpenAiStructuredProfil
   const language = toBoundedString(value.language, 32);
 
   return {
+    accountType,
     primaryNiche,
     secondaryNiches,
     contentFormats: contentFormats.length > 0 ? contentFormats : ["mixed"],

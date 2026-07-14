@@ -102,6 +102,8 @@ export function parseStringArrayOrNull(value: Prisma.JsonValue | null): string[]
 const YOUTUBE_DISCOVERY_CACHE_TTL_MINUTES = Number(
   process.env.YOUTUBE_DISCOVERY_CACHE_TTL_MINUTES?.trim() || "30",
 );
+const DEFAULT_CATALOG_ACTIVITY_WINDOW_DAYS = 180;
+const MIN_AUTOMATIC_FIT_SCORE = 0.55;
 
 function buildDiscoveryCacheKey(
   query: string,
@@ -488,6 +490,39 @@ function splitCriteriaValues(value: string): string[] {
   return [...new Set(values)];
 }
 
+function buildCatalogTextEvidenceClause(value: string): Prisma.Sql | null {
+  const values = splitCriteriaValues(value);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  const valueClauses = values.map((candidate) => {
+    const pattern = toLikePattern(candidate);
+
+    return Prisma.sql`
+      (
+        c.title ILIKE ${pattern} ESCAPE '\\'
+        OR c.description ILIKE ${pattern} ESCAPE '\\'
+        OR c.influencer_vertical ILIKE ${pattern} ESCAPE '\\'
+        OR ce.topics::text ILIKE ${pattern} ESCAPE '\\'
+        OR ce.structured_profile::text ILIKE ${pattern} ESCAPE '\\'
+        OR cyc.context::text ILIKE ${pattern} ESCAPE '\\'
+      )
+    `;
+  });
+
+  return Prisma.sql`(${Prisma.join(valueClauses, " OR ")})`;
+}
+
+function explicitlyRequestsPublisherContent(criteria: CatalogScoutingCriteria): boolean {
+  const requested = `${criteria.category} ${criteria.niche}`.toLowerCase();
+
+  return ["music", "news", "politics", "television", "tv", "radio"].some((term) =>
+    requested.includes(term),
+  );
+}
+
 function parseMetricBound(rawValue: string): bigint | null {
   const normalized = rawValue.trim().toLowerCase();
 
@@ -592,6 +627,21 @@ async function getCatalogCandidatesForCriteria(
   const locations = splitCriteriaValues(criteria.location);
   const language = criteria.language.trim();
   const lastPostDaysSince = parseDaysSince(criteria.lastPostDaysSince);
+  const categoryClause = buildCatalogTextEvidenceClause(criteria.category);
+  const nicheClause = buildCatalogTextEvidenceClause(criteria.niche);
+  const hasEffectiveCriteria = Boolean(
+    subscriberRange
+    || viewsRange
+    || locations.length > 0
+    || language
+    || lastPostDaysSince !== null
+    || categoryClause
+    || nicheClause,
+  );
+
+  if (!hasEffectiveCriteria) {
+    return [];
+  }
 
   if (subscriberRange?.min !== undefined) {
     whereClauses.push(
@@ -620,29 +670,15 @@ async function getCatalogCandidatesForCriteria(
   }
 
   if (locations.length > 0) {
-    const locationClauses = locations.map((location) => {
-      const pattern = toLikePattern(location);
-
-      return Prisma.sql`
-        (
-          c.country_region ILIKE ${pattern} ESCAPE '\\'
-          OR ci.audience_countries::text ILIKE ${pattern} ESCAPE '\\'
-        )
-      `;
-    });
+    const locationClauses = locations.map(
+      (location) => Prisma.sql`LOWER(c.country_region) = LOWER(${location})`,
+    );
 
     whereClauses.push(Prisma.sql`(${Prisma.join(locationClauses, " OR ")})`);
   }
 
   if (language) {
-    const pattern = toLikePattern(language);
-
-    whereClauses.push(Prisma.sql`
-      (
-        c.content_language ILIKE ${pattern} ESCAPE '\\'
-        OR ce.structured_profile::text ILIKE ${pattern} ESCAPE '\\'
-      )
-    `);
+    whereClauses.push(Prisma.sql`LOWER(c.content_language) = LOWER(${language})`);
   }
 
   if (lastPostDaysSince !== null) {
@@ -651,6 +687,51 @@ async function getCatalogCandidatesForCriteria(
     whereClauses.push(Prisma.sql`
       NULLIF(cyc.context #>> '{recentVideos,0,publishedAt}', '') IS NOT NULL
       AND (cyc.context #>> '{recentVideos,0,publishedAt}')::timestamptz >= ${threshold}
+    `);
+  } else {
+    const activityThreshold = new Date(
+      Date.now() - DEFAULT_CATALOG_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    whereClauses.push(Prisma.sql`
+      (
+        NULLIF(cyc.context #>> '{recentVideos,0,publishedAt}', '') IS NULL
+        OR (cyc.context #>> '{recentVideos,0,publishedAt}')::timestamptz >= ${activityThreshold}
+      )
+    `);
+  }
+
+  whereClauses.push(Prisma.sql`(cm.video_count IS NULL OR cm.video_count > 0)`);
+
+  if (categoryClause) {
+    whereClauses.push(categoryClause);
+  }
+
+  if (nicheClause) {
+    whereClauses.push(nicheClause);
+  }
+
+  if (!explicitlyRequestsPublisherContent(criteria)) {
+    whereClauses.push(Prisma.sql`
+      NOT (
+        c.title ~* ' - Topic$'
+        OR LOWER(COALESCE(ce.structured_profile #>> '{accountType}', '')) IN (
+          'publisher_media',
+          'brand_organization',
+          'music_artist'
+        )
+        OR LOWER(COALESCE(ce.structured_profile #>> '{primaryNiche}', '')) IN (
+          'music',
+          'news_politics'
+        )
+        OR (
+          c.title ~* '(^|[[:space:][:punct:]])(tv|television|news|radio|records?|music)([[:space:][:punct:]]|$)'
+          AND (
+            LOWER(COALESCE(ce.structured_profile #>> '{primaryNiche}', '')) IN ('music', 'news_politics')
+            OR cyc.context::text ~* '"categoryName"[[:space:]]*:[[:space:]]*"(Music|News & Politics)"'
+          )
+        )
+      )
     `);
   }
 
@@ -664,7 +745,6 @@ async function getCatalogCandidatesForCriteria(
     LEFT JOIN channel_metrics cm ON cm.channel_id = c.id
     LEFT JOIN channel_enrichments ce ON ce.channel_id = c.id
     LEFT JOIN channel_youtube_contexts cyc ON cyc.channel_id = c.id
-    LEFT JOIN channel_insights ci ON ci.channel_id = c.id
     WHERE ${Prisma.join(whereClauses, " AND ")}
     ORDER BY COALESCE(cm.youtube_followers, cm.subscriber_count) DESC NULLS LAST, c.updated_at DESC
     LIMIT 100
@@ -1277,18 +1357,25 @@ export async function finalizeRunAssessmentRankingIfReady(input: {
 
       return left.rank - right.rank;
     });
-  const target = runRequest.target && runRequest.target > 0 ? runRequest.target : rankedResults.length;
-  const selectedResults = rankedResults.slice(0, target);
+  const eligibleResults = rankedResults.filter(
+    (result) => result.fitScore !== null && result.fitScore >= MIN_AUTOMATIC_FIT_SCORE,
+  );
+  const target = runRequest.target && runRequest.target > 0 ? runRequest.target : eligibleResults.length;
+  const selectedResults = eligibleResults.slice(0, target);
   const selectedResultIds = selectedResults.map((result) => result.id);
 
   await prisma.$transaction(async (tx) => {
     await tx.runResult.deleteMany({
-      where: {
-        runRequestId: runRequest.id,
-        id: {
-          notIn: selectedResultIds,
-        },
-      },
+      where: selectedResultIds.length > 0
+        ? {
+            runRequestId: runRequest.id,
+            id: {
+              notIn: selectedResultIds,
+            },
+          }
+        : {
+            runRequestId: runRequest.id,
+          },
     });
 
     for (const [index, result] of selectedResults.entries()) {

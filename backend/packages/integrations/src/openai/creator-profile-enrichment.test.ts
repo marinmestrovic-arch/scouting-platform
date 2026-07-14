@@ -101,6 +101,18 @@ describe("enrichCreatorProfilesWithOpenAi", () => {
     expect(responsesCreate).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).not.toContain("Phone Number");
     expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).toContain("\"Email\"");
+    expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).toContain(
+      "creator's own base/location",
+    );
+    expect(JSON.stringify(responsesCreate.mock.calls[0]?.[0])).toContain(
+      "dominant spoken content language",
+    );
+    expect(JSON.stringify(responsesCreate.mock.calls[1]?.[0])).toContain(
+      "never audience geography",
+    );
+    expect(JSON.stringify(responsesCreate.mock.calls[1]?.[0])).toContain(
+      "repeated creator-led content",
+    );
     expect(results[0]?.values).toMatchObject({
       "First Name": "Alex",
       "Last Name": "Creator",

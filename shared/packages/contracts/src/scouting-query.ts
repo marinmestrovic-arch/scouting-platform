@@ -162,15 +162,17 @@ export function hasCatalogScoutingCriteria(
   criteria: Partial<CatalogScoutingCriteria>,
 ): boolean {
   const normalized = normalizeCatalogScoutingCriteria(criteria);
-  const hardCriteria = [
+  const searchableCriteria = [
     normalized.subscribers,
     normalized.views,
     normalized.location,
     normalized.language,
     normalized.lastPostDaysSince,
+    normalized.category,
+    normalized.niche,
   ];
 
-  return hardCriteria.some((value) => value.length > 0);
+  return searchableCriteria.some((value) => value.length > 0);
 }
 
 export function buildCatalogScoutingQuery(

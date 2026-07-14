@@ -125,6 +125,7 @@ function slimYoutubeContext(ctx: YoutubeChannelContext): {
   customUrl?: string;
   country?: string;
   defaultLanguage: string | null;
+  countryCode: string | null;
   publishedAt: string | null;
   subscriberCount: number | null;
   viewCount: number | null;
@@ -143,6 +144,7 @@ function slimYoutubeContext(ctx: YoutubeChannelContext): {
     youtubeChannelId: ctx.youtubeChannelId,
     title: ctx.title,
     defaultLanguage: ctx.defaultLanguage,
+    countryCode: ctx.countryCode ?? null,
     publishedAt: ctx.publishedAt,
     subscriberCount: ctx.subscriberCount,
     viewCount: ctx.viewCount,
@@ -172,17 +174,17 @@ function buildPrompt(input: z.output<typeof inputSchema>): string {
       "freeTextBrief is the campaign manager's free-text description of the requested category, niche, audience, creator style, and constraints. Treat it as the primary campaign-specific relevance signal after the hard filters have already selected candidate channels.",
     instructions: {
       fitScore:
-        "Return a number from 0 to 1 scoring how well this creator fits THIS specific free-text brief. Be lenient and opportunity-oriented: if the creator fits even somewhat, that is probably okay and should usually score 0.55 or higher. Use 0.7+ for solid partial fits with several useful signals, 0.85+ for very strong fits, and reserve scores below 0.4 for clearly irrelevant or unsafe channels. Weight category and niche alignment, audience match, content style alignment, brand safety for this client's industry, presence of campaign-required themes, and evidence of openness to sponsorships.",
+        "Return a number from 0 to 1 scoring how well this creator fits THIS specific free-text brief. Require credible evidence for category, niche, language, geography, audience, and creator-style requirements. A channel must score at least 0.55 to remain in scouting results; do not raise scores to fill volume. Treat every contentRestrictions item and explicit avoid/exclude phrase in the free-text brief as a hard exclusion: score a violating channel 0.2 or lower. Use 0.7+ for solid fits and 0.85+ only for very strong fits.",
       brevity:
         "Be extremely concise. The UI shows this as short bullets inside a scouting-result card, not a report. Each bullet should be a terse signal under 80 characters, often 2-7 words.",
       fitReasons:
         "List every useful fit signal, up to 10. Use short fragments like 'Publishes weekly', 'French-speaking audience', '2.27M subscribers', or 'Past sponsors: CarVertical, HelloFresh'. Include past sponsorship/brand partnership evidence whenever the channel context shows it.",
       fitConcerns:
-        "Return an empty array. Concerns are not shown in this UI.",
+        "List clear mismatches, weak evidence, and any triggered exclusion as concise bullets. Return an empty array only when there are no material concerns.",
       recommendedAngles:
-        "Return an empty array. Recommended angles are not shown in this UI.",
+        "List concise campaign angles supported by the evidence, or return an empty array.",
       avoidTopics:
-        "Return an empty array. Topics to avoid are not shown in this UI.",
+        "List contentRestrictions or explicit avoid/exclude topics that the channel appears to trigger, or return an empty array.",
     },
   });
 }
@@ -219,9 +221,9 @@ function compactAssessmentOutput(
   return {
     fitScore: output.fitScore,
     fitReasons: compactAssessmentItems(output.fitReasons, MAX_FIT_REASONS),
-    fitConcerns: [],
-    recommendedAngles: [],
-    avoidTopics: [],
+    fitConcerns: compactAssessmentItems(output.fitConcerns, MAX_FIT_REASONS),
+    recommendedAngles: compactAssessmentItems(output.recommendedAngles, MAX_FIT_REASONS),
+    avoidTopics: compactAssessmentItems(output.avoidTopics, MAX_FIT_REASONS),
   };
 }
 
@@ -356,7 +358,7 @@ export async function enrichCampaignFitWithOpenAi(
         {
           role: "system",
           content:
-            "You assess a YouTube creator's fit for a specific marketing campaign free-text brief after hard filters have already selected candidate channels. Return concise valid JSON with fitScore, fitReasons, fitConcerns, recommendedAngles, and avoidTopics. Keep fitReasons as short signal bullets; return empty arrays for fitConcerns, recommendedAngles, and avoidTopics.",
+            "You assess a YouTube creator's fit for a specific marketing campaign after hard metric filters select candidates. Enforce explicit exclusions and require evidence for niche, language, geography, and creator fit. Return concise valid JSON with fitScore, fitReasons, fitConcerns, recommendedAngles, and avoidTopics, using short signal bullets.",
         },
         {
           role: "user",

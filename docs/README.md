@@ -34,6 +34,7 @@ docs/
 ├── ADR-002-data-ownership-and-precedence.md
 ├── ADR-003-repository-layout-simplification.md
 ├── ADR-004-account-security-hardening.md
+├── ADR-005-youtube-declared-country-precedence.md
 ├── patterns/
 ├── plans/
 └── setup/
@@ -59,6 +60,7 @@ Create an ADR when changing:
 | ADR-002 | Catalog canonical model and data precedence | Accepted |
 | ADR-003 | Repository layout simplification | Accepted |
 | ADR-004 | Account security hardening | Accepted |
+| ADR-005 | YouTube-declared creator country precedence | Accepted |
 
 Use ADR-003 for current repository paths. Treat ADR-001 as historical context rather than the living source of truth for the current layout.
 
@@ -104,3 +106,4 @@ Files in [`/docs/plans/`](./plans/) describe future work and should not be treat
 | `setup/staging-railway.md` | Staging deployment runbook |
 | `setup/launch-readiness.md` | Pre-launch checklist |
 | `setup/postgres-backup-restore-drill.md` | Backup/restore verification |
+| `setup/channel-country-repair.md` | Dry-run and repair legacy creator-country labels |

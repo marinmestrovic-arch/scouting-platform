@@ -47,6 +47,10 @@ When multiple sources provide a value for the same field, the resolved channel p
 5. heuristics
 6. YouTube raw data
 
+Field-specific exception: creator country follows
+[`ADR-005`](./ADR-005-youtube-declared-country-precedence.md), where a channel owner's
+YouTube-declared country outranks LLM inference.
+
 ### Operational rules
 
 - manual overrides must never be overwritten by automated refreshes or enrichments

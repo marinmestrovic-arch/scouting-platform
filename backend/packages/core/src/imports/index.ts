@@ -1,4 +1,5 @@
 import {
+  ChannelCountrySource,
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
   CsvImportRowStatus as PrismaCsvImportRowStatus,
   Prisma,
@@ -2368,7 +2369,12 @@ async function applyPendingRow(input: {
             ...(normalizedXUrl ? { xUrl: normalizedXUrl } : {}),
             ...(row.influencerType ? { influencerType: row.influencerType } : {}),
             ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
-            ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
+            ...(row.countryRegion
+              ? {
+                  countryRegion: row.countryRegion,
+                  countryRegionSource: ChannelCountrySource.CSV_IMPORT,
+                }
+              : {}),
             ...(row.language ? { contentLanguage: row.language } : {}),
           },
           select: {
@@ -2447,7 +2453,12 @@ async function applyPendingRow(input: {
           ...(normalizedXUrl ? { xUrl: normalizedXUrl } : {}),
           ...(row.influencerType ? { influencerType: row.influencerType } : {}),
           ...(row.influencerVertical ? { influencerVertical: row.influencerVertical } : {}),
-          ...(row.countryRegion ? { countryRegion: row.countryRegion } : {}),
+          ...(row.countryRegion
+            ? {
+                countryRegion: row.countryRegion,
+                countryRegionSource: ChannelCountrySource.CSV_IMPORT,
+              }
+            : {}),
           ...(row.language ? { contentLanguage: row.language } : {}),
         },
       });

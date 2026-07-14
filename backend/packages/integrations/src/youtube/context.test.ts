@@ -34,6 +34,7 @@ describe("fetchYoutubeChannelContext", () => {
                 customUrl: "@channel-name",
                 publishedAt: "2020-01-01T00:00:00Z",
                 defaultLanguage: "en-US",
+                country: "HR",
                 thumbnails: {
                   high: { url: "https://img.example.com/channel.jpg" },
                 },
@@ -129,6 +130,7 @@ describe("fetchYoutubeChannelContext", () => {
       thumbnailUrl: "https://img.example.com/channel.jpg",
       publishedAt: "2020-01-01T00:00:00Z",
       defaultLanguage: "en-US",
+      countryCode: "HR",
       subscriberCount: 1200,
       viewCount: 45000,
       videoCount: 87,

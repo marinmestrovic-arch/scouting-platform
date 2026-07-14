@@ -37,6 +37,7 @@ import { mapYoutubeLanguageToHubspot } from "../hubspot/language-mapping";
 import { enqueueChannelLlmJobs, enqueueJob } from "../queue";
 import { logProviderSpend } from "../telemetry";
 import { deriveChannelClassificationSignals } from "./classification-signals";
+import { resolveChannelCountryRegion } from "./country-resolution";
 import {
   markChannelLlmEnrichmentFailed,
   markChannelYoutubeRefreshFailed,
@@ -1570,6 +1571,7 @@ export async function executeChannelLlmEnrichment(input: {
             influencerType: true,
             influencerVertical: true,
             countryRegion: true,
+            countryRegionSource: true,
             contentLanguage: true,
             contacts: {
               orderBy: {
@@ -1842,12 +1844,12 @@ export async function executeChannelLlmEnrichment(input: {
         ...(crmClassifications?.verticals ?? []),
       ],
     });
-    const countryRegionUpdate = resolveDropdownUpdate({
+    const countryRegionUpdate = resolveChannelCountryRegion({
       currentValue: executionState.channel.countryRegion,
-      options: dropdownOptions.countryRegion,
-      candidates: [
-        crmClassifications?.countryRegion ?? "",
-      ],
+      currentSource: executionState.channel.countryRegionSource,
+      countryRegionOptions: dropdownOptions.countryRegion,
+      youtubeCountryCode: youtubeMetrics.context.countryCode,
+      llmCountryRegion: crmClassifications?.countryRegion,
     });
     const languageUpdate = resolveDropdownUpdate({
       currentValue: executionState.channel.contentLanguage,
@@ -1863,7 +1865,6 @@ export async function executeChannelLlmEnrichment(input: {
       : "";
     const influencerTypeValue = applyDropdownUpdate(influencerTypeUpdate);
     const influencerVerticalValue = applyDropdownUpdate(influencerVerticalUpdate);
-    const countryRegionValue = applyDropdownUpdate(countryRegionUpdate);
     const languageValue = applyDropdownUpdate(languageUpdate);
 
     const persistenceStartedAt = Date.now();
@@ -1902,8 +1903,11 @@ export async function executeChannelLlmEnrichment(input: {
           ...(influencerVerticalValue !== undefined
             ? { influencerVertical: influencerVerticalValue }
             : {}),
-          ...(countryRegionValue !== undefined
-            ? { countryRegion: countryRegionValue }
+          ...(countryRegionUpdate
+            ? {
+                countryRegion: countryRegionUpdate.value,
+                countryRegionSource: countryRegionUpdate.source,
+              }
             : {}),
         },
       });

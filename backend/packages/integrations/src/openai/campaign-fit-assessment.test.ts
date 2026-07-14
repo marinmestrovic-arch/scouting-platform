@@ -294,16 +294,16 @@ describe("enrichCampaignFitWithOpenAi", () => {
     };
 
     expect(systemMessage?.content).toContain("short signal bullets");
-    expect(prompt.instructions?.fitScore).toContain("Be lenient and opportunity-oriented");
-    expect(prompt.instructions?.fitScore).toContain("fits even somewhat");
-    expect(prompt.instructions?.fitScore).toContain("0.55 or higher");
-    expect(prompt.instructions?.fitScore).toContain("below 0.4 for clearly irrelevant or unsafe");
+    expect(prompt.instructions?.fitScore).toContain("at least 0.55");
+    expect(prompt.instructions?.fitScore).toContain("do not raise scores to fill volume");
+    expect(prompt.instructions?.fitScore).toContain("hard exclusion");
+    expect(prompt.instructions?.fitScore).toContain("0.2 or lower");
     expect(prompt.instructions?.brevity).toContain("under 80 characters");
     expect(prompt.instructions?.fitReasons).toContain("List every useful fit signal");
     expect(prompt.instructions?.fitReasons).toContain("Past sponsors: CarVertical, HelloFresh");
-    expect(prompt.instructions?.fitConcerns).toContain("Return an empty array");
-    expect(prompt.instructions?.recommendedAngles).toContain("Return an empty array");
-    expect(prompt.instructions?.avoidTopics).toContain("Return an empty array");
+    expect(prompt.instructions?.fitConcerns).toContain("triggered exclusion");
+    expect(prompt.instructions?.recommendedAngles).toContain("supported by the evidence");
+    expect(prompt.instructions?.avoidTopics).toContain("appears to trigger");
   });
 
   it("parses valid assessment output", async () => {
@@ -327,12 +327,7 @@ describe("enrichCampaignFitWithOpenAi", () => {
       },
     });
 
-    expect(result.profile).toEqual({
-      ...createValidAssessment(),
-      fitConcerns: [],
-      recommendedAngles: [],
-      avoidTopics: [],
-    });
+    expect(result.profile).toEqual(createValidAssessment());
     expect(result.rawPayload.id).toBe("resp-1");
     expect(result.model).toBe("gpt-4.1-mini");
   });
@@ -477,9 +472,19 @@ describe("enrichCampaignFitWithOpenAi", () => {
 
     expect(result.profile.fitReasons).toHaveLength(4);
     expect(result.profile.fitReasons).toContain("Past sponsors: CarVertical, HelloFresh.");
-    expect(result.profile.fitConcerns).toEqual([]);
-    expect(result.profile.recommendedAngles).toEqual([]);
-    expect(result.profile.avoidTopics).toEqual([]);
+    expect(result.profile.fitConcerns).toEqual([
+      "Limited local-language reach.",
+      "Some console-only content.",
+      "This third concern is too much.",
+    ]);
+    expect(result.profile.recommendedAngles).toEqual([
+      "Benchmark-style review.",
+      "This second angle is too much.",
+    ]);
+    expect(result.profile.avoidTopics).toEqual([
+      "Console-only positioning.",
+      "This second avoid topic is too much.",
+    ]);
   });
 
   it("compacts long assessment bullets before returning them", async () => {

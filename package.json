@@ -40,7 +40,8 @@
     "db:seed:admin": "sh scripts/with-local-env.sh tsx scripts/seed-admin.ts",
     "db:seed:workspace": "sh scripts/with-local-env.sh tsx scripts/seed-workspace.ts",
     "db:reset:demo": "sh scripts/with-local-env.sh tsx scripts/reset-demo.ts",
-    "capacity:check": "sh scripts/with-local-env.sh tsx scripts/capacity-check.ts"
+    "capacity:check": "sh scripts/with-local-env.sh tsx scripts/capacity-check.ts",
+    "country:repair": "sh scripts/with-local-env.sh tsx scripts/repair-channel-countries.ts"
   },
   "devDependencies": {
     "@prisma/client": "^7.0.0",

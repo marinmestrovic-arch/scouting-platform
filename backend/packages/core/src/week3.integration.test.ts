@@ -480,6 +480,22 @@ integration("week 3 core integration", () => {
       },
     });
 
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-PROFILE-3",
+        title: "French Gaming Creator",
+        countryRegion: "France",
+        contentLanguage: "French",
+        influencerVertical: "Gaming",
+        metrics: {
+          create: {
+            youtubeFollowers: 80_000n,
+            youtubeVideoMedianViews: 75_000n,
+          },
+        },
+      },
+    });
+
     const created = await getCore().createRunRequest({
       userId: user.id,
       name: "Catalog Profile Run",
@@ -488,7 +504,7 @@ integration("week 3 core integration", () => {
         views: "50K-100K",
         location: "Germany | France",
         language: "French",
-        category: "Strategy",
+        category: "Lifestyle",
       }),
       target: 10,
       metadata: await buildRunMetadata(user.id),
@@ -513,6 +529,148 @@ integration("week 3 core integration", () => {
         source: RunResultSource.CATALOG,
       }),
     ]);
+    expect(discoverYoutubeChannelsMock).not.toHaveBeenCalled();
+  });
+
+  it("suppresses stale, publisher, wrong-language, and audience-only country matches", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: "catalog-quality@example.com",
+        name: "Catalog Quality",
+        role: Role.USER,
+        passwordHash: "hash",
+        isActive: true,
+      },
+    });
+    const activePublishedAt = new Date().toISOString();
+    const stalePublishedAt = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    const activeCreator = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-QUALITY-ACTIVE",
+        title: "Croatian Beauty Creator",
+        countryRegion: "Croatia",
+        contentLanguage: "Croatian",
+        influencerVertical: "Beauty",
+        metrics: {
+          create: {
+            youtubeFollowers: 50_000n,
+            videoCount: 100n,
+          },
+        },
+        youtubeContext: {
+          create: {
+            context: {
+              recentVideos: [{ publishedAt: activePublishedAt, categoryName: "Howto & Style" }],
+            },
+          },
+        },
+      },
+    });
+
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-QUALITY-STALE",
+        title: "Stale Croatian Beauty Creator",
+        countryRegion: "Croatia",
+        contentLanguage: "Croatian",
+        influencerVertical: "Beauty",
+        metrics: { create: { youtubeFollowers: 60_000n, videoCount: 100n } },
+        youtubeContext: {
+          create: {
+            context: {
+              recentVideos: [{ publishedAt: stalePublishedAt, categoryName: "Howto & Style" }],
+            },
+          },
+        },
+      },
+    });
+
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-QUALITY-TV",
+        title: "Beauty Music TV",
+        countryRegion: "Croatia",
+        contentLanguage: "Croatian",
+        influencerVertical: "Beauty",
+        metrics: { create: { youtubeFollowers: 70_000n, videoCount: 100n } },
+        youtubeContext: {
+          create: {
+            context: {
+              recentVideos: [{ publishedAt: activePublishedAt, categoryName: "Music" }],
+            },
+          },
+        },
+      },
+    });
+
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-QUALITY-LANGUAGE",
+        title: "Serbian Beauty Creator",
+        countryRegion: "Croatia",
+        contentLanguage: "Serbian",
+        influencerVertical: "Beauty",
+        metrics: { create: { youtubeFollowers: 80_000n, videoCount: 100n } },
+        youtubeContext: {
+          create: {
+            context: {
+              recentVideos: [{ publishedAt: activePublishedAt, categoryName: "Howto & Style" }],
+            },
+          },
+        },
+      },
+    });
+
+    await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-CATALOG-QUALITY-AUDIENCE",
+        title: "Croatian Audience Beauty Creator",
+        countryRegion: "Serbia",
+        contentLanguage: "Croatian",
+        influencerVertical: "Beauty",
+        metrics: { create: { youtubeFollowers: 90_000n, videoCount: 100n } },
+        insights: {
+          create: {
+            audienceCountries: [
+              { countryCode: "HR", countryName: "Croatia", percentage: 80 },
+            ],
+          },
+        },
+        youtubeContext: {
+          create: {
+            context: {
+              recentVideos: [{ publishedAt: activePublishedAt, categoryName: "Howto & Style" }],
+            },
+          },
+        },
+      },
+    });
+
+    const created = await getCore().createRunRequest({
+      userId: user.id,
+      name: "Catalog Quality Run",
+      query: buildCatalogScoutingQuery({
+        subscribers: "10K+",
+        location: "Croatia",
+        language: "Croatian",
+        category: "Beauty",
+      }),
+      target: 20,
+      metadata: await buildRunMetadata(user.id),
+    });
+
+    await getCore().executeRunDiscover({
+      runRequestId: created.runId,
+      requestedByUserId: user.id,
+    });
+
+    const results = await prisma.runResult.findMany({
+      where: { runRequestId: created.runId },
+      select: { channelId: true },
+    });
+
+    expect(results).toEqual([{ channelId: activeCreator.id }]);
     expect(discoverYoutubeChannelsMock).not.toHaveBeenCalled();
   });
 

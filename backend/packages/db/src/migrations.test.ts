@@ -122,6 +122,24 @@ const campaignStatusSyncMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260707120000_campaign_status_sync/migration.sql",
 );
+const channelCountryProvenanceMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260714120000_channel_country_provenance/migration.sql",
+);
+
+describe("channel country provenance migration", () => {
+  it("adds deterministic country source provenance and classifies legacy values", () => {
+    const migrationSql = readFileSync(channelCountryProvenanceMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TYPE "channel_country_source" AS ENUM');
+    expect(migrationSql).toContain('ADD COLUMN "country_region_source"');
+    expect(migrationSql).toContain("SET \"country_region_source\" = 'csv_import'");
+    expect(migrationSql).toContain("SET \"country_region_source\" = 'llm'");
+    expect(migrationSql).toContain('CREATE INDEX "channels_country_region_source_idx"');
+    expect(migrationSql).not.toContain("IF NOT EXISTS");
+    expect(migrationSql).not.toContain("DO $$");
+  });
+});
 
 describe("campaign status sync migration", () => {
   it("adds nullable HubSpot campaign status with an index", () => {
