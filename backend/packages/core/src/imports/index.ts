@@ -428,6 +428,7 @@ const CSV_IMPORT_YOUTUBE_URL_ONLY_HEADER_NORMALIZED = CSV_IMPORT_YOUTUBE_URL_ONL
 const CSV_IMPORT_YOUTUBE_URL_ONLY_ALTERNATE_HEADERS_NORMALIZED = [
   ["Channel URL"],
   ["YouTube Channel URL"],
+  ["YouTube Channel Link"],
 ].map((header) => header.map(normalizeCreatorListHubspotHeader));
 const CSV_IMPORT_V3_LABEL_BY_HEADER = CREATOR_LIST_HUBSPOT_IMPORT_HEADER_BY_NORMALIZED;
 const CSV_IMPORT_V2_LABEL_BY_HEADER = new Map(
@@ -924,6 +925,7 @@ function toParsedCsvImportRowFromYoutubeUrlOnly(
       "YouTube URL",
       "Channel URL",
       "YouTube Channel URL",
+      "YouTube Channel Link",
     ])),
     isValidYoutubeUrlField,
     errors,

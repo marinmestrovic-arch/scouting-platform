@@ -1,5 +1,5 @@
 import { Role, UserType } from "@prisma/client";
-import { COUNTRY_REGION_OPTIONS } from "@scouting-platform/contracts";
+import { COUNTRY_REGION_OPTIONS } from "../shared/packages/contracts/src";
 
 import { hashPassword } from "../backend/packages/core/src/auth/password";
 import { disconnectPrisma, prisma } from "../backend/packages/db/src";

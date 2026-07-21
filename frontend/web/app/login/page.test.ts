@@ -8,7 +8,7 @@ describe("login page", () => {
     const html = renderToStaticMarkup(LoginPage());
 
     expect(html).toContain(`<h1>${APP_TITLE}</h1>`);
-    expect(html).toContain("Sign in to start a scouting run.");
+    expect(html).toContain("Sign in to Atlas to start a scouting run.");
     expect(html).toContain(`type="email"`);
     expect(html).toContain(`type="password"`);
     expect(html).toContain("Sign in");

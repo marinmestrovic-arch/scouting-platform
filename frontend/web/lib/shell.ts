@@ -1,1 +1,1 @@
-export const APP_TITLE = "Scouting Platform";
+export const APP_TITLE = "Atlas";

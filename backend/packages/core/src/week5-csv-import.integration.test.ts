@@ -587,7 +587,7 @@ integration("week 5 csv import core integration", () => {
       fileName: "youtube-url-only.csv",
       fileSize: 128,
       csvText: [
-        "YouTube URL",
+        "youTube Channel Link",
         "https://www.youtube.com/@urlonlycreator",
       ].join("\n"),
     });

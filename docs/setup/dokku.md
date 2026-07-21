@@ -161,10 +161,16 @@ dokku builder-dockerfile:set scouting-worker dockerfile-path docker/production/w
 dokku proxy:disable scouting-worker
 dokku checks:disable scouting-worker
 
+dokku nginx:set scouting-web client-max-body-size 6m
+dokku proxy:build-config scouting-web
+
 dokku postgres:create scouting-db
 dokku postgres:link scouting-db scouting-web
 dokku postgres:link scouting-db scouting-worker
 ```
+
+The web proxy upload limit is set to `6m` so admin CSV imports can pass through
+Dokku's nginx proxy before the app enforces its own 5 MiB CSV file limit.
 
 ## Configure app secrets
 
@@ -244,6 +250,7 @@ After the first deploy:
 
 - `dokku logs scouting-web -t`
 - `dokku logs scouting-worker -t`
+- `dokku nginx:show-config scouting-web | grep client_max_body_size`
 - `curl -I https://scouting.example.com/login`
 - sign in with the seeded admin account
 - create a scouting run and confirm the worker logs show queue activity

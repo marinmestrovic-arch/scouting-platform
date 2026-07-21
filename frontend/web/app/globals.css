@@ -87,8 +87,10 @@
   --space-12: 3rem;
 
   /* Typography */
-  --font-family-sans: "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-family-display: var(--font-family-sans);
+  --tracking-display: -0.035em;
+  --tracking-caps: 0.08em;
   --font-family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-size-100: 0.72rem;     /* 11.5px micro/uppercase */
   --font-size-200: 0.8125rem;   /* 13px small */
@@ -109,16 +111,17 @@
   --line-height-normal: 1.4;
   --line-height-relaxed: 1.6;
 
-  /* Radii */
+  /* Radii — generous, per ARCH. brand geometry */
   --radius-xs: 4px;
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
   --radius-pill: 999px;
 
   --transition-base: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-brand: cubic-bezier(0.58, 0.21, 0.25, 1);
 
   --z-base: 0;
   --z-sidebar: 10;
@@ -5592,9 +5595,13 @@ body {
 }
 
 .auth-shell__brand-wordmark {
-  font-size: 1.2rem;
-  font-weight: 900;
-  letter-spacing: -0.04em;
+  color: #000f41;
+  font-family: var(--font-family-brand, "DM Sans"), var(--font-family-sans);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .auth-shell__actions {
@@ -9457,11 +9464,13 @@ select:focus {
 
 .login-card h1 {
   margin: 0;
+  color: #000f41;
+  font-family: var(--font-family-brand, "DM Sans"), var(--font-family-sans);
   font-size: var(--font-size-800);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.02em;
-  color: var(--color-text-strong);
-  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .login-card__copy {
@@ -12214,4 +12223,746 @@ textarea:focus-visible,
   .feedback-page__body {
     max-width: 100%;
   }
+}
+
+/* ============================================================
+   ARCH. identity layer — final cascade authority
+   Brand: navy #000F41 / blue #3562FF / yellow #F2FF82
+   Type: DM Sans — display 600/700 uppercase, tight tracking
+   Geometry: generous radii, pill controls, editorial scale
+   ============================================================ */
+
+/* ---------- Type foundation ---------- */
+body {
+  font-family: var(--font-family-sans);
+  font-feature-settings: "ss01";
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Header — white bar, navy logo, yellow active underline ---------- */
+.auth-shell__header {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: none;
+}
+
+.auth-shell__header-inner {
+  height: 64px;
+  gap: var(--space-8);
+}
+
+.auth-shell__brand {
+  gap: var(--space-3);
+}
+
+.auth-shell__brand-logo {
+  height: 21px;
+  width: auto;
+}
+
+.auth-shell__brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--brand-navy);
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.auth-shell__brand-wordmark::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.app-nav__list {
+  height: 64px;
+  gap: var(--space-1);
+}
+
+.app-nav__link {
+  padding: 0 var(--space-4);
+  color: var(--brand-navy);
+  opacity: 0.62;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  transition: opacity var(--transition-base), color var(--transition-base);
+}
+
+.app-nav__link:hover {
+  color: var(--brand-navy);
+  opacity: 1;
+}
+
+.app-nav__link::after {
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: 17px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+}
+
+.app-nav__link:hover::after {
+  background: rgba(0, 15, 65, 0.12);
+}
+
+.app-nav__link--active {
+  color: var(--brand-navy);
+  opacity: 1;
+  font-weight: var(--font-weight-bold);
+}
+
+.app-nav__link--active::after,
+.app-nav__link--active:hover::after {
+  background: var(--brand-highlight);
+  height: 4px;
+}
+
+/* Drawer nav (≤900px) keeps its own geometry — no floating underline */
+.auth-shell__nav-region .app-nav__link::after {
+  display: none;
+}
+@media (min-width: 901px) {
+  .auth-shell__nav-region .app-nav__link::after {
+    display: block;
+  }
+}
+
+.auth-shell__signout {
+  height: 34px;
+  padding: 0 1rem;
+  border: 1px solid var(--brand-navy);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--brand-navy);
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.auth-shell__signout:hover {
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
+  color: #fff;
+}
+
+.auth-shell__role-badge {
+  height: 26px;
+  border: 0;
+  background: var(--brand-highlight);
+  color: var(--brand-navy);
+  letter-spacing: var(--tracking-caps);
+}
+
+/* ---------- Page header — editorial display titles ---------- */
+.page-header {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.page-header__inner {
+  padding-top: clamp(1.75rem, 3.5vw, 3rem);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  align-items: flex-end;
+}
+
+.page-header__title {
+  font-size: clamp(2rem, 1.2rem + 2.6vw, 3.25rem);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-display);
+  line-height: 0.98;
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+
+/* Signature: brand period after every page title, in ARCH. blue */
+.page-header__title::after {
+  content: ".";
+  color: var(--brand-blue);
+}
+
+/* Redundant single-crumb trails (crumb == title) add nothing — drop them */
+.page-header__crumbs ol:has(li:only-child) {
+  display: none;
+}
+
+.page-header__crumbs {
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.page-header__description {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-400);
+}
+
+.page-header__live {
+  border: 0;
+  letter-spacing: var(--tracking-caps);
+}
+
+/* ---------- Buttons — pill geometry, caps labels ---------- */
+.workspace-button,
+.dashboard-workspace__secondary-link,
+.database-runs__button--secondary,
+.new-scouting__secondary-link,
+.database-runs__row-actions button,
+.database-runs__header-actions button,
+.new-scouting__actions button,
+.database-runs__feedback button,
+.dashboard-workspace__table-header button,
+.database-admin__cta,
+.run-create__submit,
+.run-detail__button,
+.recent-runs__button,
+.catalog-table__button,
+.channel-detail-shell__button,
+.admin-dashboard__button,
+.login-form__submit,
+.feedback-form__submit {
+  height: 38px;
+  padding: 0 1.15rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.workspace-button--small {
+  height: 30px;
+  padding: 0 0.85rem;
+  font-size: 0.66rem;
+}
+
+.workspace-button--secondary,
+.dashboard-workspace__secondary-link,
+.new-scouting__secondary-link,
+.database-runs__button--secondary,
+.run-detail__button--secondary,
+.recent-runs__button--secondary,
+.catalog-table__button--secondary,
+.channel-detail-shell__button--secondary,
+.admin-dashboard__button--secondary,
+.database-runs__row-actions button,
+.database-runs__header-actions button,
+.database-runs__feedback button,
+.dashboard-workspace__table-header button {
+  border-color: var(--color-border-strong);
+  box-shadow: none;
+}
+
+.workspace-button--secondary:hover,
+.dashboard-workspace__secondary-link:hover,
+.new-scouting__secondary-link:hover,
+.database-runs__button--secondary:hover,
+.run-detail__button--secondary:hover:not(:disabled),
+.recent-runs__button--secondary:hover:not(:disabled),
+.catalog-table__button--secondary:hover:not(:disabled),
+.channel-detail-shell__button--secondary:hover:not(:disabled),
+.admin-dashboard__button--secondary:hover:not(:disabled),
+.database-runs__row-actions button:hover,
+.database-runs__header-actions button:hover,
+.database-runs__feedback button:hover,
+.dashboard-workspace__table-header button:hover {
+  background: var(--color-surface);
+  border-color: var(--brand-navy);
+  color: var(--brand-navy);
+}
+
+/* Marquee actions stay yellow — taller, louder */
+.workspace-button--highlight,
+.new-scouting__actions button,
+.run-create__submit {
+  height: 44px;
+  padding: 0 1.5rem;
+  font-size: 0.78rem;
+}
+
+.workspace-button--highlight:hover:not(:disabled),
+.new-scouting__actions button:hover:not(:disabled),
+.run-create__submit:hover:not(:disabled) {
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
+  color: var(--brand-highlight);
+}
+
+/* ---------- Tabs ---------- */
+.database-workspace__tab,
+.database-admin__tab {
+  border-radius: 0;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  height: 40px;
+  border-bottom-width: 3px;
+}
+
+.database-workspace__tab--active,
+.database-admin__tab--active {
+  border-bottom-color: var(--brand-highlight);
+  color: var(--brand-navy);
+}
+
+/* ---------- Stat tiles — agency-site numerals ---------- */
+.dashboard-workspace__summary {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+
+.stat-card {
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  border-radius: var(--radius-xl);
+  border-color: var(--color-border);
+  transition: border-color 200ms var(--ease-brand), transform 200ms var(--ease-brand), box-shadow 200ms var(--ease-brand);
+}
+
+.stat-card:hover {
+  border-color: var(--brand-navy);
+  box-shadow: none;
+  transform: translateY(-2px);
+}
+
+.stat-card__label {
+  order: 2;
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+
+.stat-card__value {
+  order: 1;
+  font-size: clamp(2.75rem, 2rem + 2vw, 4rem);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-display);
+  line-height: 0.9;
+  color: var(--brand-navy);
+}
+
+.stat-card__hint {
+  order: 3;
+  font-size: var(--font-size-200);
+  color: var(--color-text-muted);
+}
+
+.stat-card--alert .stat-card__value {
+  color: var(--color-danger);
+}
+
+/* ---------- Panels & tables ---------- */
+.workspace-callout,
+.page-hero,
+.catalog-table__segments,
+.catalog-table__filters,
+.dashboard-workspace__table-panel,
+.dashboard-workspace__filters,
+.new-scouting__panel,
+.database-workspace__panel,
+.database-runs__panel,
+.campaigns-workspace__filters,
+.campaigns-workspace__form,
+.admin-dashboard__section,
+.admin-dashboard__panel,
+.admin-dashboard__card,
+.admin-dashboard__feedback,
+.channel-detail-shell__panel,
+.run-create__panel,
+.run-detail__panel,
+.recent-runs__panel,
+.recent-runs__feedback,
+.export-prep__defaults {
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+}
+
+.data-table__scroll {
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.data-table thead th {
+  background: var(--color-surface);
+  color: var(--brand-navy);
+  font-size: 0.66rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  border-bottom: 2px solid var(--brand-navy);
+}
+
+.data-table tbody tr:hover td {
+  background: var(--color-canvas-muted);
+}
+
+/* ---------- Empty states ---------- */
+.empty-state,
+.recent-runs__empty-state,
+.run-detail__empty-state,
+.database-runs__empty-state,
+.dashboard-workspace__empty-state,
+.admin-csv-imports__empty-state,
+.channel-detail-shell__empty-state,
+.csv-export__empty-state,
+.hubspot-push__empty-state {
+  border-radius: var(--radius-xl);
+  border: 1px dashed var(--color-border-strong);
+  background: var(--color-canvas-soft);
+  padding: var(--space-12) var(--space-6);
+}
+
+.empty-state h2,
+.empty-state h3 {
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  color: var(--brand-navy);
+}
+
+/* ---------- Inputs ---------- */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* ---------- Login — split brand panel ---------- */
+.login-page,
+.login-page--with-brand {
+  grid-template-columns: 1fr;
+  background: var(--color-canvas);
+}
+
+.login-brand-panel {
+  display: none;
+}
+
+@media (min-width: 980px) {
+  .login-page--with-brand {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+
+  .login-brand-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-8);
+    margin: var(--space-4);
+    padding: clamp(2.5rem, 4.5vw, 4rem);
+    border-radius: var(--radius-2xl);
+    background: var(--brand-navy);
+    color: #fff;
+    overflow: hidden;
+  }
+
+  /* Brand geometry — yellow circle & blue block, agency-site motifs */
+  .login-brand-panel::before {
+    content: "";
+    position: absolute;
+    right: -16%;
+    bottom: -38%;
+    width: clamp(14rem, 22vw, 20rem);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--brand-highlight);
+  }
+
+  .login-brand-panel::after {
+    content: "";
+    position: absolute;
+    right: 12%;
+    top: -14%;
+    width: clamp(9rem, 14vw, 13rem);
+    aspect-ratio: 1;
+    border-radius: 28% 28% 50% 50%;
+    background: var(--brand-blue);
+    transform: rotate(18deg);
+  }
+
+  .login-brand-panel__wordmark {
+    position: relative;
+    z-index: 1;
+    font-size: 1.6rem;
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.04em;
+    color: #fff;
+  }
+
+  .login-brand-panel__wordmark em {
+    font-style: normal;
+    color: var(--brand-highlight);
+  }
+
+  .login-brand-panel__headline {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    max-width: 30rem;
+    font-size: clamp(2.6rem, 4vw, 4rem);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: 0.96;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  .login-brand-panel__headline em {
+    font-style: normal;
+    color: var(--brand-highlight);
+  }
+
+  .login-brand-panel__sub {
+    position: relative;
+    z-index: 1;
+    margin: var(--space-5) 0 0;
+    max-width: 26rem;
+    font-size: var(--font-size-400);
+    line-height: var(--line-height-relaxed);
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .login-brand-panel__footer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+  }
+
+  .login-brand-panel__feature {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.72rem;
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .login-brand-panel__feature-bullet {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--brand-highlight);
+    margin: 0;
+    flex-shrink: 0;
+  }
+}
+
+.login-card {
+  width: min(100%, 25rem);
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  gap: var(--space-4);
+}
+
+.login-card h1 {
+  font-size: clamp(2.4rem, 3vw, 3rem);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-display);
+  line-height: 0.95;
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+
+.login-card h1::after {
+  content: ".";
+  color: var(--brand-blue);
+}
+
+.login-form__field > span {
+  font-size: var(--font-size-100);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+
+.login-form__field input {
+  min-height: 46px;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.login-form__submit {
+  min-height: 48px;
+  height: auto;
+  background: var(--brand-highlight);
+  border-color: var(--brand-highlight);
+  color: var(--brand-navy);
+  font-size: 0.78rem;
+}
+
+.login-form__submit:hover:not(:disabled) {
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
+  color: var(--brand-highlight);
+  box-shadow: none;
+}
+
+@media (max-width: 979px) {
+  .login-page,
+  .login-page--with-brand {
+    grid-template-columns: 1fr;
+    place-items: center;
+    padding: var(--space-8) var(--space-4);
+  }
+}
+
+/* ---------- Motion restraint ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .stat-card,
+  .stat-card:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ---------- ARCH. layer supplement — remaining controls ---------- */
+.admin-csv-imports__button,
+.admin-users__button,
+.csv-export__button,
+.database-records__cta,
+.empty-state__action,
+.admin-workspace__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 38px;
+  padding: 0 1.15rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--brand-navy);
+  background: var(--brand-navy);
+  color: var(--color-text-inverse);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background var(--transition-base), border-color var(--transition-base), color var(--transition-base);
+}
+
+.admin-csv-imports__button:hover:not(:disabled),
+.admin-users__button:hover:not(:disabled),
+.csv-export__button:hover:not(:disabled),
+.database-records__cta:hover:not(:disabled),
+.empty-state__action:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-text-inverse);
+}
+
+.admin-csv-imports__button:disabled,
+.admin-users__button:disabled,
+.csv-export__button:disabled,
+.database-records__cta:disabled {
+  background: var(--color-border);
+  border-color: var(--color-border);
+  color: var(--color-text-subtle);
+  cursor: not-allowed;
+}
+
+.admin-csv-imports__button--secondary,
+.admin-users__button--secondary,
+.csv-export__button--secondary,
+.admin-workspace__refresh {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.admin-csv-imports__button--secondary:hover:not(:disabled),
+.admin-users__button--secondary:hover:not(:disabled),
+.csv-export__button--secondary:hover:not(:disabled),
+.admin-workspace__refresh:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--brand-navy);
+  color: var(--brand-navy);
+}
+
+/* Admin segmented tabs — navy active pill, caps labels */
+.admin-workspace__tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: 4px;
+  background: var(--color-canvas-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.admin-workspace__tab {
+  height: 34px;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+
+.admin-workspace__tab:hover {
+  color: var(--brand-navy);
+  background: rgba(0, 15, 65, 0.05);
+}
+
+.admin-workspace__tab--active,
+.admin-workspace__tab--active:hover {
+  background: var(--brand-navy);
+  color: #fff;
+}
+
+/* Login brand-panel footer — chips stay legible over brand shapes */
+@media (min-width: 980px) {
+  .login-brand-panel__feature {
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 15, 65, 0.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+}
+
+/* Neutralize the legacy warm card gradient — ARCH. surfaces are clean white */
+:root {
+  --gradient-card: var(--color-surface);
 }

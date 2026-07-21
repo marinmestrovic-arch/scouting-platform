@@ -3,6 +3,7 @@
   "private": true,
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
+    "@fontsource/dm-sans": "5.2.6",
     "@scouting-platform/contracts": "workspace:*",
     "@scouting-platform/core": "workspace:*",
     "@scouting-platform/db": "workspace:*",

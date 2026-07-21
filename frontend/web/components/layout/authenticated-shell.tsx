@@ -16,10 +16,10 @@ export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) 
     <div className="auth-shell" suppressHydrationWarning>
       <header className="auth-shell__header">
         <div className="auth-shell__header-inner">
-          <Link className="auth-shell__brand" href="/dashboard">
+          <Link aria-label="ARCH. Atlas" className="auth-shell__brand" href="/dashboard">
             <span className="auth-shell__brand-mark">
               <Image
-                alt="Arch"
+                alt=""
                 className="auth-shell__brand-logo"
                 height={18}
                 priority
@@ -27,6 +27,7 @@ export function AuthenticatedShell({ children, role }: AuthenticatedShellProps) 
                 width={68}
               />
             </span>
+            <span className="auth-shell__brand-wordmark">Atlas</span>
           </Link>
 
           <div className="auth-shell__nav-region" id="auth-shell-primary-nav">

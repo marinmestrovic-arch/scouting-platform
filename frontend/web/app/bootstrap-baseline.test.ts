@@ -17,8 +17,8 @@ describe("week 0 bootstrap baseline", () => {
   });
 
   it("keeps root layout metadata and language stable", () => {
-    expect(metadata.title).toBe("Scouting Platform");
-    expect(metadata.description).toBe("Creator scouting workspace.");
+    expect(metadata.title).toBe("Atlas");
+    expect(metadata.description).toBe("Creator discovery and campaign workspace.");
 
     const html = renderToStaticMarkup(RootLayout({ children: "bootstrap" }));
 

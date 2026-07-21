@@ -182,6 +182,11 @@ jobs:
       - name: Deploy web
         run: git push dokku-web HEAD:main
 
+      - name: Configure web upload proxy limit
+        run: |
+          ssh dokku-target nginx:set "$DOKKU_WEB_APP" client-max-body-size 6m
+          ssh dokku-target proxy:build-config "$DOKKU_WEB_APP"
+
       - name: Smoke check login page
         run: curl --fail --silent --show-error --location "$DOKKU_WEB_URL/login" > /dev/null
 
@@ -267,6 +272,11 @@ jobs:
 
       - name: Deploy web
         run: git push dokku-web HEAD:main
+
+      - name: Configure web upload proxy limit
+        run: |
+          ssh dokku-target nginx:set "$DOKKU_WEB_APP" client-max-body-size 6m
+          ssh dokku-target proxy:build-config "$DOKKU_WEB_APP"
 
       - name: Smoke check login page
         run: curl --fail --silent --show-error --location "$DOKKU_WEB_URL/login" > /dev/null

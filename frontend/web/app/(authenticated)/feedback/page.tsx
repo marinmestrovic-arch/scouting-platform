@@ -7,7 +7,7 @@ export default function FeedbackPage() {
     <section className="page-section">
       <PageHeader
         crumbs={[{ label: "Feedback" }]}
-        description="Help us improve the platform. Your feedback goes directly to the team."
+        description="Help us improve Atlas. Your feedback goes directly to the team."
         title="Give feedback"
       />
       <div className="page-container">
