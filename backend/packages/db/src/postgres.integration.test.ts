@@ -1,6 +1,5 @@
 import process from "node:process";
 
-import { PrismaClient } from "@prisma/client";
 import { createPrismaClient } from "./index";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -225,6 +224,68 @@ if (!databaseUrl) {
       expect(metadataColumns[0]?.client_hubspot_object_id).toBe("hubspot_object_id");
       expect(metadataColumns[0]?.client_is_active).toBe("is_active");
       expect(metadataColumns[0]?.campaign_hubspot_object_id).toBe("hubspot_object_id");
+    });
+
+    it("sees hubspot integration v2 portal, identity, reference, and workflow tables", async () => {
+      const relationRows = await prisma.$queryRaw<Array<{ relation_name: string }>>`
+        SELECT table_name AS relation_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN (
+            'hubspot_portals',
+            'hubspot_health_check_runs',
+            'hubspot_contact_links',
+            'hubspot_deal_links',
+            'hubspot_owners',
+            'hubspot_pipelines',
+            'hubspot_pipeline_stages',
+            'hubspot_association_definitions',
+            'hubspot_webhook_events',
+            'hubspot_sync_cursors',
+            'hubspot_conflicts'
+          )
+        ORDER BY table_name ASC
+      `;
+      const importColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'hubspot_import_batches'
+          AND column_name IN (
+            'delivery_mode',
+            'external_job_id',
+            'external_status',
+            'hubspot_portal_id',
+            'idempotency_key',
+            'preparation_hash',
+            'provider_correlation_id',
+            'submitted_at'
+          )
+        ORDER BY column_name ASC
+      `;
+
+      expect(relationRows.map((row) => row.relation_name)).toEqual([
+        "hubspot_association_definitions",
+        "hubspot_conflicts",
+        "hubspot_contact_links",
+        "hubspot_deal_links",
+        "hubspot_health_check_runs",
+        "hubspot_owners",
+        "hubspot_pipeline_stages",
+        "hubspot_pipelines",
+        "hubspot_portals",
+        "hubspot_sync_cursors",
+        "hubspot_webhook_events",
+      ]);
+      expect(importColumns.map((row) => row.column_name)).toEqual([
+        "delivery_mode",
+        "external_job_id",
+        "external_status",
+        "hubspot_portal_id",
+        "idempotency_key",
+        "preparation_hash",
+        "provider_correlation_id",
+        "submitted_at",
+      ]);
     });
   });
 }

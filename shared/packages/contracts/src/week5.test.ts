@@ -78,11 +78,28 @@ describe("week 5 contracts", () => {
           },
         ],
       },
+      workedWith: true,
+      collaborations: [{
+        hubspotDealId: "deal-123",
+        dealName: "Campaign creator deal",
+        hubspotDealUrl: "https://app.hubspot.com/contacts/147403025/record/0-3/deal-123",
+        clients: ["Brand"],
+        campaigns: ["Campaign"],
+        amount: "1000",
+        currencyCode: "EUR",
+        stage: "Contract signed",
+        owner: "Owner Name",
+        closeDate: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        activations: [],
+      }],
     });
 
     expect(payload.advancedReport.status).toBe("completed");
     expect(payload.contentLanguage).toBe("English");
     expect(payload.insights.brandMentions[0]?.brandName).toBe("Nike");
+    expect(payload.workedWith).toBe(true);
+    expect(payload.collaborations[0]?.hubspotDealId).toBe("deal-123");
   });
 
   it("parses request response shape", () => {

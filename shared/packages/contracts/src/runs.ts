@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { runChannelAssessmentItemSchema } from "./runs-assessment";
+import { hubspotImportBatchStatusSchema } from "./hubspot-imports";
 
 const isoDatetimeSchema = z.string().datetime();
 const briefStringSchema = z.string().trim().min(1);
@@ -127,6 +128,7 @@ export const recentRunItemSchema = z.object({
   startedAt: isoDatetimeSchema.nullable(),
   completedAt: isoDatetimeSchema.nullable(),
   resultCount: z.number().int().nonnegative(),
+  hubspotSyncStatus: hubspotImportBatchStatusSchema.nullable(),
   metadata: runMetadataResponseSchema,
 });
 

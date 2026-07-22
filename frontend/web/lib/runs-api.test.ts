@@ -90,6 +90,7 @@ function buildRecentRunsPayload() {
         startedAt: "2026-03-10T10:01:00.000Z",
         completedAt: null,
         resultCount: 2,
+        hubspotSyncStatus: "processing",
         metadata: buildRunMetadata(),
       },
     ],

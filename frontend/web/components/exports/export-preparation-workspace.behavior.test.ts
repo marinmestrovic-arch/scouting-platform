@@ -25,6 +25,21 @@ vi.mock("../../lib/google-sheets-export-api", () => ({
   exportRunToGoogleSheets: vi.fn(),
 }));
 
+vi.mock("./hubspot-sync-panel", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    HubspotSyncPanel: function HubspotSyncPanel() {
+      return React.createElement(
+        "div",
+        null,
+        React.createElement("button", { type: "button" }, "Sync to HubSpot"),
+        React.createElement("button", { type: "button" }, "Download HubSpot CSV"),
+      );
+    },
+  };
+});
+
 import { ExportPreparationWorkspace } from "./export-preparation-workspace";
 
 type InputChangeEvent = {
@@ -133,6 +148,11 @@ function findButtonByText(element: ReactElement, text: string): ButtonElement {
 
     if (candidate.type === "button" && readText(candidate.props.children).trim() === text) {
       matches.push(candidate);
+    }
+
+    if (typeof candidate.type === "function" && candidate.type.name === "HubspotSyncPanel") {
+      const renderComponent = candidate.type as (props: ButtonElement["props"]) => ReactElement;
+      visit(renderComponent(candidate.props));
     }
 
     visit(candidate.props.children);
@@ -327,7 +347,7 @@ describe("export preparation workspace behavior", () => {
     );
   });
 
-  it("renders a CSV Download button left of Save in the run defaults header", () => {
+  it("renders direct HubSpot sync with the durable CSV fallback", () => {
     const preview = createHubspotPreview();
     const emptyDrafts = {
       defaults: {
@@ -360,10 +380,10 @@ describe("export preparation workspace behavior", () => {
       preview,
     }) as ReactElement;
 
-    const csvButton = findButtonByText(element, "CSV Download");
-    const saveButton = findButtonByText(element, "Save");
+    const syncButton = findButtonByText(element, "Sync to HubSpot");
+    const csvButton = findButtonByText(element, "Download HubSpot CSV");
 
+    expect(syncButton).toBeDefined();
     expect(csvButton).toBeDefined();
-    expect(saveButton).toBeDefined();
   });
 });

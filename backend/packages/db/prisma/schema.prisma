@@ -195,18 +195,26 @@ enum HubspotPushBatchRowStatus {
 }
 
 enum HubspotImportBatchStatus {
-  QUEUED    @map("queued")
-  RUNNING   @map("running")
-  COMPLETED @map("completed")
-  FAILED    @map("failed")
+  QUEUED                @map("queued")
+  PREPARING             @map("preparing")
+  RUNNING               @map("running")
+  SUBMITTING            @map("submitting")
+  SUBMITTED             @map("submitted")
+  PROCESSING            @map("processing")
+  COMPLETED             @map("completed")
+  COMPLETED_WITH_ERRORS @map("completed_with_errors")
+  FAILED                @map("failed")
 
   @@map("hubspot_import_batch_status")
 }
 
 enum HubspotImportBatchRowStatus {
-  PENDING  @map("pending")
-  PREPARED @map("prepared")
-  FAILED   @map("failed")
+  PENDING    @map("pending")
+  PREPARED   @map("prepared")
+  SUBMITTING @map("submitting")
+  SYNCED     @map("synced")
+  FAILED     @map("failed")
+  SKIPPED    @map("skipped")
 
   @@map("hubspot_import_batch_row_status")
 }
@@ -227,6 +235,87 @@ enum HubspotObjectSyncRunStatus {
   FAILED    @map("failed")
 
   @@map("hubspot_object_sync_run_status")
+}
+
+enum HubspotPortalHealthStatus {
+  UNKNOWN   @map("unknown")
+  HEALTHY   @map("healthy")
+  DEGRADED  @map("degraded")
+  UNHEALTHY @map("unhealthy")
+
+  @@map("hubspot_portal_health_status")
+}
+
+enum HubspotHealthCheckRunStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("hubspot_health_check_run_status")
+}
+
+enum HubspotDeliveryMode {
+  CSV_FALLBACK      @map("csv_fallback")
+  DIRECT_IMPORT     @map("direct_import")
+  DIRECT_OBJECT_API @map("direct_object_api")
+  HYBRID            @map("hybrid")
+
+  @@map("hubspot_delivery_mode")
+}
+
+enum HubspotExternalDeliveryStatus {
+  SUBMITTED             @map("submitted")
+  PROCESSING            @map("processing")
+  COMPLETED             @map("completed")
+  COMPLETED_WITH_ERRORS @map("completed_with_errors")
+  FAILED                @map("failed")
+
+  @@map("hubspot_external_delivery_status")
+}
+
+enum HubspotAssociationStatus {
+  PENDING      @map("pending")
+  ASSOCIATED   @map("associated")
+  FAILED       @map("failed")
+  NOT_REQUIRED @map("not_required")
+
+  @@map("hubspot_association_status")
+}
+
+enum HubspotObjectSyncMode {
+  FULL                   @map("full")
+  INCREMENTAL            @map("incremental")
+  WEBHOOK_RECONCILIATION @map("webhook_reconciliation")
+
+  @@map("hubspot_object_sync_mode")
+}
+
+enum HubspotWebhookEventStatus {
+  RECEIVED  @map("received")
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+  IGNORED   @map("ignored")
+
+  @@map("hubspot_webhook_event_status")
+}
+
+enum HubspotConflictStatus {
+  OPEN      @map("open")
+  RESOLVED  @map("resolved")
+  DISMISSED @map("dismissed")
+
+  @@map("hubspot_conflict_status")
+}
+
+enum HubspotConflictOwnership {
+  PLATFORM @map("platform")
+  HUBSPOT  @map("hubspot")
+  SHARED   @map("shared")
+
+  @@map("hubspot_conflict_ownership")
 }
 
 enum CsvExportScopeType {
@@ -271,6 +360,8 @@ model User {
   requestedHubspotImportBatches         HubspotImportBatch[]          @relation("HubspotImportRequestedBy")
   requestedHubspotPreviewEnrichmentJobs HubspotPreviewEnrichmentJob[] @relation("HubspotPreviewEnrichmentRequestedBy")
   requestedHubspotObjectSyncRuns        HubspotObjectSyncRun[]        @relation("HubspotObjectSyncRequestedBy")
+  requestedHubspotHealthCheckRuns       HubspotHealthCheckRun[]       @relation("HubspotHealthCheckRequestedBy")
+  resolvedHubspotConflicts              HubspotConflict[]             @relation("HubspotConflictResolvedBy")
   createdCampaigns                      Campaign[]                    @relation("CampaignCreatedBy")
   youtubeDiscoveryCache                 YoutubeDiscoveryCache[]
   ratedRunResults                       RunResult[]                   @relation("RunResultRatedBy")
@@ -279,37 +370,112 @@ model User {
   @@map("users")
 }
 
+model HubspotPortal {
+  id                       String                         @id @default(uuid()) @db.Uuid
+  portalId                 String                         @unique @map("portal_id")
+  displayName              String?                        @map("display_name")
+  healthStatus             HubspotPortalHealthStatus      @default(UNKNOWN) @map("health_status")
+  healthCheckedAt          DateTime?                      @map("health_checked_at")
+  healthLastError          String?                        @map("health_last_error") @db.Text
+  healthSummary            Json?                          @map("health_summary")
+  lastReferenceSyncAt      DateTime?                      @map("last_reference_sync_at")
+  lastObjectSyncAt         DateTime?                      @map("last_object_sync_at")
+  lastWebhookProcessedAt   DateTime?                      @map("last_webhook_processed_at")
+  objectSyncLeaseOwner     String?                        @map("object_sync_lease_owner")
+  objectSyncLeaseExpiresAt DateTime?                      @map("object_sync_lease_expires_at")
+  createdAt                DateTime                       @default(now()) @map("created_at")
+  updatedAt                DateTime                       @updatedAt @map("updated_at")
+  dropdownValues           DropdownValue[]
+  clients                  Client[]
+  campaigns                Campaign[]
+  contactLinks             HubspotContactLink[]
+  dealLinks                HubspotDealLink[]
+  dealMirrors              HubspotDealMirror[]
+  activationMirrors        HubspotActivationMirror[]
+  importBatches            HubspotImportBatch[]
+  objectSyncRuns           HubspotObjectSyncRun[]
+  owners                   HubspotOwner[]
+  pipelines                HubspotPipeline[]
+  associationDefinitions   HubspotAssociationDefinition[]
+  webhookEvents            HubspotWebhookEvent[]
+  syncCursors              HubspotSyncCursor[]
+  conflicts                HubspotConflict[]
+
+  @@index([healthStatus], map: "hubspot_portals_health_status_idx")
+  @@index([healthCheckedAt], map: "hubspot_portals_health_checked_at_idx")
+  @@index([objectSyncLeaseExpiresAt], map: "hubspot_portals_object_sync_lease_expires_at_idx")
+  @@map("hubspot_portals")
+}
+
+model HubspotHealthCheckRun {
+  id                String                      @id @default(uuid()) @db.Uuid
+  requestedByUserId String                      @map("requested_by_user_id") @db.Uuid
+  status            HubspotHealthCheckRunStatus @default(QUEUED)
+  report            Json?
+  queuedAt          DateTime                    @default(now()) @map("queued_at")
+  startedAt         DateTime?                   @map("started_at")
+  completedAt       DateTime?                   @map("completed_at")
+  lastError         String?                     @map("last_error") @db.Text
+  leaseOwner        String?                     @map("lease_owner")
+  leaseExpiresAt    DateTime?                   @map("lease_expires_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+  requestedByUser   User                        @relation("HubspotHealthCheckRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt], map: "hubspot_health_check_runs_status_created_at_idx")
+  @@index([requestedByUserId, createdAt], map: "hubspot_health_check_runs_requested_by_created_at_idx")
+  @@index([leaseExpiresAt], map: "hubspot_health_check_runs_lease_expires_at_idx")
+  @@map("hubspot_health_check_runs")
+}
+
 model DropdownValue {
-  id        String                @id @default(uuid()) @db.Uuid
-  fieldKey  DropdownValueFieldKey @map("field_key")
-  value     String
-  createdAt DateTime              @default(now()) @map("created_at")
-  updatedAt DateTime              @updatedAt @map("updated_at")
+  id                 String                @id @default(uuid()) @db.Uuid
+  fieldKey           DropdownValueFieldKey @map("field_key")
+  value              String
+  label              String?
+  internalValue      String?               @map("internal_value")
+  source             String?
+  sourceObjectType   String?               @map("source_object_type")
+  sourcePropertyName String?               @map("source_property_name")
+  hubspotPortalId    String?               @map("hubspot_portal_id") @db.Uuid
+  hubspotSyncedAt    DateTime?             @map("hubspot_synced_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  hubspotPortal      HubspotPortal?        @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
 
   @@unique([fieldKey, value], map: "dropdown_values_field_key_value_key")
+  @@unique([hubspotPortalId, sourceObjectType, sourcePropertyName, internalValue], map: "dropdown_values_portal_source_property_internal_value_key")
   @@index([fieldKey], map: "dropdown_values_field_key_idx")
+  @@index([hubspotPortalId, fieldKey], map: "dropdown_values_hubspot_portal_id_field_key_idx")
+  @@index([sourceObjectType, sourcePropertyName], map: "dropdown_values_source_object_property_idx")
   @@index([createdAt], map: "dropdown_values_created_at_idx")
   @@map("dropdown_values")
 }
 
 model Client {
-  id                String     @id @default(uuid()) @db.Uuid
-  name              String     @unique
-  domain            String?    @map("domain")
-  countryRegion     String?    @map("country_region")
-  city              String?    @map("city")
-  isActive          Boolean    @default(true) @map("is_active")
-  hubspotObjectId   String?    @map("hubspot_object_id")
-  hubspotObjectType String?    @map("hubspot_object_type")
-  hubspotArchived   Boolean    @default(false) @map("hubspot_archived")
-  hubspotSyncedAt   DateTime?  @map("hubspot_synced_at")
-  hubspotRawPayload Json?      @map("hubspot_raw_payload")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
-  campaigns         Campaign[]
+  id                      String                         @id @default(uuid()) @db.Uuid
+  name                    String                         @unique
+  domain                  String?                        @map("domain")
+  countryRegion           String?                        @map("country_region")
+  city                    String?                        @map("city")
+  isActive                Boolean                        @default(true) @map("is_active")
+  hubspotPortalId         String?                        @map("hubspot_portal_id") @db.Uuid
+  hubspotObjectId         String?                        @map("hubspot_object_id")
+  hubspotObjectType       String?                        @map("hubspot_object_type")
+  hubspotArchived         Boolean                        @default(false) @map("hubspot_archived")
+  hubspotSyncedAt         DateTime?                      @map("hubspot_synced_at")
+  hubspotRawPayload       Json?                          @map("hubspot_raw_payload")
+  createdAt               DateTime                       @default(now()) @map("created_at")
+  updatedAt               DateTime                       @updatedAt @map("updated_at")
+  hubspotPortal           HubspotPortal?                 @relation(fields: [hubspotPortalId], references: [id], onDelete: SetNull)
+  campaigns               Campaign[]
+  hubspotDealAssociations HubspotDealClientAssociation[]
+  hubspotConflicts        HubspotConflict[]
 
   @@unique([hubspotObjectType, hubspotObjectId], map: "clients_hubspot_object_type_id_key")
+  @@unique([hubspotPortalId, hubspotObjectType, hubspotObjectId], map: "clients_portal_object_type_id_key")
   @@index([isActive], map: "clients_is_active_idx")
+  @@index([hubspotPortalId], map: "clients_hubspot_portal_id_idx")
   @@index([hubspotObjectId], map: "clients_hubspot_object_id_idx")
   @@index([hubspotObjectType], map: "clients_hubspot_object_type_idx")
   @@index([createdAt], map: "clients_created_at_idx")
@@ -328,34 +494,40 @@ model Market {
 }
 
 model Campaign {
-  id                String       @id @default(uuid()) @db.Uuid
-  name              String
-  clientId          String?      @map("client_id") @db.Uuid
-  marketId          String?      @map("market_id") @db.Uuid
-  briefLink         String?      @map("brief_link")
-  month             RunMonth?
-  year              Int?
-  status            String?
-  isActive          Boolean      @default(true) @map("is_active")
-  hubspotObjectId   String?      @map("hubspot_object_id")
-  hubspotObjectType String?      @map("hubspot_object_type")
-  hubspotArchived   Boolean      @default(false) @map("hubspot_archived")
-  hubspotSyncedAt   DateTime?    @map("hubspot_synced_at")
-  hubspotRawPayload Json?        @map("hubspot_raw_payload")
-  createdByUserId   String?      @map("created_by_user_id") @db.Uuid
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
-  client            Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  market            Market?      @relation(fields: [marketId], references: [id], onDelete: Restrict)
-  createdByUser     User?        @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  runRequests       RunRequest[]
+  id                      String                           @id @default(uuid()) @db.Uuid
+  name                    String
+  clientId                String?                          @map("client_id") @db.Uuid
+  marketId                String?                          @map("market_id") @db.Uuid
+  briefLink               String?                          @map("brief_link")
+  month                   RunMonth?
+  year                    Int?
+  status                  String?
+  isActive                Boolean                          @default(true) @map("is_active")
+  hubspotPortalId         String?                          @map("hubspot_portal_id") @db.Uuid
+  hubspotObjectId         String?                          @map("hubspot_object_id")
+  hubspotObjectType       String?                          @map("hubspot_object_type")
+  hubspotArchived         Boolean                          @default(false) @map("hubspot_archived")
+  hubspotSyncedAt         DateTime?                        @map("hubspot_synced_at")
+  hubspotRawPayload       Json?                            @map("hubspot_raw_payload")
+  createdByUserId         String?                          @map("created_by_user_id") @db.Uuid
+  createdAt               DateTime                         @default(now()) @map("created_at")
+  updatedAt               DateTime                         @updatedAt @map("updated_at")
+  client                  Client?                          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  market                  Market?                          @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  hubspotPortal           HubspotPortal?                   @relation(fields: [hubspotPortalId], references: [id], onDelete: SetNull)
+  createdByUser           User?                            @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  runRequests             RunRequest[]
+  hubspotDealAssociations HubspotDealCampaignAssociation[]
+  hubspotConflicts        HubspotConflict[]
 
   @@unique([name, clientId, marketId, month, year], map: "campaigns_name_client_market_month_year_key")
   @@unique([hubspotObjectType, hubspotObjectId], map: "campaigns_hubspot_object_type_id_key")
+  @@unique([hubspotPortalId, hubspotObjectType, hubspotObjectId], map: "campaigns_portal_object_type_id_key")
   @@index([clientId], map: "campaigns_client_id_idx")
   @@index([marketId], map: "campaigns_market_id_idx")
   @@index([status], map: "campaigns_status_idx")
   @@index([isActive], map: "campaigns_is_active_idx")
+  @@index([hubspotPortalId], map: "campaigns_hubspot_portal_id_idx")
   @@index([hubspotObjectId], map: "campaigns_hubspot_object_id_idx")
   @@index([hubspotObjectType], map: "campaigns_hubspot_object_type_idx")
   @@index([createdAt], map: "campaigns_created_at_idx")
@@ -476,17 +648,20 @@ model Channel {
 }
 
 model ChannelContact {
-  id               String          @id @default(uuid()) @db.Uuid
-  channelId        String          @map("channel_id") @db.Uuid
-  email            String
-  firstName        String?         @map("first_name")
-  lastName         String?         @map("last_name")
-  phoneNumber      String?         @map("phone_number")
-  csvImportBatchId String?         @map("csv_import_batch_id") @db.Uuid
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  channel          Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  csvImportBatch   CsvImportBatch? @relation(fields: [csvImportBatchId], references: [id], onDelete: SetNull)
+  id                  String                  @id @default(uuid()) @db.Uuid
+  channelId           String                  @map("channel_id") @db.Uuid
+  email               String
+  firstName           String?                 @map("first_name")
+  lastName            String?                 @map("last_name")
+  phoneNumber         String?                 @map("phone_number")
+  csvImportBatchId    String?                 @map("csv_import_batch_id") @db.Uuid
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+  channel             Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  csvImportBatch      CsvImportBatch?         @relation(fields: [csvImportBatchId], references: [id], onDelete: SetNull)
+  hubspotContactLinks HubspotContactLink[]
+  hubspotImportRows   HubspotImportBatchRow[]
+  hubspotConflicts    HubspotConflict[]
 
   @@unique([channelId, email], map: "channel_contacts_channel_id_email_key")
   @@index([channelId], map: "channel_contacts_channel_id_idx")
@@ -892,52 +1067,337 @@ model HubspotPushBatchRow {
   @@map("hubspot_push_batch_rows")
 }
 
-model HubspotImportBatch {
-  id                String                   @id @default(uuid()) @db.Uuid
-  requestedByUserId String                   @map("requested_by_user_id") @db.Uuid
-  runRequestId      String                   @map("run_request_id") @db.Uuid
-  fileName          String                   @map("file_name")
-  schemaVersion     String                   @map("schema_version")
-  status            HubspotImportBatchStatus @default(QUEUED)
-  totalRowCount     Int                      @default(0) @map("total_row_count")
-  preparedRowCount  Int                      @default(0) @map("prepared_row_count")
-  failedRowCount    Int                      @default(0) @map("failed_row_count")
-  csvContent        String?                  @map("csv_content") @db.Text
-  startedAt         DateTime?                @map("started_at")
-  completedAt       DateTime?                @map("completed_at")
-  lastError         String?                  @map("last_error") @db.Text
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-  requestedByUser   User                     @relation("HubspotImportRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
-  runRequest        RunRequest               @relation(fields: [runRequestId], references: [id], onDelete: Restrict)
-  rows              HubspotImportBatchRow[]
+model HubspotContactLink {
+  id                           String                          @id @default(uuid()) @db.Uuid
+  hubspotPortalId              String                          @map("hubspot_portal_id") @db.Uuid
+  channelContactId             String                          @map("channel_contact_id") @db.Uuid
+  hubspotObjectId              String                          @map("hubspot_object_id")
+  externalKey                  String                          @map("external_key")
+  lastSuccessfulSyncAt         DateTime?                       @map("last_successful_sync_at")
+  lastObservedHubspotUpdatedAt DateTime?                       @map("last_observed_hubspot_updated_at")
+  mirrorProperties             Json?                           @map("mirror_properties")
+  archived                     Boolean                         @default(false)
+  lastOutboundHash             String?                         @map("last_outbound_hash")
+  createdAt                    DateTime                        @default(now()) @map("created_at")
+  updatedAt                    DateTime                        @updatedAt @map("updated_at")
+  hubspotPortal                HubspotPortal                   @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  channelContact               ChannelContact                  @relation(fields: [channelContactId], references: [id], onDelete: Restrict)
+  dealAssociations             HubspotContactDealAssociation[]
+  conflicts                    HubspotConflict[]
 
+  @@unique([hubspotPortalId, channelContactId], map: "hubspot_contact_links_portal_contact_key")
+  @@unique([hubspotPortalId, hubspotObjectId], map: "hubspot_contact_links_portal_object_id_key")
+  @@unique([hubspotPortalId, externalKey], map: "hubspot_contact_links_portal_external_key_key")
+  @@index([channelContactId], map: "hubspot_contact_links_channel_contact_id_idx")
+  @@index([lastSuccessfulSyncAt], map: "hubspot_contact_links_last_successful_sync_at_idx")
+  @@map("hubspot_contact_links")
+}
+
+model HubspotDealLink {
+  id                           String            @id @default(uuid()) @db.Uuid
+  hubspotPortalId              String            @map("hubspot_portal_id") @db.Uuid
+  runRequestId                 String            @map("run_request_id") @db.Uuid
+  hubspotObjectId              String            @map("hubspot_object_id")
+  externalKey                  String            @map("external_key")
+  lastSuccessfulSyncAt         DateTime?         @map("last_successful_sync_at")
+  lastObservedHubspotUpdatedAt DateTime?         @map("last_observed_hubspot_updated_at")
+  mirrorProperties             Json?             @map("mirror_properties")
+  archived                     Boolean           @default(false)
+  lastOutboundHash             String?           @map("last_outbound_hash")
+  createdAt                    DateTime          @default(now()) @map("created_at")
+  updatedAt                    DateTime          @updatedAt @map("updated_at")
+  hubspotPortal                HubspotPortal     @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  runRequest                   RunRequest        @relation(fields: [runRequestId], references: [id], onDelete: Restrict)
+  conflicts                    HubspotConflict[]
+
+  @@unique([hubspotPortalId, runRequestId], map: "hubspot_deal_links_portal_run_request_key")
+  @@unique([hubspotPortalId, hubspotObjectId], map: "hubspot_deal_links_portal_object_id_key")
+  @@unique([hubspotPortalId, externalKey], map: "hubspot_deal_links_portal_external_key_key")
+  @@index([runRequestId], map: "hubspot_deal_links_run_request_id_idx")
+  @@index([lastSuccessfulSyncAt], map: "hubspot_deal_links_last_successful_sync_at_idx")
+  @@index([lastObservedHubspotUpdatedAt], map: "hubspot_deal_links_last_observed_updated_at_idx")
+  @@map("hubspot_deal_links")
+}
+
+model HubspotDealMirror {
+  id                           String                             @id @default(uuid()) @db.Uuid
+  hubspotPortalId              String                             @map("hubspot_portal_id") @db.Uuid
+  hubspotObjectId              String                             @map("hubspot_object_id")
+  dealName                     String                             @map("deal_name")
+  amount                       String?
+  currencyCode                 String?                            @map("currency_code")
+  pipelineId                   String?                            @map("pipeline_id")
+  stageId                      String?                            @map("stage_id")
+  ownerId                      String?                            @map("owner_id")
+  closeDate                    DateTime?                          @map("close_date")
+  hubspotCreatedAt             DateTime?                          @map("hubspot_created_at")
+  lastObservedHubspotUpdatedAt DateTime?                          @map("last_observed_hubspot_updated_at")
+  mirrorProperties             Json?                              @map("mirror_properties")
+  archived                     Boolean                            @default(false)
+  createdAt                    DateTime                           @default(now()) @map("created_at")
+  updatedAt                    DateTime                           @updatedAt @map("updated_at")
+  hubspotPortal                HubspotPortal                      @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  contactAssociations          HubspotContactDealAssociation[]
+  clientAssociations           HubspotDealClientAssociation[]
+  campaignAssociations         HubspotDealCampaignAssociation[]
+  activationAssociations       HubspotDealActivationAssociation[]
+
+  @@unique([hubspotPortalId, hubspotObjectId], map: "hubspot_deal_mirrors_portal_object_id_key")
+  @@index([hubspotPortalId, archived, closeDate], map: "hubspot_deal_mirrors_portal_archived_close_date_idx")
+  @@index([ownerId], map: "hubspot_deal_mirrors_owner_id_idx")
+  @@index([stageId], map: "hubspot_deal_mirrors_stage_id_idx")
+  @@index([lastObservedHubspotUpdatedAt], map: "hubspot_deal_mirrors_observed_updated_at_idx")
+  @@map("hubspot_deal_mirrors")
+}
+
+model HubspotActivationMirror {
+  id                           String                             @id @default(uuid()) @db.Uuid
+  hubspotPortalId              String                             @map("hubspot_portal_id") @db.Uuid
+  hubspotObjectId              String                             @map("hubspot_object_id")
+  name                         String
+  activationType               String?                            @map("activation_type")
+  activationUrl                String?                            @map("activation_url")
+  publicationDate              DateTime?                          @map("publication_date")
+  lastObservedHubspotUpdatedAt DateTime?                          @map("last_observed_hubspot_updated_at")
+  mirrorProperties             Json?                              @map("mirror_properties")
+  archived                     Boolean                            @default(false)
+  createdAt                    DateTime                           @default(now()) @map("created_at")
+  updatedAt                    DateTime                           @updatedAt @map("updated_at")
+  hubspotPortal                HubspotPortal                      @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  dealAssociations             HubspotDealActivationAssociation[]
+
+  @@unique([hubspotPortalId, hubspotObjectId], map: "hubspot_activation_mirrors_portal_object_id_key")
+  @@index([hubspotPortalId, archived, publicationDate], map: "hubspot_activation_mirrors_portal_archived_publication_idx")
+  @@index([lastObservedHubspotUpdatedAt], map: "hubspot_activation_mirrors_observed_updated_at_idx")
+  @@map("hubspot_activation_mirrors")
+}
+
+model HubspotContactDealAssociation {
+  id                   String             @id @default(uuid()) @db.Uuid
+  hubspotContactLinkId String             @map("hubspot_contact_link_id") @db.Uuid
+  hubspotDealMirrorId  String             @map("hubspot_deal_mirror_id") @db.Uuid
+  observedAt           DateTime           @map("observed_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  hubspotContactLink   HubspotContactLink @relation(fields: [hubspotContactLinkId], references: [id], onDelete: Cascade)
+  hubspotDealMirror    HubspotDealMirror  @relation(fields: [hubspotDealMirrorId], references: [id], onDelete: Cascade)
+
+  @@unique([hubspotContactLinkId, hubspotDealMirrorId], map: "hubspot_contact_deals_contact_deal_key")
+  @@index([hubspotDealMirrorId], map: "hubspot_contact_deals_deal_id_idx")
+  @@map("hubspot_contact_deal_associations")
+}
+
+model HubspotDealClientAssociation {
+  id                  String            @id @default(uuid()) @db.Uuid
+  hubspotDealMirrorId String            @map("hubspot_deal_mirror_id") @db.Uuid
+  clientId            String            @map("client_id") @db.Uuid
+  observedAt          DateTime          @map("observed_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  hubspotDealMirror   HubspotDealMirror @relation(fields: [hubspotDealMirrorId], references: [id], onDelete: Cascade)
+  client              Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([hubspotDealMirrorId, clientId], map: "hubspot_deal_clients_deal_client_key")
+  @@index([clientId], map: "hubspot_deal_clients_client_id_idx")
+  @@map("hubspot_deal_client_associations")
+}
+
+model HubspotDealCampaignAssociation {
+  id                  String            @id @default(uuid()) @db.Uuid
+  hubspotDealMirrorId String            @map("hubspot_deal_mirror_id") @db.Uuid
+  campaignId          String            @map("campaign_id") @db.Uuid
+  observedAt          DateTime          @map("observed_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  hubspotDealMirror   HubspotDealMirror @relation(fields: [hubspotDealMirrorId], references: [id], onDelete: Cascade)
+  campaign            Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([hubspotDealMirrorId, campaignId], map: "hubspot_deal_campaigns_deal_campaign_key")
+  @@index([campaignId], map: "hubspot_deal_campaigns_campaign_id_idx")
+  @@map("hubspot_deal_campaign_associations")
+}
+
+model HubspotDealActivationAssociation {
+  id                        String                  @id @default(uuid()) @db.Uuid
+  hubspotDealMirrorId       String                  @map("hubspot_deal_mirror_id") @db.Uuid
+  hubspotActivationMirrorId String                  @map("hubspot_activation_mirror_id") @db.Uuid
+  observedAt                DateTime                @map("observed_at")
+  createdAt                 DateTime                @default(now()) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @map("updated_at")
+  hubspotDealMirror         HubspotDealMirror       @relation(fields: [hubspotDealMirrorId], references: [id], onDelete: Cascade)
+  hubspotActivationMirror   HubspotActivationMirror @relation(fields: [hubspotActivationMirrorId], references: [id], onDelete: Cascade)
+
+  @@unique([hubspotDealMirrorId, hubspotActivationMirrorId], map: "hubspot_deal_activations_deal_activation_key")
+  @@index([hubspotActivationMirrorId], map: "hubspot_deal_activations_activation_id_idx")
+  @@map("hubspot_deal_activation_associations")
+}
+
+model HubspotOwner {
+  id                    String        @id @default(uuid()) @db.Uuid
+  hubspotPortalId       String        @map("hubspot_portal_id") @db.Uuid
+  hubspotOwnerId        String        @map("hubspot_owner_id")
+  email                 String?
+  normalizedEmail       String?       @map("normalized_email")
+  firstName             String?       @map("first_name")
+  lastName              String?       @map("last_name")
+  displayName           String?       @map("display_name")
+  isActive              Boolean       @default(true) @map("is_active")
+  archived              Boolean       @default(false)
+  lastObservedUpdatedAt DateTime?     @map("last_observed_updated_at")
+  syncedAt              DateTime      @map("synced_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  hubspotPortal         HubspotPortal @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+
+  @@unique([hubspotPortalId, hubspotOwnerId], map: "hubspot_owners_portal_owner_id_key")
+  @@index([hubspotPortalId, normalizedEmail, isActive], map: "hubspot_owners_portal_email_active_idx")
+  @@index([hubspotPortalId, archived], map: "hubspot_owners_portal_archived_idx")
+  @@map("hubspot_owners")
+}
+
+model HubspotPipeline {
+  id                String                 @id @default(uuid()) @db.Uuid
+  hubspotPortalId   String                 @map("hubspot_portal_id") @db.Uuid
+  objectType        String                 @map("object_type")
+  hubspotPipelineId String                 @map("hubspot_pipeline_id")
+  label             String
+  displayOrder      Int                    @default(0) @map("display_order")
+  archived          Boolean                @default(false)
+  syncedAt          DateTime               @map("synced_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  hubspotPortal     HubspotPortal          @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  stages            HubspotPipelineStage[]
+
+  @@unique([hubspotPortalId, objectType, hubspotPipelineId], map: "hubspot_pipelines_portal_object_pipeline_key")
+  @@index([hubspotPortalId, objectType, archived], map: "hubspot_pipelines_portal_object_archived_idx")
+  @@map("hubspot_pipelines")
+}
+
+model HubspotPipelineStage {
+  id             String          @id @default(uuid()) @db.Uuid
+  pipelineId     String          @map("pipeline_id") @db.Uuid
+  hubspotStageId String          @map("hubspot_stage_id")
+  label          String
+  displayOrder   Int             @default(0) @map("display_order")
+  archived       Boolean         @default(false)
+  syncedAt       DateTime        @map("synced_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  pipeline       HubspotPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@unique([pipelineId, hubspotStageId], map: "hubspot_pipeline_stages_pipeline_stage_id_key")
+  @@index([pipelineId, archived, displayOrder], map: "hubspot_pipeline_stages_pipeline_archived_order_idx")
+  @@map("hubspot_pipeline_stages")
+}
+
+model HubspotAssociationDefinition {
+  id                  String        @id @default(uuid()) @db.Uuid
+  hubspotPortalId     String        @map("hubspot_portal_id") @db.Uuid
+  fromObjectType      String        @map("from_object_type")
+  toObjectType        String        @map("to_object_type")
+  associationCategory String        @map("association_category")
+  associationTypeId   Int           @map("association_type_id")
+  label               String?
+  isUserDefined       Boolean       @default(false) @map("is_user_defined")
+  archived            Boolean       @default(false)
+  syncedAt            DateTime      @map("synced_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  hubspotPortal       HubspotPortal @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+
+  @@unique([hubspotPortalId, fromObjectType, toObjectType, associationCategory, associationTypeId], map: "hubspot_assoc_defs_portal_types_category_id_key")
+  @@index([hubspotPortalId, fromObjectType, toObjectType, archived], map: "hubspot_assoc_defs_portal_types_archived_idx")
+  @@map("hubspot_association_definitions")
+}
+
+model HubspotImportBatch {
+  id                    String                         @id @default(uuid()) @db.Uuid
+  requestedByUserId     String                         @map("requested_by_user_id") @db.Uuid
+  runRequestId          String                         @map("run_request_id") @db.Uuid
+  hubspotPortalId       String?                        @map("hubspot_portal_id") @db.Uuid
+  fileName              String                         @map("file_name")
+  schemaVersion         String                         @map("schema_version")
+  status                HubspotImportBatchStatus       @default(QUEUED)
+  deliveryMode          HubspotDeliveryMode            @default(CSV_FALLBACK) @map("delivery_mode")
+  idempotencyKey        String?                        @map("idempotency_key")
+  preparationHash       String?                        @map("preparation_hash")
+  externalJobId         String?                        @map("external_job_id")
+  externalStatus        HubspotExternalDeliveryStatus? @map("external_status")
+  providerCorrelationId String?                        @map("provider_correlation_id")
+  providerResultSummary Json?                          @map("provider_result_summary")
+  directSyncSnapshot    Json?                          @map("direct_sync_snapshot")
+  totalRowCount         Int                            @default(0) @map("total_row_count")
+  preparedRowCount      Int                            @default(0) @map("prepared_row_count")
+  syncedRowCount        Int                            @default(0) @map("synced_row_count")
+  failedRowCount        Int                            @default(0) @map("failed_row_count")
+  csvContent            String?                        @map("csv_content") @db.Text
+  retryCount            Int                            @default(0) @map("retry_count")
+  nextRetryAt           DateTime?                      @map("next_retry_at")
+  phaseLeaseOwner       String?                        @map("phase_lease_owner")
+  phaseLeaseExpiresAt   DateTime?                      @map("phase_lease_expires_at")
+  startedAt             DateTime?                      @map("started_at")
+  submittedAt           DateTime?                      @map("submitted_at")
+  lastPolledAt          DateTime?                      @map("last_polled_at")
+  completedAt           DateTime?                      @map("completed_at")
+  lastError             String?                        @map("last_error") @db.Text
+  createdAt             DateTime                       @default(now()) @map("created_at")
+  updatedAt             DateTime                       @updatedAt @map("updated_at")
+  requestedByUser       User                           @relation("HubspotImportRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  runRequest            RunRequest                     @relation(fields: [runRequestId], references: [id], onDelete: Restrict)
+  hubspotPortal         HubspotPortal?                 @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  rows                  HubspotImportBatchRow[]
+
+  @@unique([hubspotPortalId, idempotencyKey], map: "hubspot_import_batches_portal_idempotency_key_key")
+  @@unique([hubspotPortalId, externalJobId], map: "hubspot_import_batches_portal_external_job_id_key")
   @@index([requestedByUserId], map: "hubspot_import_batches_requested_by_user_id_idx")
   @@index([requestedByUserId, createdAt], map: "hubspot_import_batches_requested_by_user_id_created_at_idx")
   @@index([runRequestId], map: "hubspot_import_batches_run_request_id_idx")
+  @@index([hubspotPortalId, status], map: "hubspot_import_batches_portal_status_idx")
+  @@index([externalStatus, lastPolledAt], map: "hubspot_import_batches_external_status_polled_at_idx")
+  @@index([status, nextRetryAt], map: "hubspot_import_batches_status_next_retry_at_idx")
+  @@index([phaseLeaseExpiresAt], map: "hubspot_import_batches_phase_lease_expires_at_idx")
   @@index([status], map: "hubspot_import_batches_status_idx")
   @@index([createdAt], map: "hubspot_import_batches_created_at_idx")
   @@map("hubspot_import_batches")
 }
 
 model HubspotImportBatchRow {
-  id           String                      @id @default(uuid()) @db.Uuid
-  batchId      String                      @map("batch_id") @db.Uuid
-  channelId    String                      @map("channel_id") @db.Uuid
-  contactEmail String                      @map("contact_email")
-  firstName    String                      @map("first_name")
-  lastName     String                      @map("last_name")
-  payload      Json                        @map("payload")
-  status       HubspotImportBatchRowStatus @default(PENDING)
-  errorMessage String?                     @map("error_message") @db.Text
-  createdAt    DateTime                    @default(now()) @map("created_at")
-  updatedAt    DateTime                    @updatedAt @map("updated_at")
-  batch        HubspotImportBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  channel      Channel                     @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  id                    String                      @id @default(uuid()) @db.Uuid
+  batchId               String                      @map("batch_id") @db.Uuid
+  channelId             String                      @map("channel_id") @db.Uuid
+  channelContactId      String?                     @map("channel_contact_id") @db.Uuid
+  contactEmail          String                      @map("contact_email")
+  firstName             String                      @map("first_name")
+  lastName              String                      @map("last_name")
+  payload               Json                        @map("payload")
+  status                HubspotImportBatchRowStatus @default(PENDING)
+  externalKey           String?                     @map("external_key")
+  hubspotContactId      String?                     @map("hubspot_contact_id")
+  hubspotDealId         String?                     @map("hubspot_deal_id")
+  associationStatus     HubspotAssociationStatus?   @map("association_status")
+  retryable             Boolean                     @default(false)
+  attemptCount          Int                         @default(0) @map("attempt_count")
+  lastAttemptAt         DateTime?                   @map("last_attempt_at")
+  submittedAt           DateTime?                   @map("submitted_at")
+  completedAt           DateTime?                   @map("completed_at")
+  providerCorrelationId String?                     @map("provider_correlation_id")
+  providerErrorCode     String?                     @map("provider_error_code")
+  errorMessage          String?                     @map("error_message") @db.Text
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+  batch                 HubspotImportBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  channel               Channel                     @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  channelContact        ChannelContact?             @relation(fields: [channelContactId], references: [id], onDelete: SetNull)
 
   @@unique([batchId, channelId, contactEmail], map: "hubspot_import_batch_rows_batch_id_channel_id_contact_email_key")
+  @@unique([batchId, externalKey], map: "hubspot_import_batch_rows_batch_id_external_key_key")
   @@index([batchId], map: "hubspot_import_batch_rows_batch_id_idx")
   @@index([channelId], map: "hubspot_import_batch_rows_channel_id_idx")
+  @@index([channelContactId], map: "hubspot_import_batch_rows_channel_contact_id_idx")
+  @@index([hubspotContactId], map: "hubspot_import_batch_rows_contact_id_idx")
+  @@index([hubspotDealId], map: "hubspot_import_batch_rows_deal_id_idx")
+  @@index([status, retryable], map: "hubspot_import_batch_rows_status_retryable_idx")
   @@index([status], map: "hubspot_import_batch_rows_status_idx")
   @@map("hubspot_import_batch_rows")
 }
@@ -969,25 +1429,137 @@ model HubspotPreviewEnrichmentJob {
 }
 
 model HubspotObjectSyncRun {
-  id                  String                     @id @default(uuid()) @db.Uuid
-  requestedByUserId   String                     @map("requested_by_user_id") @db.Uuid
-  status              HubspotObjectSyncRunStatus @default(QUEUED)
-  objectTypes         Json                       @map("object_types")
-  clientUpsertCount   Int                        @default(0) @map("client_upsert_count")
-  campaignUpsertCount Int                        @default(0) @map("campaign_upsert_count")
-  deactivatedCount    Int                        @default(0) @map("deactivated_count")
-  startedAt           DateTime?                  @map("started_at")
-  completedAt         DateTime?                  @map("completed_at")
-  lastError           String?                    @map("last_error") @db.Text
-  createdAt           DateTime                   @default(now()) @map("created_at")
-  updatedAt           DateTime                   @updatedAt @map("updated_at")
-  requestedByUser     User                       @relation("HubspotObjectSyncRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  id                          String                     @id @default(uuid()) @db.Uuid
+  requestedByUserId           String                     @map("requested_by_user_id") @db.Uuid
+  hubspotPortalId             String?                    @map("hubspot_portal_id") @db.Uuid
+  status                      HubspotObjectSyncRunStatus @default(QUEUED)
+  mode                        HubspotObjectSyncMode      @default(FULL)
+  fullReconciliation          Boolean                    @default(true) @map("full_reconciliation")
+  objectTypes                 Json                       @map("object_types")
+  highWaterMark               DateTime?                  @map("high_water_mark")
+  clientUpsertCount           Int                        @default(0) @map("client_upsert_count")
+  campaignUpsertCount         Int                        @default(0) @map("campaign_upsert_count")
+  dealMirrorUpsertCount       Int                        @default(0) @map("deal_mirror_upsert_count")
+  activationMirrorUpsertCount Int                        @default(0) @map("activation_mirror_upsert_count")
+  deactivatedCount            Int                        @default(0) @map("deactivated_count")
+  warningCount                Int                        @default(0) @map("warning_count")
+  warnings                    Json?
+  leaseOwner                  String?                    @map("lease_owner")
+  leaseExpiresAt              DateTime?                  @map("lease_expires_at")
+  startedAt                   DateTime?                  @map("started_at")
+  completedAt                 DateTime?                  @map("completed_at")
+  lastError                   String?                    @map("last_error") @db.Text
+  createdAt                   DateTime                   @default(now()) @map("created_at")
+  updatedAt                   DateTime                   @updatedAt @map("updated_at")
+  requestedByUser             User                       @relation("HubspotObjectSyncRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  hubspotPortal               HubspotPortal?             @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
 
   @@index([requestedByUserId], map: "hubspot_object_sync_runs_requested_by_user_id_idx")
   @@index([requestedByUserId, createdAt], map: "hubspot_object_sync_runs_requested_by_user_id_created_at_idx")
+  @@index([hubspotPortalId, mode, status], map: "hubspot_object_sync_runs_portal_mode_status_idx")
+  @@index([leaseExpiresAt], map: "hubspot_object_sync_runs_lease_expires_at_idx")
   @@index([status], map: "hubspot_object_sync_runs_status_idx")
   @@index([createdAt], map: "hubspot_object_sync_runs_created_at_idx")
   @@map("hubspot_object_sync_runs")
+}
+
+model HubspotWebhookEvent {
+  id               String                    @id @default(uuid()) @db.Uuid
+  hubspotPortalId  String                    @map("hubspot_portal_id") @db.Uuid
+  dedupeKey        String                    @map("dedupe_key")
+  subscriptionType String                    @map("subscription_type")
+  eventType        String?                   @map("event_type")
+  objectType       String                    @map("object_type")
+  hubspotObjectId  String                    @map("hubspot_object_id")
+  propertyName     String?                   @map("property_name")
+  occurredAt       DateTime                  @map("occurred_at")
+  receivedAt       DateTime                  @default(now()) @map("received_at")
+  status           HubspotWebhookEventStatus @default(RECEIVED)
+  retryCount       Int                       @default(0) @map("retry_count")
+  nextRetryAt      DateTime?                 @map("next_retry_at")
+  safeRawPayload   Json?                     @map("safe_raw_payload")
+  startedAt        DateTime?                 @map("started_at")
+  completedAt      DateTime?                 @map("completed_at")
+  lastError        String?                   @map("last_error") @db.Text
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  hubspotPortal    HubspotPortal             @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+
+  @@unique([hubspotPortalId, dedupeKey], map: "hubspot_webhook_events_portal_dedupe_key_key")
+  @@index([status, nextRetryAt], map: "hubspot_webhook_events_status_next_retry_at_idx")
+  @@index([hubspotPortalId, objectType, hubspotObjectId, occurredAt], map: "hubspot_webhook_events_portal_object_occurred_idx")
+  @@index([receivedAt], map: "hubspot_webhook_events_received_at_idx")
+  @@map("hubspot_webhook_events")
+}
+
+model HubspotSyncCursor {
+  id                       String        @id @default(uuid()) @db.Uuid
+  hubspotPortalId          String        @map("hubspot_portal_id") @db.Uuid
+  objectType               String        @map("object_type")
+  cursor                   String?       @db.Text
+  highWaterMark            DateTime?     @map("high_water_mark")
+  lastAttemptAt            DateTime?     @map("last_attempt_at")
+  lastSuccessfulSyncAt     DateTime?     @map("last_successful_sync_at")
+  lastFullReconciliationAt DateTime?     @map("last_full_reconciliation_at")
+  leaseOwner               String?       @map("lease_owner")
+  leaseExpiresAt           DateTime?     @map("lease_expires_at")
+  counts                   Json?
+  warnings                 Json?
+  lastError                String?       @map("last_error") @db.Text
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
+  hubspotPortal            HubspotPortal @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+
+  @@unique([hubspotPortalId, objectType], map: "hubspot_sync_cursors_portal_object_type_key")
+  @@index([leaseExpiresAt], map: "hubspot_sync_cursors_lease_expires_at_idx")
+  @@index([lastSuccessfulSyncAt], map: "hubspot_sync_cursors_last_successful_sync_at_idx")
+  @@map("hubspot_sync_cursors")
+}
+
+model HubspotConflict {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  hubspotPortalId      String                   @map("hubspot_portal_id") @db.Uuid
+  dedupeKey            String                   @map("dedupe_key")
+  channelContactId     String?                  @map("channel_contact_id") @db.Uuid
+  hubspotContactLinkId String?                  @map("hubspot_contact_link_id") @db.Uuid
+  hubspotDealLinkId    String?                  @map("hubspot_deal_link_id") @db.Uuid
+  clientId             String?                  @map("client_id") @db.Uuid
+  campaignId           String?                  @map("campaign_id") @db.Uuid
+  runRequestId         String?                  @map("run_request_id") @db.Uuid
+  hubspotObjectType    String                   @map("hubspot_object_type")
+  hubspotObjectId      String                   @map("hubspot_object_id")
+  propertyName         String                   @map("property_name")
+  localValue           Json?                    @map("local_value")
+  hubspotValue         Json?                    @map("hubspot_value")
+  ownership            HubspotConflictOwnership
+  status               HubspotConflictStatus    @default(OPEN)
+  detectedAt           DateTime                 @default(now()) @map("detected_at")
+  resolvedAt           DateTime?                @map("resolved_at")
+  resolvedByUserId     String?                  @map("resolved_by_user_id") @db.Uuid
+  resolutionAction     String?                  @map("resolution_action")
+  resolutionNote       String?                  @map("resolution_note") @db.Text
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  hubspotPortal        HubspotPortal            @relation(fields: [hubspotPortalId], references: [id], onDelete: Restrict)
+  channelContact       ChannelContact?          @relation(fields: [channelContactId], references: [id], onDelete: SetNull)
+  hubspotContactLink   HubspotContactLink?      @relation(fields: [hubspotContactLinkId], references: [id], onDelete: SetNull)
+  hubspotDealLink      HubspotDealLink?         @relation(fields: [hubspotDealLinkId], references: [id], onDelete: SetNull)
+  client               Client?                  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  campaign             Campaign?                @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  runRequest           RunRequest?              @relation(fields: [runRequestId], references: [id], onDelete: SetNull)
+  resolvedByUser       User?                    @relation("HubspotConflictResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([hubspotPortalId, dedupeKey], map: "hubspot_conflicts_portal_dedupe_key_key")
+  @@index([status, detectedAt], map: "hubspot_conflicts_status_detected_at_idx")
+  @@index([hubspotPortalId, hubspotObjectType, hubspotObjectId], map: "hubspot_conflicts_portal_object_idx")
+  @@index([channelContactId], map: "hubspot_conflicts_channel_contact_id_idx")
+  @@index([hubspotContactLinkId], map: "hubspot_conflicts_contact_link_id_idx")
+  @@index([hubspotDealLinkId], map: "hubspot_conflicts_deal_link_id_idx")
+  @@index([clientId], map: "hubspot_conflicts_client_id_idx")
+  @@index([campaignId], map: "hubspot_conflicts_campaign_id_idx")
+  @@index([runRequestId], map: "hubspot_conflicts_run_request_id_idx")
+  @@index([resolvedByUserId], map: "hubspot_conflicts_resolved_by_user_id_idx")
+  @@map("hubspot_conflicts")
 }
 
 model RunRequest {
@@ -1034,6 +1606,8 @@ model RunRequest {
   campaignManagerUser          User?                         @relation("RunCampaignManager", fields: [campaignManagerUserId], references: [id], onDelete: SetNull)
   hubspotImportBatches         HubspotImportBatch[]
   hubspotPreviewEnrichmentJobs HubspotPreviewEnrichmentJob[]
+  hubspotDealLinks             HubspotDealLink[]
+  hubspotConflicts             HubspotConflict[]
   hubspotRowOverrides          RunHubspotRowOverride[]
   channelAssessments           RunChannelAssessment[]
   results                      RunResult[]

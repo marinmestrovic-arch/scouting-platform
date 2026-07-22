@@ -32,6 +32,12 @@ export const dropdownValueSchema = z.object({
   id: z.uuid(),
   fieldKey: dropdownValueFieldKeySchema,
   value: z.string().trim().min(1).max(200),
+  label: z.string().trim().min(1).max(200).optional(),
+  internalValue: z.string().trim().min(1).max(500).optional(),
+  sourceObjectType: z.string().trim().min(1).max(200).nullable().optional(),
+  sourcePropertyName: z.string().trim().min(1).max(200).nullable().optional(),
+  hubspotPortalId: z.string().trim().min(1).nullable().optional(),
+  hubspotSyncedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

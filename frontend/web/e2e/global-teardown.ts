@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import { disconnectPrisma, prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { E2E_ADMIN, E2E_MANAGER, PLAYWRIGHT_SEED_PATH } from "./test-data";
-import { assertSafeTestDatabaseConfiguration } from "./test-db-guard";
+import { assertSelectedTestDatabaseConfiguration } from "./test-db-guard";
 
 export default async function globalTeardown(): Promise<void> {
-  assertSafeTestDatabaseConfiguration();
+  assertSelectedTestDatabaseConfiguration();
   const users = await prisma.user.findMany({
     where: {
       email: {
@@ -24,6 +24,20 @@ export default async function globalTeardown(): Promise<void> {
 
   await withDbTransaction(async (tx) => {
     if (managerId) {
+      await tx.hubspotConflict.deleteMany({
+        where: {
+          runRequest: {
+            requestedByUserId: managerId,
+          },
+        },
+      });
+      await tx.hubspotDealLink.deleteMany({
+        where: {
+          runRequest: {
+            requestedByUserId: managerId,
+          },
+        },
+      });
       await tx.hubspotImportBatch.deleteMany({
         where: {
           requestedByUserId: managerId,

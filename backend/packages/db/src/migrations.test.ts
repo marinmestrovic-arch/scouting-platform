@@ -130,6 +130,14 @@ const channelCountryManualOverrideMigrationPath = path.resolve(
   currentDir,
   "../prisma/migrations/20260717120000_channel_country_manual_override/migration.sql",
 );
+const hubspotIntegrationV2MigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260720120000_hubspot_integration_v2/migration.sql",
+);
+const hubspotCollaborationHistoryMigrationPath = path.resolve(
+  currentDir,
+  "../prisma/migrations/20260721150000_hubspot_collaboration_history/migration.sql",
+);
 
 describe("channel country manual override migration", () => {
   it("adds the country override field and fallback source without defensive DDL", () => {
@@ -154,6 +162,94 @@ describe("channel country provenance migration", () => {
     expect(migrationSql).toContain('CREATE INDEX "channels_country_region_source_idx"');
     expect(migrationSql).not.toContain("IF NOT EXISTS");
     expect(migrationSql).not.toContain("DO $$");
+  });
+});
+
+describe("hubspot collaboration history migration", () => {
+  it("adds only durable local mirrors, associations, and object-sync counters", () => {
+    const migrationSql = readFileSync(hubspotCollaborationHistoryMigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_deal_mirrors"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_activation_mirrors"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_contact_deal_associations"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_deal_client_associations"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_deal_campaign_associations"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_deal_activation_associations"');
+    expect(migrationSql).toContain('"deal_mirror_upsert_count" INTEGER NOT NULL DEFAULT 0');
+    expect(migrationSql).toContain(
+      '"activation_mirror_upsert_count" INTEGER NOT NULL DEFAULT 0',
+    );
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_deal_mirrors_portal_object_id_key"',
+    );
+    expect(migrationSql).toContain("must be reviewed by both repository owners");
+    expect(migrationSql).not.toContain("IF NOT EXISTS");
+    expect(migrationSql).not.toContain("DO $$");
+    expect(migrationSql).not.toMatch(/access_token|authorization_header|client_secret|api_key/iu);
+  });
+});
+
+describe("hubspot integration v2 migration", () => {
+  it("adds portal-aware identities, durable workflows, and reference records", () => {
+    const migrationSql = readFileSync(hubspotIntegrationV2MigrationPath, "utf-8");
+
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_portals"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_health_check_runs"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_contact_links"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_deal_links"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_owners"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_pipelines"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_pipeline_stages"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_association_definitions"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_webhook_events"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_sync_cursors"');
+    expect(migrationSql).toContain('CREATE TABLE "hubspot_conflicts"');
+    expect(migrationSql).toContain('"object_sync_lease_owner" TEXT');
+    expect(migrationSql).toContain('"object_sync_lease_expires_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_contact_links_portal_contact_key"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_deal_links_portal_run_request_key"',
+    );
+    expect(migrationSql).toContain(
+      'CREATE UNIQUE INDEX "hubspot_webhook_events_portal_dedupe_key_key"',
+    );
+    expect(migrationSql).toContain('"last_error" TEXT');
+    expect(migrationSql).toContain('"started_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"completed_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain('"lease_owner" TEXT');
+    expect(migrationSql).toContain('"lease_expires_at" TIMESTAMP(3)');
+    expect(migrationSql).toContain(
+      'CREATE TYPE "hubspot_health_check_run_status" AS ENUM (\'queued\', \'running\', \'completed\', \'failed\')',
+    );
+  });
+
+  it("backfills legacy values and preserves additive enum compatibility", () => {
+    const migrationSql = readFileSync(hubspotIntegrationV2MigrationPath, "utf-8");
+
+    expect(migrationSql).toContain(
+      'ADD COLUMN "delivery_mode" "hubspot_delivery_mode" NOT NULL DEFAULT \'csv_fallback\'',
+    );
+    expect(migrationSql).toContain('"label" = "value"');
+    expect(migrationSql).toContain('"internal_value" = "value"');
+    expect(migrationSql).toContain(
+      'ALTER TYPE "hubspot_import_batch_status" ADD VALUE \'completed_with_errors\'',
+    );
+    expect(migrationSql).toContain(
+      'ALTER TYPE "hubspot_import_batch_row_status" ADD VALUE \'synced\'',
+    );
+    expect(migrationSql).toContain(
+      'ALTER TYPE "hubspot_import_batch_row_status" ADD VALUE \'skipped\'',
+    );
+  });
+
+  it("is deterministic and does not persist HubSpot secrets", () => {
+    const migrationSql = readFileSync(hubspotIntegrationV2MigrationPath, "utf-8");
+
+    expect(migrationSql).not.toContain("IF NOT EXISTS");
+    expect(migrationSql).not.toContain("DO $$");
+    expect(migrationSql).not.toMatch(/access_token|authorization_header|client_secret|api_key/iu);
   });
 });
 

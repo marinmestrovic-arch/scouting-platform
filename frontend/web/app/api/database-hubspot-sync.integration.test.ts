@@ -108,6 +108,11 @@ integration("database HubSpot sync API integration", () => {
       "clients",
       "campaigns",
       "dropdownValues",
+      "owners",
+      "pipelines",
+      "associationDefinitions",
+      "schemas",
+      "collaborationHistory",
     ]);
 
     const otherAdmin = await createUser({

@@ -438,7 +438,7 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
           <div>
             <h2 id="run-detail-results-heading">Matched creators</h2>
             <p>
-              Ranked matches for this run. Rate each creator, then send the list to Google Sheets.
+              Ranked matches for this run. Rate each creator, then prepare the list for HubSpot or a fallback export.
             </p>
           </div>
           <div className="run-detail__panel-actions">
@@ -450,7 +450,7 @@ function renderReadyState(run: RunStatusResponse, onRetry: () => void) {
                 className="run-detail__button"
                 href={getExportPreviewHref(run.id)}
               >
-                Export to Google Sheets
+                Prepare for HubSpot
               </Link>
             ) : null}
           </div>

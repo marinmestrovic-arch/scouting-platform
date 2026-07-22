@@ -80,6 +80,8 @@ function createChannelDetail(overrides?: Partial<ChannelDetail>): ChannelDetail 
       estimatedPrice: null,
       brandMentions: [],
     },
+    workedWith: true,
+    collaborations: [],
     ...overrides,
   };
 }
@@ -144,6 +146,9 @@ describe("channel detail shell view", () => {
     expect(html).toContain("Channel name/title");
     expect(html).toContain("YouTube channel ID");
     expect(html).toContain("YouTube handle");
+    expect(html).toContain("Worked with");
+    expect(html).toContain("Collaboration History");
+    expect(html).toContain("No associated HubSpot deals are available for this creator.");
     expect(html).toContain("YouTube URL");
     expect(html).toContain("Social media URL");
     expect(html).toContain("Platforms");
@@ -166,6 +171,53 @@ describe("channel detail shell view", () => {
     expect(html).not.toContain("Advanced report");
     expect(html).not.toContain("HypeAuditor");
     expect(html).not.toContain("Audience and commercial insights");
+  });
+
+  it("renders locally mirrored HubSpot deal details and activations", () => {
+    const html = renderReadyView({
+      channel: createChannelDetail({
+        collaborations: [{
+          hubspotDealId: "12345",
+          dealName: "Freecash 6-2026 · Creator",
+          hubspotDealUrl: "https://app.hubspot.com/contacts/147403025/record/0-3/12345",
+          clients: ["FreeCash"],
+          campaigns: ["Freecash 6-2026"],
+          amount: "1250",
+          currencyCode: "EUR",
+          stage: "Contract signed",
+          owner: "Jakob Lisec",
+          closeDate: "2026-06-30T00:00:00.000Z",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          activations: [{
+            id: "activation-1",
+            name: "YouTube integration",
+            type: "YouTube",
+            url: "https://youtube.com/watch?v=example",
+            publicationDate: "2026-06-20T00:00:00.000Z",
+          }],
+        }],
+      }),
+    });
+
+    expect(html).toContain("Freecash 6-2026 · Creator");
+    expect(html).toContain("FreeCash");
+    expect(html).toContain("Contract signed");
+    expect(html).toContain("Jakob Lisec");
+    expect(html).toContain("€1,250.00");
+    expect(html).toContain("YouTube integration");
+    expect(html).toContain("record/0-3/12345");
+  });
+
+  it("renders the empty collaboration state for a pre-feature cached payload", () => {
+    const channel = createChannelDetail();
+    delete (channel as Partial<ChannelDetail>).workedWith;
+    delete (channel as Partial<ChannelDetail>).collaborations;
+
+    const html = renderReadyView({ channel });
+
+    expect(html).toContain("Worked with");
+    expect(html).toContain("Not available");
+    expect(html).toContain("No associated HubSpot deals are available for this creator.");
   });
 
   it("renders fallback profile values when channel fields are missing", () => {

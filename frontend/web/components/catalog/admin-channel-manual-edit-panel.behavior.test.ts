@@ -86,6 +86,8 @@ function createChannelDetail(overrides?: Partial<ChannelDetail>): ChannelDetail 
       estimatedPrice: null,
       brandMentions: [],
     },
+    workedWith: null,
+    collaborations: [],
     ...overrides,
   };
 }

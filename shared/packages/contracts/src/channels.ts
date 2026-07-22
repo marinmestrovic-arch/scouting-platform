@@ -211,6 +211,29 @@ export const channelSummarySchema = z.object({
   advancedReport: channelAdvancedReportSummarySchema,
 });
 
+export const channelCollaborationActivationSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  type: z.string().nullable(),
+  url: z.url().nullable(),
+  publicationDate: isoDatetimeSchema.nullable(),
+});
+
+export const channelCollaborationSchema = z.object({
+  hubspotDealId: z.string().trim().min(1),
+  dealName: z.string().trim().min(1),
+  hubspotDealUrl: z.url(),
+  clients: z.array(z.string().trim().min(1)),
+  campaigns: z.array(z.string().trim().min(1)),
+  amount: z.string().nullable(),
+  currencyCode: z.string().nullable(),
+  stage: z.string().nullable(),
+  owner: z.string().nullable(),
+  closeDate: isoDatetimeSchema.nullable(),
+  createdAt: isoDatetimeSchema.nullable(),
+  activations: z.array(channelCollaborationActivationSchema),
+});
+
 export const channelDetailSchema = channelSummarySchema.extend({
   description: z.string().nullable(),
   createdAt: isoDatetimeSchema,
@@ -218,6 +241,8 @@ export const channelDetailSchema = channelSummarySchema.extend({
   enrichment: channelEnrichmentDetailSchema,
   advancedReport: channelAdvancedReportDetailSchema,
   insights: channelInsightsSchema,
+  workedWith: z.boolean().nullable().default(null),
+  collaborations: z.array(channelCollaborationSchema).default([]),
 });
 
 export const channelManualOverrideFieldSchema = z.enum([
@@ -344,6 +369,10 @@ export type ListChannelsQuery = z.infer<typeof listChannelsQuerySchema>;
 export type CatalogChannelFilters = z.infer<typeof catalogChannelFiltersSchema>;
 export type ChannelSummary = z.infer<typeof channelSummarySchema>;
 export type ChannelDetail = z.infer<typeof channelDetailSchema>;
+export type ChannelCollaboration = z.infer<typeof channelCollaborationSchema>;
+export type ChannelCollaborationActivation = z.infer<
+  typeof channelCollaborationActivationSchema
+>;
 export type ListChannelsResponse = z.infer<typeof listChannelsResponseSchema>;
 export type ChannelEnrichmentStatus = z.infer<typeof channelEnrichmentStatusSchema>;
 export type ChannelEnrichmentSummary = z.infer<typeof channelEnrichmentSummarySchema>;

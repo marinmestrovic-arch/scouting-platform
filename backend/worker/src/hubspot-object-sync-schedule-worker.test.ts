@@ -16,7 +16,7 @@ vi.mock("@scouting-platform/core", () => ({
 }));
 
 describe("hubspot.object-sync.schedule worker registration", () => {
-  it("registers the daily midnight GMT+2 schedule", async () => {
+  it("registers the daily midnight Europe/Zagreb schedule", async () => {
     const schedule = vi.fn(async () => undefined);
 
     await ensureHubspotObjectSyncDailySchedule({
@@ -30,8 +30,8 @@ describe("hubspot.object-sync.schedule worker registration", () => {
         initiatedBy: "system",
       },
       expect.objectContaining({
-        key: "daily-midnight-gmt-plus-2",
-        tz: "Etc/GMT-2",
+        key: "daily-midnight-europe-zagreb",
+        tz: "Europe/Zagreb",
       }),
     );
   });

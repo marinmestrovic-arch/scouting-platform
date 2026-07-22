@@ -11,7 +11,11 @@ import {
 } from "@scouting-platform/core";
 import { NextResponse } from "next/server";
 
-import { requireAuthenticatedSession, toRouteErrorResponse } from "../../../lib/api";
+import {
+  readJsonRequestBody,
+  requireAuthenticatedSession,
+  toRouteErrorResponse,
+} from "../../../lib/api";
 
 export async function GET(): Promise<NextResponse> {
   const session = await requireAuthenticatedSession();
@@ -40,8 +44,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     return session.response;
   }
 
+  const requestBody = await readJsonRequestBody(request);
+
+  if (!requestBody.ok) {
+    return requestBody.response;
+  }
+
   try {
-    const body = createHubspotImportBatchRequestSchema.safeParse(await request.json());
+    const body = createHubspotImportBatchRequestSchema.safeParse(requestBody.body);
 
     if (!body.success) {
       return NextResponse.json(
@@ -70,6 +80,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const batch = await createHubspotImportBatch({
       runId: body.data.runId,
+      deliveryMode: body.data.deliveryMode ?? "csv_fallback",
       requestedByUserId: session.userId,
       role: session.role,
     });

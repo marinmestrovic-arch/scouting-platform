@@ -1,4 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import {
+  HubspotAssociationStatus as PrismaHubspotAssociationStatus,
+  HubspotDeliveryMode as PrismaHubspotDeliveryMode,
+  HubspotExternalDeliveryStatus as PrismaHubspotExternalDeliveryStatus,
   HubspotImportBatchRowStatus as PrismaHubspotImportBatchRowStatus,
   HubspotImportBatchStatus as PrismaHubspotImportBatchStatus,
   type Prisma,
@@ -9,17 +14,32 @@ import {
   HUBSPOT_IMPORT_HEADER,
   HUBSPOT_IMPORT_SCHEMA_VERSION,
   type HubspotImportBatchDetail,
+  type HubspotDeliveryMode,
   type HubspotImportBatchRow,
   type HubspotImportBatchStatus,
   type HubspotImportBatchSummary,
   type HubspotImportBlocker,
+  type RetryHubspotImportBatchResponse,
 } from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
+import { youtubeChannelContextSchema } from "@scouting-platform/integrations";
 
 import { ServiceError } from "../errors";
 import {
+  buildHubspotContactExternalKey,
+  buildHubspotPreparationHash,
+} from "./direct-sync-domain";
+import {
+  executeDirectHubspotImportBatch,
+  getHubspotDirectSyncCreationContext,
+  HUBSPOT_DIRECT_SYNC_GRAPH_VERSION,
+  retryDirectHubspotImportBatch,
+} from "./direct-sync-service";
+import {
+  buildHubspotCreatorCampaignName,
   buildHubspotRowKey,
   normalizeHubspotPrepDefaults,
+  resolveHubspotCreatorLabel,
   resolveHubspotInfluencerTypeFallback,
   resolveHubspotRowValues,
 } from "./preparation";
@@ -31,13 +51,52 @@ const batchActorSelect = {
   name: true,
 } as const;
 
+const ACTIVE_IMPORT_BATCH_STATUSES: readonly HubspotImportBatchStatus[] = [
+  "queued",
+  "preparing",
+  "running",
+  "submitting",
+  "submitted",
+  "processing",
+];
+
+const ACTIVE_PRISMA_IMPORT_BATCH_STATUSES = [
+  PrismaHubspotImportBatchStatus.QUEUED,
+  PrismaHubspotImportBatchStatus.PREPARING,
+  PrismaHubspotImportBatchStatus.RUNNING,
+  PrismaHubspotImportBatchStatus.SUBMITTING,
+  PrismaHubspotImportBatchStatus.SUBMITTED,
+  PrismaHubspotImportBatchStatus.PROCESSING,
+] as const;
+
+const HUBSPOT_CSV_FALLBACK_LEASE_MS = 15 * 60 * 1_000;
+const HUBSPOT_CSV_FALLBACK_LEASE_LOST = "HUBSPOT_CSV_FALLBACK_LEASE_LOST";
+
+type CsvFallbackLease = Readonly<{
+  owner: string;
+}>;
+
 const batchSummarySelect = {
   id: true,
   fileName: true,
   schemaVersion: true,
   status: true,
+  deliveryMode: true,
+  hubspotPortal: {
+    select: {
+      portalId: true,
+    },
+  },
+  externalJobId: true,
+  externalStatus: true,
+  providerCorrelationId: true,
+  providerResultSummary: true,
+  retryCount: true,
+  submittedAt: true,
+  lastPolledAt: true,
   totalRowCount: true,
   preparedRowCount: true,
+  syncedRowCount: true,
   failedRowCount: true,
   lastError: true,
   createdAt: true,
@@ -74,6 +133,16 @@ const batchDetailSelect = {
       contactEmail: true,
       firstName: true,
       lastName: true,
+      externalKey: true,
+      hubspotContactId: true,
+      hubspotDealId: true,
+      associationStatus: true,
+      retryable: true,
+      attemptCount: true,
+      providerErrorCode: true,
+      providerCorrelationId: true,
+      submittedAt: true,
+      completedAt: true,
       payload: true,
       status: true,
       errorMessage: true,
@@ -132,6 +201,14 @@ const runImportSelect = {
         select: {
           id: true,
           title: true,
+          youtubeChannelId: true,
+          handle: true,
+          youtubeUrl: true,
+          youtubeContext: {
+            select: {
+              context: true,
+            },
+          },
           influencerType: true,
           influencerVertical: true,
           countryRegion: true,
@@ -141,9 +218,11 @@ const runImportSelect = {
               email: "asc",
             },
             select: {
+              id: true,
               email: true,
               firstName: true,
               lastName: true,
+              phoneNumber: true,
             },
           },
           enrichment: {
@@ -154,6 +233,15 @@ const runImportSelect = {
           insights: {
             select: {
               audienceCountries: true,
+            },
+          },
+          metrics: {
+            select: {
+              subscriberCount: true,
+              youtubeFollowers: true,
+              youtubeVideoMedianViews: true,
+              youtubeShortsMedianViews: true,
+              youtubeEngagementRate: true,
             },
           },
         },
@@ -177,6 +265,16 @@ type ImportRunRecord = Prisma.RunRequestGetPayload<{
 type HubspotImportPayload = {
   channelTitle: string;
   csv: Record<(typeof HUBSPOT_IMPORT_HEADER)[number], string>;
+  providerSnapshot: {
+    youtubeChannelId: string;
+    youtubeHandle: string | null;
+    youtubeUrl: string;
+    subscriberCount: string | null;
+    youtubeFollowers: string | null;
+    youtubeVideoMedianViews: string | null;
+    youtubeShortsMedianViews: string | null;
+    youtubeEngagementRate: number | null;
+  };
 };
 
 const REQUIRED_RUN_FIELDS = [
@@ -186,7 +284,6 @@ const REQUIRED_RUN_FIELDS = [
   ["month", "Month"],
   ["year", "Year"],
   ["dealOwner", "Deal owner"],
-  ["dealName", "Deal name"],
   ["pipeline", "Pipeline"],
   ["dealStage", "Deal stage"],
   ["currency", "Currency"],
@@ -236,15 +333,46 @@ function toHubspotImportBatchStatus(
   status: PrismaHubspotImportBatchStatus,
 ): HubspotImportBatchStatus {
   switch (status) {
+    case PrismaHubspotImportBatchStatus.PREPARING:
+      return "preparing";
     case PrismaHubspotImportBatchStatus.RUNNING:
       return "running";
+    case PrismaHubspotImportBatchStatus.SUBMITTING:
+      return "submitting";
+    case PrismaHubspotImportBatchStatus.SUBMITTED:
+      return "submitted";
+    case PrismaHubspotImportBatchStatus.PROCESSING:
+      return "processing";
     case PrismaHubspotImportBatchStatus.COMPLETED:
       return "completed";
+    case PrismaHubspotImportBatchStatus.COMPLETED_WITH_ERRORS:
+      return "completed_with_errors";
     case PrismaHubspotImportBatchStatus.FAILED:
       return "failed";
     default:
       return "queued";
   }
+}
+
+function toHubspotDeliveryMode(mode: PrismaHubspotDeliveryMode): HubspotDeliveryMode {
+  return mode === PrismaHubspotDeliveryMode.DIRECT_OBJECT_API
+    ? "direct_object_api"
+    : "csv_fallback";
+}
+
+function toResultSummary(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  return isJsonObject(value) ? value : null;
+}
+
+function buildHubspotRecordUrl(input: {
+  portalId: string | null;
+  objectTypeId: "0-1" | "0-3";
+  objectId: string | null;
+}): string | null {
+  if (!input.portalId || !input.objectId) {
+    return null;
+  }
+  return `https://app.hubspot.com/contacts/${encodeURIComponent(input.portalId)}/record/${input.objectTypeId}/${encodeURIComponent(input.objectId)}`;
 }
 
 function getTopAudienceCountryName(value: Prisma.JsonValue | null): string {
@@ -283,6 +411,22 @@ function getInfluencerVertical(topics: Prisma.JsonValue | null): string {
   return "General";
 }
 
+function getPreferredCreatorLabel(
+  channel: ImportRunRecord["results"][number]["channel"],
+): string {
+  const parsedYoutubeContext = youtubeChannelContextSchema.safeParse(
+    channel.youtubeContext?.context ?? null,
+  );
+
+  return resolveHubspotCreatorLabel({
+    channelHandle: channel.handle,
+    youtubeContextHandle: parsedYoutubeContext.success
+      ? parsedYoutubeContext.data.handle
+      : null,
+    channelTitle: channel.title,
+  });
+}
+
 function buildImportFileName(runName: string, createdAt: Date): string {
   const slug = runName
     .toLowerCase()
@@ -304,8 +448,18 @@ function toSummary(batch: BatchSummaryRecord): HubspotImportBatchSummary {
     fileName: batch.fileName,
     schemaVersion: batch.schemaVersion,
     status: toHubspotImportBatchStatus(batch.status),
+    deliveryMode: toHubspotDeliveryMode(batch.deliveryMode),
+    portalId: batch.hubspotPortal?.portalId ?? null,
+    externalJobId: batch.externalJobId,
+    externalStatus: batch.externalStatus?.toLowerCase() ?? null,
+    submittedAt: batch.submittedAt?.toISOString() ?? null,
+    lastPolledAt: batch.lastPolledAt?.toISOString() ?? null,
+    providerCorrelationId: batch.providerCorrelationId,
+    providerResultSummary: toResultSummary(batch.providerResultSummary),
+    retryCount: batch.retryCount,
     totalRowCount: batch.totalRowCount,
     preparedRowCount: batch.preparedRowCount,
+    syncedRowCount: batch.syncedRowCount,
     failedRowCount: batch.failedRowCount,
     lastError: batch.lastError,
     requestedBy: {
@@ -345,14 +499,35 @@ function parseRowPayload(payload: Prisma.JsonValue | null | undefined): HubspotI
   for (const column of HUBSPOT_IMPORT_HEADER) {
     csv[column] = typeof csvPayload[column] === "string" ? csvPayload[column] : "";
   }
+  const rawSnapshot = isJsonObject(payload.providerSnapshot)
+    ? payload.providerSnapshot
+    : {};
+  const stringOrNull = (value: Prisma.JsonValue | undefined): string | null =>
+    typeof value === "string" && value.trim() ? value : null;
 
   return {
     channelTitle,
     csv,
+    providerSnapshot: {
+      youtubeChannelId: stringOrNull(rawSnapshot.youtubeChannelId) ?? "",
+      youtubeHandle: stringOrNull(rawSnapshot.youtubeHandle),
+      youtubeUrl: stringOrNull(rawSnapshot.youtubeUrl) ?? "",
+      subscriberCount: stringOrNull(rawSnapshot.subscriberCount),
+      youtubeFollowers: stringOrNull(rawSnapshot.youtubeFollowers),
+      youtubeVideoMedianViews: stringOrNull(rawSnapshot.youtubeVideoMedianViews),
+      youtubeShortsMedianViews: stringOrNull(rawSnapshot.youtubeShortsMedianViews),
+      youtubeEngagementRate:
+        typeof rawSnapshot.youtubeEngagementRate === "number"
+          ? rawSnapshot.youtubeEngagementRate
+          : null,
+    },
   };
 }
 
-function toRow(row: BatchDetailRecord["rows"][number]): HubspotImportBatchRow {
+function toRow(
+  row: BatchDetailRecord["rows"][number],
+  portalId: string | null,
+): HubspotImportBatchRow {
   const payload = parseRowPayload(row.payload);
 
   return {
@@ -366,9 +541,32 @@ function toRow(row: BatchDetailRecord["rows"][number]): HubspotImportBatchRow {
     influencerVertical: payload.csv["Influencer Vertical"],
     countryRegion: payload.csv["Country/Region"],
     language: payload.csv.Language,
-    status:
-      row.status === PrismaHubspotImportBatchRowStatus.PREPARED ? "prepared" : row.status === PrismaHubspotImportBatchRowStatus.FAILED ? "failed" : "pending",
+    status: row.status.toLowerCase() as HubspotImportBatchRow["status"],
     errorMessage: row.errorMessage,
+    hubspotContactId: row.hubspotContactId,
+    hubspotDealId: row.hubspotDealId,
+    hubspotContactUrl: buildHubspotRecordUrl({
+      portalId,
+      objectTypeId: "0-1",
+      objectId: row.hubspotContactId,
+    }),
+    hubspotDealUrl: buildHubspotRecordUrl({
+      portalId,
+      objectTypeId: "0-3",
+      objectId: row.hubspotDealId,
+    }),
+    externalKey: row.externalKey,
+    associationStatus: row.associationStatus
+      ? (row.associationStatus.toLowerCase() as NonNullable<
+          HubspotImportBatchRow["associationStatus"]
+        >)
+      : null,
+    retryable: row.retryable,
+    attemptCount: row.attemptCount,
+    providerErrorCode: row.providerErrorCode,
+    providerCorrelationId: row.providerCorrelationId,
+    submittedAt: row.submittedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -377,7 +575,7 @@ function toRow(row: BatchDetailRecord["rows"][number]): HubspotImportBatchRow {
 function toDetail(batch: BatchDetailRecord): HubspotImportBatchDetail {
   return {
     ...toSummary(batch),
-    rows: batch.rows.map(toRow),
+    rows: batch.rows.map((row) => toRow(row, batch.hubspotPortal?.portalId ?? null)),
   };
 }
 
@@ -449,6 +647,20 @@ function buildRowPayload(input: {
 }): HubspotImportPayload {
   return {
     channelTitle: input.channel.title,
+    providerSnapshot: {
+      youtubeChannelId: input.channel.youtubeChannelId,
+      youtubeHandle: input.channel.handle,
+      youtubeUrl:
+        input.channel.youtubeUrl
+        ?? `https://www.youtube.com/channel/${input.channel.youtubeChannelId}`,
+      subscriberCount: input.channel.metrics?.subscriberCount?.toString() ?? null,
+      youtubeFollowers: input.channel.metrics?.youtubeFollowers?.toString() ?? null,
+      youtubeVideoMedianViews:
+        input.channel.metrics?.youtubeVideoMedianViews?.toString() ?? null,
+      youtubeShortsMedianViews:
+        input.channel.metrics?.youtubeShortsMedianViews?.toString() ?? null,
+      youtubeEngagementRate: input.channel.metrics?.youtubeEngagementRate ?? null,
+    },
     csv: {
       "Contact Type": input.values["Contact Type"],
       "Campaign Name": input.values["Campaign Name"],
@@ -483,6 +695,7 @@ async function buildImportDraft(input: {
   blockers: HubspotImportBlocker[];
   rows: Array<{
     channelId: string;
+    channelContactId: string;
     contactEmail: string;
     firstName: string;
     lastName: string;
@@ -493,6 +706,7 @@ async function buildImportDraft(input: {
   const blockers = buildRunFieldBlockers(run);
   const rows: Array<{
     channelId: string;
+    channelContactId: string;
     contactEmail: string;
     firstName: string;
     lastName: string;
@@ -505,6 +719,10 @@ async function buildImportDraft(input: {
 
   for (const result of run.results) {
     const channel = result.channel;
+    const creatorCampaignName = buildHubspotCreatorCampaignName({
+      creatorLabel: getPreferredCreatorLabel(channel),
+      campaignName: run.campaignName,
+    });
 
     if (channel.contacts.length === 0) {
       blockers.push({
@@ -535,7 +753,7 @@ async function buildImportDraft(input: {
           year: run.year?.toString() ?? "",
           clientName: run.client ?? "",
           dealOwner: run.dealOwner ?? "",
-          dealName: run.dealName ?? "",
+          dealName: creatorCampaignName,
           pipeline: run.pipeline ?? "",
           dealStage: run.dealStage ?? "",
           currency: run.currency ?? "",
@@ -544,7 +762,7 @@ async function buildImportDraft(input: {
           firstName: contact.firstName ?? "",
           lastName: contact.lastName ?? "",
           email: contact.email,
-          phoneNumber: "",
+          phoneNumber: contact.phoneNumber ?? "",
           influencerType: resolveHubspotInfluencerTypeFallback({
             channelInfluencerType: channel.influencerType,
             runHubspotInfluencerType: run.hubspotInfluencerType,
@@ -588,6 +806,7 @@ async function buildImportDraft(input: {
 
       rows.push({
         channelId: channel.id,
+        channelContactId: contact.id,
         contactEmail: effectiveValues.email ?? "",
         firstName: effectiveValues.firstName ?? "",
         lastName: effectiveValues.lastName ?? "",
@@ -665,11 +884,114 @@ async function loadBatchSummary(input: {
   return toSummary(batch);
 }
 
+type PersistedImportBatchOwner = {
+  id: string;
+  requestedByUserId: string;
+  deliveryMode: PrismaHubspotDeliveryMode;
+};
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && error.code === "P2002";
+}
+
+async function markHubspotImportEnqueueFailure(input: {
+  batch: PersistedImportBatchOwner;
+  error: unknown;
+}): Promise<void> {
+  const direct = input.batch.deliveryMode === PrismaHubspotDeliveryMode.DIRECT_OBJECT_API;
+  const lastError = `${direct ? "HubSpot sync" : "HubSpot import"} queue unavailable: ${formatErrorMessage(input.error)}`
+    .slice(0, 2_000);
+  const completedAt = new Date();
+
+  await withDbTransaction(async (tx) => {
+    const updated = await tx.hubspotImportBatch.updateMany({
+      where: {
+        id: input.batch.id,
+        requestedByUserId: input.batch.requestedByUserId,
+        deliveryMode: input.batch.deliveryMode,
+        status: { in: [...ACTIVE_PRISMA_IMPORT_BATCH_STATUSES] },
+        ...(direct
+          ? {
+              OR: [
+                { phaseLeaseOwner: null },
+                { phaseLeaseExpiresAt: { lte: completedAt } },
+              ],
+            }
+          : {}),
+      },
+      data: {
+        status: PrismaHubspotImportBatchStatus.FAILED,
+        ...(direct
+          ? { externalStatus: PrismaHubspotExternalDeliveryStatus.FAILED }
+          : {}),
+        completedAt,
+        nextRetryAt: null,
+        ...(direct
+          ? { phaseLeaseOwner: null, phaseLeaseExpiresAt: null }
+          : {}),
+        lastError,
+      },
+    });
+    if (updated.count === 0) {
+      return;
+    }
+
+    await tx.auditEvent.create({
+      data: {
+        actorUserId: input.batch.requestedByUserId,
+        action: direct
+          ? "hubspot_sync.enqueue_failed"
+          : "hubspot_import.enqueue_failed",
+        entityType: "hubspot_import_batch",
+        entityId: input.batch.id,
+        metadata: {
+          deliveryMode: direct ? "direct_object_api" : "csv_fallback",
+          lastError,
+        },
+      },
+    });
+  });
+}
+
+async function reuseHubspotImportBatch(input: {
+  batch: PersistedImportBatchOwner;
+  requestedByUserId: string;
+  role: "admin" | "user";
+}): Promise<HubspotImportBatchSummary> {
+  const summary = await loadBatchSummary({
+    importBatchId: input.batch.id,
+    requestedByUserId: input.requestedByUserId,
+    role: input.role,
+  });
+
+  if (ACTIVE_IMPORT_BATCH_STATUSES.includes(summary.status)) {
+    try {
+      await enqueueHubspotImportJob({
+        importBatchId: input.batch.id,
+        requestedByUserId: input.batch.requestedByUserId,
+      });
+    } catch (error) {
+      await markHubspotImportEnqueueFailure({ batch: input.batch, error });
+      throw error;
+    }
+  }
+
+  return { ...summary, reusedActiveBatch: true };
+}
+
 export async function createHubspotImportBatch(input: {
   runId: string;
   requestedByUserId: string;
   role: "admin" | "user";
+  deliveryMode?: HubspotDeliveryMode;
 }): Promise<HubspotImportBatchSummary> {
+  const request = createHubspotImportBatchRequestSchema.parse({
+    runId: input.runId,
+    deliveryMode: input.deliveryMode,
+  });
   const draft = await buildImportDraft(input);
 
   if (draft.blockers.length > 0) {
@@ -688,54 +1010,153 @@ export async function createHubspotImportBatch(input: {
     );
   }
 
-  const createdAt = new Date();
-  const fileName = buildImportFileName(draft.run.name, createdAt);
-  let importBatchId = "";
+  const deliveryMode = request.deliveryMode ?? "csv_fallback";
+  const preparationHash = buildHubspotPreparationHash(
+    draft.rows.map((row) => ({
+      channelContactId: row.channelContactId,
+      payload: row.payload,
+    })),
+  );
+  const directContext = deliveryMode === "direct_object_api"
+    ? await getHubspotDirectSyncCreationContext({
+        runId: draft.run.id,
+        preparedPayloads: draft.rows.map(
+          (row) => toJsonValue(row.payload) as Prisma.JsonValue,
+        ),
+      })
+    : null;
+  const idempotencyKey = directContext
+    ? `run:${draft.run.id}:${preparationHash}:graph:${HUBSPOT_DIRECT_SYNC_GRAPH_VERSION}`
+    : null;
 
-  await withDbTransaction(async (tx) => {
-    const batch = await tx.hubspotImportBatch.create({
-      data: {
-        requestedByUserId: input.requestedByUserId,
-        runRequestId: draft.run.id,
-        fileName,
-        schemaVersion: HUBSPOT_IMPORT_SCHEMA_VERSION,
-        totalRowCount: draft.rows.length,
-        rows: {
-          create: draft.rows.map((row) => ({
-            channelId: row.channelId,
-            contactEmail: row.contactEmail,
-            firstName: row.firstName,
-            lastName: row.lastName,
-            payload: toJsonValue(row.payload),
-            createdAt,
-            updatedAt: createdAt,
-          })),
+  if (directContext && idempotencyKey) {
+    const existing = await prisma.hubspotImportBatch.findUnique({
+      where: {
+        hubspotPortalId_idempotencyKey: {
+          hubspotPortalId: directContext.portalDatabaseId,
+          idempotencyKey,
         },
       },
       select: {
         id: true,
+        requestedByUserId: true,
+        deliveryMode: true,
       },
     });
-    importBatchId = batch.id;
 
-    await tx.auditEvent.create({
-      data: {
-        actorUserId: input.requestedByUserId,
-        action: "hubspot_import.requested",
-        entityType: "hubspot_import_batch",
-        entityId: batch.id,
-        metadata: {
-          runId: draft.run.id,
+    if (existing) {
+      return reuseHubspotImportBatch({
+        batch: existing,
+        requestedByUserId: input.requestedByUserId,
+        role: input.role,
+      });
+    }
+  }
+
+  const createdAt = new Date();
+  const fileName = buildImportFileName(draft.run.name, createdAt);
+  const persistedDeliveryMode = deliveryMode === "direct_object_api"
+    ? PrismaHubspotDeliveryMode.DIRECT_OBJECT_API
+    : PrismaHubspotDeliveryMode.CSV_FALLBACK;
+  let importBatchId: string;
+
+  try {
+    importBatchId = await withDbTransaction(async (tx) => {
+      const batch = await tx.hubspotImportBatch.create({
+        data: {
+          requestedByUserId: input.requestedByUserId,
+          runRequestId: draft.run.id,
+          hubspotPortalId: directContext?.portalDatabaseId ?? null,
+          fileName,
+          schemaVersion: HUBSPOT_IMPORT_SCHEMA_VERSION,
+          deliveryMode: persistedDeliveryMode,
+          idempotencyKey,
+          preparationHash,
+          ...(directContext
+            ? { directSyncSnapshot: toJsonValue(directContext.snapshot) }
+            : {}),
           totalRowCount: draft.rows.length,
+          rows: {
+            create: draft.rows.map((row) => ({
+              channelId: row.channelId,
+              channelContactId: row.channelContactId,
+              contactEmail: row.contactEmail,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              externalKey: buildHubspotContactExternalKey(row.channelContactId),
+              associationStatus: deliveryMode === "direct_object_api"
+                ? PrismaHubspotAssociationStatus.PENDING
+                : PrismaHubspotAssociationStatus.NOT_REQUIRED,
+              payload: toJsonValue(row.payload),
+              createdAt,
+              updatedAt: createdAt,
+            })),
+          },
         },
-      },
-    });
-  });
+        select: {
+          id: true,
+        },
+      });
 
-  await enqueueHubspotImportJob({
-    importBatchId,
-    requestedByUserId: input.requestedByUserId,
-  });
+      await tx.auditEvent.create({
+        data: {
+          actorUserId: input.requestedByUserId,
+          action: deliveryMode === "direct_object_api"
+            ? "hubspot_sync.requested"
+            : "hubspot_import.requested",
+          entityType: "hubspot_import_batch",
+          entityId: batch.id,
+          metadata: {
+            runId: draft.run.id,
+            deliveryMode,
+            totalRowCount: draft.rows.length,
+          },
+        },
+      });
+      return batch.id;
+    });
+  } catch (error) {
+    if (directContext && idempotencyKey && isPrismaUniqueConstraintError(error)) {
+      const winner = await prisma.hubspotImportBatch.findUnique({
+        where: {
+          hubspotPortalId_idempotencyKey: {
+            hubspotPortalId: directContext.portalDatabaseId,
+            idempotencyKey,
+          },
+        },
+        select: {
+          id: true,
+          requestedByUserId: true,
+          deliveryMode: true,
+        },
+      });
+      if (winner) {
+        return reuseHubspotImportBatch({
+          batch: winner,
+          requestedByUserId: input.requestedByUserId,
+          role: input.role,
+        });
+      }
+    }
+    throw error;
+  }
+
+  try {
+    await enqueueHubspotImportJob({
+      importBatchId,
+      requestedByUserId: input.requestedByUserId,
+    });
+  } catch (error) {
+    await markHubspotImportEnqueueFailure({
+      batch: {
+        id: importBatchId,
+        requestedByUserId: input.requestedByUserId,
+        deliveryMode: persistedDeliveryMode,
+      },
+      error,
+    });
+    throw error;
+  }
 
   return loadBatchSummary({
     importBatchId,
@@ -784,6 +1205,42 @@ export async function getHubspotImportBatchById(input: {
   }
 
   return toDetail(batch);
+}
+
+export async function retryHubspotImportBatch(input: {
+  importBatchId: string;
+  requestedByUserId: string;
+  role: "admin" | "user";
+}): Promise<RetryHubspotImportBatchResponse> {
+  const batch = await prisma.hubspotImportBatch.findFirst({
+    where: {
+      id: input.importBatchId,
+      ...(input.role === "admin" ? {} : { requestedByUserId: input.requestedByUserId }),
+    },
+    select: { id: true, deliveryMode: true, requestedByUserId: true },
+  });
+  if (!batch) {
+    throw new ServiceError(
+      "HUBSPOT_IMPORT_BATCH_NOT_FOUND",
+      404,
+      "HubSpot import batch not found",
+    );
+  }
+  if (batch.deliveryMode !== PrismaHubspotDeliveryMode.DIRECT_OBJECT_API) {
+    throw new ServiceError(
+      "HUBSPOT_IMPORT_RETRY_UNSUPPORTED",
+      409,
+      "Failed-row retry is available only for direct HubSpot sync batches",
+    );
+  }
+
+  const retriedRowCount = await retryDirectHubspotImportBatch({
+    importBatchId: input.importBatchId,
+    batchOwnerUserId: batch.requestedByUserId,
+    actorUserId: input.requestedByUserId,
+  });
+  const summary = await loadBatchSummary(input);
+  return { batch: summary, retriedRowCount };
 }
 
 export async function downloadHubspotImportBatch(input: {
@@ -835,6 +1292,42 @@ export async function downloadHubspotImportBatch(input: {
   };
 }
 
+function csvFallbackLeaseLostError(): ServiceError {
+  return new ServiceError(
+    HUBSPOT_CSV_FALLBACK_LEASE_LOST,
+    409,
+    "HubSpot CSV fallback execution ownership was lost",
+  );
+}
+
+function isCsvFallbackLeaseLost(error: unknown): boolean {
+  return error instanceof ServiceError && error.code === HUBSPOT_CSV_FALLBACK_LEASE_LOST;
+}
+
+async function withCsvFallbackLease<T>(
+  importBatchId: string,
+  lease: CsvFallbackLease,
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return withDbTransaction(async (tx) => {
+    const renewed = await tx.hubspotImportBatch.updateMany({
+      where: {
+        id: importBatchId,
+        deliveryMode: PrismaHubspotDeliveryMode.CSV_FALLBACK,
+        status: PrismaHubspotImportBatchStatus.RUNNING,
+        phaseLeaseOwner: lease.owner,
+      },
+      data: {
+        phaseLeaseExpiresAt: new Date(Date.now() + HUBSPOT_CSV_FALLBACK_LEASE_MS),
+      },
+    });
+    if (renewed.count !== 1) {
+      throw csvFallbackLeaseLostError();
+    }
+    return callback(tx);
+  });
+}
+
 export async function executeHubspotImportBatch(input: {
   importBatchId: string;
   requestedByUserId: string;
@@ -846,6 +1339,7 @@ export async function executeHubspotImportBatch(input: {
     select: {
       id: true,
       requestedByUserId: true,
+      deliveryMode: true,
     },
   });
 
@@ -867,16 +1361,43 @@ export async function executeHubspotImportBatch(input: {
     return;
   }
 
+  if (batch.deliveryMode === PrismaHubspotDeliveryMode.DIRECT_OBJECT_API) {
+    await executeDirectHubspotImportBatch(input);
+    return;
+  }
+
+  const claimedAt = new Date();
+  const staleUnleasedBefore = new Date(
+    claimedAt.getTime() - HUBSPOT_CSV_FALLBACK_LEASE_MS,
+  );
+  const lease: CsvFallbackLease = { owner: randomUUID() };
   const claimed = await prisma.hubspotImportBatch.updateMany({
     where: {
       id: input.importBatchId,
-      status: {
-        in: [PrismaHubspotImportBatchStatus.QUEUED, PrismaHubspotImportBatchStatus.FAILED],
-      },
+      deliveryMode: PrismaHubspotDeliveryMode.CSV_FALLBACK,
+      OR: [
+        {
+          status: {
+            in: [PrismaHubspotImportBatchStatus.QUEUED, PrismaHubspotImportBatchStatus.FAILED],
+          },
+        },
+        {
+          status: PrismaHubspotImportBatchStatus.RUNNING,
+          OR: [
+            { phaseLeaseExpiresAt: { lte: claimedAt } },
+            {
+              phaseLeaseExpiresAt: null,
+              updatedAt: { lte: staleUnleasedBefore },
+            },
+          ],
+        },
+      ],
     },
     data: {
       status: PrismaHubspotImportBatchStatus.RUNNING,
-      startedAt: new Date(),
+      phaseLeaseOwner: lease.owner,
+      phaseLeaseExpiresAt: new Date(claimedAt.getTime() + HUBSPOT_CSV_FALLBACK_LEASE_MS),
+      startedAt: claimedAt,
       completedAt: null,
       lastError: null,
     },
@@ -908,120 +1429,155 @@ export async function executeHubspotImportBatch(input: {
     const csvRows: HubspotImportPayload[] = [];
 
     for (const row of rows) {
+      let payload: HubspotImportPayload | null = null;
+      let rowError: string | null = null;
       try {
-        const payload = parseRowPayload(row.payload);
-        csvRows.push(payload);
-
-        await prisma.hubspotImportBatchRow.update({
-          where: {
-            id: row.id,
-          },
-          data: {
-            status: PrismaHubspotImportBatchRowStatus.PREPARED,
-            errorMessage: null,
-          },
-        });
+        payload = parseRowPayload(row.payload);
       } catch (error) {
-        await prisma.hubspotImportBatchRow.update({
+        rowError = formatErrorMessage(error);
+      }
+
+      if (payload) {
+        csvRows.push(payload);
+      }
+      await withCsvFallbackLease(input.importBatchId, lease, async (tx) => {
+        await tx.hubspotImportBatchRow.updateMany({
           where: {
             id: row.id,
+            batchId: input.importBatchId,
           },
-          data: {
-            status: PrismaHubspotImportBatchRowStatus.FAILED,
-            errorMessage: formatErrorMessage(error),
-          },
+          data: payload
+            ? {
+                status: PrismaHubspotImportBatchRowStatus.PREPARED,
+                errorMessage: null,
+              }
+            : {
+                status: PrismaHubspotImportBatchRowStatus.FAILED,
+                errorMessage: rowError ?? "HubSpot import row payload is invalid",
+              },
         });
+      });
+    }
+
+    await withCsvFallbackLease(input.importBatchId, lease, async (tx) => {
+      const [preparedRowCount, failedRowCount] = await Promise.all([
+        tx.hubspotImportBatchRow.count({
+          where: {
+            batchId: input.importBatchId,
+            status: PrismaHubspotImportBatchRowStatus.PREPARED,
+          },
+        }),
+        tx.hubspotImportBatchRow.count({
+          where: {
+            batchId: input.importBatchId,
+            status: PrismaHubspotImportBatchRowStatus.FAILED,
+          },
+        }),
+      ]);
+
+      if (preparedRowCount === 0) {
+        throw new ServiceError(
+          "HUBSPOT_IMPORT_EMPTY_PREPARED",
+          500,
+          "HubSpot import batch did not produce any CSV rows",
+        );
       }
-    }
 
-    const preparedRowCount = await prisma.hubspotImportBatchRow.count({
-      where: {
-        batchId: input.importBatchId,
-        status: PrismaHubspotImportBatchRowStatus.PREPARED,
-      },
-    });
-    const failedRowCount = await prisma.hubspotImportBatchRow.count({
-      where: {
-        batchId: input.importBatchId,
-        status: PrismaHubspotImportBatchRowStatus.FAILED,
-      },
-    });
-
-    if (preparedRowCount === 0) {
-      throw new ServiceError(
-        "HUBSPOT_IMPORT_EMPTY_PREPARED",
-        500,
-        "HubSpot import batch did not produce any CSV rows",
-      );
-    }
-
-    await prisma.hubspotImportBatch.update({
-      where: {
-        id: input.importBatchId,
-      },
-      data: {
-        status: PrismaHubspotImportBatchStatus.COMPLETED,
-        preparedRowCount,
-        failedRowCount,
-        csvContent: buildCsvContent(csvRows),
-        completedAt: new Date(),
-        lastError: null,
-      },
-    });
-
-    await prisma.auditEvent.create({
-      data: {
-        actorUserId: input.requestedByUserId,
-        action: "hubspot_import.completed",
-        entityType: "hubspot_import_batch",
-        entityId: input.importBatchId,
-        metadata: {
+      const completed = await tx.hubspotImportBatch.updateMany({
+        where: {
+          id: input.importBatchId,
+          status: PrismaHubspotImportBatchStatus.RUNNING,
+          phaseLeaseOwner: lease.owner,
+        },
+        data: {
+          status: PrismaHubspotImportBatchStatus.COMPLETED,
           preparedRowCount,
           failedRowCount,
+          csvContent: buildCsvContent(csvRows),
+          phaseLeaseOwner: null,
+          phaseLeaseExpiresAt: null,
+          completedAt: new Date(),
+          lastError: null,
         },
-      },
+      });
+      if (completed.count !== 1) {
+        throw csvFallbackLeaseLostError();
+      }
+
+      await tx.auditEvent.create({
+        data: {
+          actorUserId: input.requestedByUserId,
+          action: "hubspot_import.completed",
+          entityType: "hubspot_import_batch",
+          entityId: input.importBatchId,
+          metadata: {
+            preparedRowCount,
+            failedRowCount,
+          },
+        },
+      });
     });
   } catch (error) {
+    if (isCsvFallbackLeaseLost(error)) {
+      return;
+    }
     const lastError = formatErrorMessage(error);
-    const preparedRowCount = await prisma.hubspotImportBatchRow.count({
-      where: {
-        batchId: input.importBatchId,
-        status: PrismaHubspotImportBatchRowStatus.PREPARED,
-      },
-    });
-    const failedRowCount = await prisma.hubspotImportBatchRow.count({
-      where: {
-        batchId: input.importBatchId,
-        status: PrismaHubspotImportBatchRowStatus.FAILED,
-      },
-    });
+    try {
+      await withCsvFallbackLease(input.importBatchId, lease, async (tx) => {
+        const [preparedRowCount, failedRowCount] = await Promise.all([
+          tx.hubspotImportBatchRow.count({
+            where: {
+              batchId: input.importBatchId,
+              status: PrismaHubspotImportBatchRowStatus.PREPARED,
+            },
+          }),
+          tx.hubspotImportBatchRow.count({
+            where: {
+              batchId: input.importBatchId,
+              status: PrismaHubspotImportBatchRowStatus.FAILED,
+            },
+          }),
+        ]);
+        const failed = await tx.hubspotImportBatch.updateMany({
+          where: {
+            id: input.importBatchId,
+            status: PrismaHubspotImportBatchStatus.RUNNING,
+            phaseLeaseOwner: lease.owner,
+          },
+          data: {
+            status: PrismaHubspotImportBatchStatus.FAILED,
+            preparedRowCount,
+            failedRowCount,
+            phaseLeaseOwner: null,
+            phaseLeaseExpiresAt: null,
+            completedAt: new Date(),
+            lastError,
+          },
+        });
+        if (failed.count !== 1) {
+          throw csvFallbackLeaseLostError();
+        }
 
-    await prisma.hubspotImportBatch.update({
-      where: {
-        id: input.importBatchId,
-      },
-      data: {
-        status: PrismaHubspotImportBatchStatus.FAILED,
-        preparedRowCount,
-        failedRowCount,
-        completedAt: new Date(),
-        lastError,
-      },
-    });
-
-    await prisma.auditEvent.create({
-      data: {
-        actorUserId: input.requestedByUserId,
-        action: "hubspot_import.failed",
-        entityType: "hubspot_import_batch",
-        entityId: input.importBatchId,
-        metadata: {
-          preparedRowCount,
-          failedRowCount,
-          lastError,
-        },
-      },
-    });
+        await tx.auditEvent.create({
+          data: {
+            actorUserId: input.requestedByUserId,
+            action: "hubspot_import.failed",
+            entityType: "hubspot_import_batch",
+            entityId: input.importBatchId,
+            metadata: {
+              preparedRowCount,
+              failedRowCount,
+              lastError,
+            },
+          },
+        });
+      });
+    } catch (failurePersistenceError) {
+      if (isCsvFallbackLeaseLost(failurePersistenceError)) {
+        return;
+      }
+      throw failurePersistenceError;
+    }
 
     throw error;
   }

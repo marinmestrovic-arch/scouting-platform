@@ -8,6 +8,10 @@ async function main() {
     includeCatalog || process.argv.includes("--clear-catalog-dropdowns");
 
   try {
+    await prisma.hubspotConflict.deleteMany();
+    await prisma.hubspotWebhookEvent.deleteMany();
+    await prisma.hubspotSyncCursor.deleteMany();
+    await prisma.hubspotDealLink.deleteMany();
     await prisma.hubspotPreviewEnrichmentJob.deleteMany();
     await prisma.hubspotObjectSyncRun.deleteMany();
     await prisma.hubspotImportBatchRow.deleteMany();
@@ -25,6 +29,7 @@ async function main() {
 
     if (includeCatalog) {
       await prisma.advancedReportRequest.deleteMany();
+      await prisma.hubspotContactLink.deleteMany();
       await prisma.channelContact.deleteMany();
       await prisma.channelMetric.deleteMany();
       await prisma.channelEnrichment.deleteMany();

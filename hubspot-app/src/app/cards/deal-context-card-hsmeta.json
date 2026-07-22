@@ -1,0 +1,11 @@
+{
+  "uid": "scouting_platform_deal_context",
+  "type": "card",
+  "config": {
+    "name": "Scouting Platform run",
+    "description": "Run, campaign, creator, assessment, and synchronization context.",
+    "entrypoint": "/app/cards/ScoutingContextCard.jsx",
+    "location": "crm.record.sidebar",
+    "objectTypes": ["DEALS"]
+  }
+}

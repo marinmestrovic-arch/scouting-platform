@@ -25,6 +25,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 import { StatusPill } from "../ui/StatusPill";
+import { formatHubspotImportBatchStatusLabel } from "../exports/hubspot-status-presentation";
 
 type DashboardRunsRequestState =
   | { status: "loading"; data: null; error: null }
@@ -107,6 +108,27 @@ function renderCoverageCell(resultCount: number, target: number | null) {
       </div>
       <p className="dashboard-workspace__coverage-copy">{formatRunCoverageCopy(resultCount, target)}</p>
     </div>
+  );
+}
+
+function renderHubspotSyncStatus(
+  status: ListRecentRunsResponse["items"][number]["hubspotSyncStatus"],
+) {
+  if (!status) {
+    return <span className="status-pill status-pill--neutral">Not synced</span>;
+  }
+  const presentation = status === "completed"
+    ? "completed"
+    : status === "failed"
+      ? "failed"
+      : status === "completed_with_errors"
+        ? "queued"
+        : "running";
+  return (
+    <span className={`status-pill status-pill--${presentation}`}>
+      <span aria-hidden="true" className="status-pill__dot" />
+      <span>{formatHubspotImportBatchStatusLabel(status)}</span>
+    </span>
   );
 }
 
@@ -475,6 +497,7 @@ export function DashboardWorkspace({
                         <th scope="col" style={{ minWidth: "12rem" }}>Influencer List</th>
                         <th scope="col" style={{ minWidth: "12rem" }}>Coverage</th>
                         <th scope="col" style={{ minWidth: "8rem" }}>Status</th>
+                        <th scope="col" style={{ minWidth: "11rem" }}>HubSpot sync status</th>
                         <th scope="col" style={{ minWidth: "9rem" }}>Started</th>
                         <th scope="col" style={{ minWidth: "11rem" }}>Actions</th>
                       </tr>
@@ -509,6 +532,7 @@ export function DashboardWorkspace({
                             <td>
                               <StatusPill status={run.status} />
                             </td>
+                            <td>{renderHubspotSyncStatus(run.hubspotSyncStatus)}</td>
                             <td>{formatRunTimestamp(run.startedAt)}</td>
                             <td>
                               <div className="dashboard-workspace__row-actions">
@@ -517,7 +541,7 @@ export function DashboardWorkspace({
                                   href={getExportPreviewHref(run.id)}
                                   target="_blank"
                                 >
-                                  Export to Sheets
+                                  HUBSPOT / EXPORT
                                 </Link>
                               </div>
                             </td>

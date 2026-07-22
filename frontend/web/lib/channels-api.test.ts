@@ -102,6 +102,8 @@ function buildChannelDetailPayload() {
         },
       ],
     },
+    workedWith: false,
+    collaborations: [],
   };
 }
 

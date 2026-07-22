@@ -59,6 +59,7 @@ describe("dashboard workspace", () => {
               startedAt: "2026-03-15T12:01:00.000Z",
               completedAt: "2026-03-15T13:00:00.000Z",
               resultCount: 12,
+              hubspotSyncStatus: "completed_with_errors",
               metadata: buildRunMetadata(),
             },
           ],
@@ -92,6 +93,8 @@ describe("dashboard workspace", () => {
     expect(html).toContain("Influencer List");
     expect(html).toContain("Coverage");
     expect(html).toContain("Status");
+    expect(html).toContain("HubSpot sync status");
+    expect(html).toContain("Completed with errors");
     expect(html).toContain("Started");
     expect(html).toContain("Actions");
     expect(html).toContain('href="/runs/run-1"');
@@ -103,12 +106,39 @@ describe("dashboard workspace", () => {
     expect(html).toContain("60% coverage · 12/20");
     expect(html).toContain("status-pill--completed");
     expect(html).toContain(">2026-03-15 12:01 UTC<");
-    expect(html.match(/>Export to Sheets</g)).toHaveLength(1);
+    expect(html.match(/>HUBSPOT \/ EXPORT</g)).toHaveLength(1);
     expect(html).toContain('class="data-table data-table--compact"');
     expect(html).toContain('href="/exports/prepare/run-1"');
     expect(html).not.toContain('href="/hubspot/prepare/run-1"');
     expect(html).toContain("All campaign managers");
     expect(html).toContain("All clients");
     expect(html).toContain("All markets");
+  });
+
+  it("renders Not synced when a run has no HubSpot batch", () => {
+    const html = renderToStaticMarkup(
+      createElement(DashboardWorkspace, {
+        initialData: {
+          items: [{
+            id: "run-2",
+            name: "Unsynced run",
+            query: "creators",
+            target: 10,
+            status: "completed",
+            lastError: null,
+            createdAt: "2026-03-15T12:00:00.000Z",
+            updatedAt: "2026-03-15T13:00:00.000Z",
+            startedAt: "2026-03-15T12:01:00.000Z",
+            completedAt: "2026-03-15T13:00:00.000Z",
+            resultCount: 10,
+            hubspotSyncStatus: null,
+            metadata: buildRunMetadata(),
+          }],
+          filterOptions: { campaignManagers: [], clients: [], markets: [] },
+        },
+      }),
+    );
+
+    expect(html).toContain("Not synced");
   });
 });

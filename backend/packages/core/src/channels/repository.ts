@@ -18,6 +18,7 @@ import {
   type ChannelAdvancedReportSummary as ContractChannelAdvancedReportSummary,
   type ChannelEnrichmentStatus as ContractChannelEnrichmentStatus,
   type ChannelInsights as ContractChannelInsights,
+  type ChannelCollaboration,
   type ChannelManualOverrideField,
   type ChannelManualOverrideOperation,
   type BulkDeleteChannelsResponse,
@@ -37,6 +38,10 @@ import {
   CHANNEL_ENRICHMENT_STALE_WINDOW_DAYS,
   resolveChannelEnrichmentStatus,
 } from "../enrichment/status";
+import {
+  getChannelCollaborationHistory,
+  type ChannelCollaborationHistory,
+} from "./collaboration-history";
 
 export type ListChannelsInput = {
   page: number;
@@ -154,6 +159,8 @@ export type ChannelDetail = ChannelSummary & {
   enrichment: ChannelEnrichmentDetail;
   advancedReport: ChannelAdvancedReportDetail;
   insights: ChannelInsights;
+  workedWith: boolean | null;
+  collaborations: ChannelCollaboration[];
 };
 
 type MutableChannelField =
@@ -745,7 +752,8 @@ function toChannelDetail(channel: {
   } | null;
   insights: ChannelInsightsRow | null;
   advancedReportRequests: LatestAdvancedReportRow[];
-}, lastCompletedReport: LatestCompletedAdvancedReport | null): ChannelDetail {
+}, lastCompletedReport: LatestCompletedAdvancedReport | null,
+collaborationHistory: ChannelCollaborationHistory): ChannelDetail {
   return {
     ...toChannelSummary(channel),
     description: channel.description,
@@ -761,6 +769,8 @@ function toChannelDetail(channel: {
       lastCompletedReport,
     ),
     insights: toChannelInsights(channel.insights),
+    workedWith: collaborationHistory.workedWith,
+    collaborations: collaborationHistory.collaborations,
   };
 }
 
@@ -1231,19 +1241,20 @@ export async function listChannels(input: ListChannelsInput): Promise<{
   };
 }
 export async function getChannelById(id: string): Promise<ChannelDetail | null> {
-  const [channel, lastCompletedReport] = await Promise.all([
+  const [channel, lastCompletedReport, collaborationHistory] = await Promise.all([
     prisma.channel.findUnique({
       where: { id },
       select: channelDetailSelect,
     }),
     getLatestCompletedAdvancedReport(prisma, id),
+    getChannelCollaborationHistory(id),
   ]);
 
   if (!channel) {
     return null;
   }
 
-  return toChannelDetail(channel, lastCompletedReport);
+  return toChannelDetail(channel, lastCompletedReport, collaborationHistory);
 }
 
 export async function getChannelByYoutubeId(youtubeChannelId: string): Promise<ChannelDetail | null> {
@@ -1256,9 +1267,12 @@ export async function getChannelByYoutubeId(youtubeChannelId: string): Promise<C
     return null;
   }
 
-  const lastCompletedReport = await getLatestCompletedAdvancedReport(prisma, channel.id);
+  const [lastCompletedReport, collaborationHistory] = await Promise.all([
+    getLatestCompletedAdvancedReport(prisma, channel.id),
+    getChannelCollaborationHistory(channel.id),
+  ]);
 
-  return toChannelDetail(channel, lastCompletedReport);
+  return toChannelDetail(channel, lastCompletedReport, collaborationHistory);
 }
 
 export async function bulkDeleteChannels(input: {

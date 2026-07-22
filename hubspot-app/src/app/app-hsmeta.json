@@ -1,0 +1,39 @@
+{
+  "uid": "scouting_platform_private_app",
+  "type": "app",
+  "config": {
+    "name": "Scouting Platform",
+    "description": "Shows Scouting Platform creator and run context on HubSpot CRM records.",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": [
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "crm.objects.owners.read",
+        "crm.schemas.contacts.read",
+        "crm.schemas.deals.read",
+        "crm.objects.custom.read",
+        "crm.objects.custom.write",
+        "crm.schemas.custom.read"
+      ],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [
+        "https://scouting.example.com/api/integrations/hubspot/extension/context"
+      ],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "support@example.com",
+      "documentationUrl": "https://scouting.example.com/docs/hubspot",
+      "supportUrl": "https://scouting.example.com/support",
+      "supportPhone": "+385000000000"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "uid": "scouting_platform_contact_context",
+  "type": "card",
+  "config": {
+    "name": "Scouting Platform creator",
+    "description": "Creator identity, metrics, campaign context, and synchronization state.",
+    "entrypoint": "/app/cards/ScoutingContextCard.jsx",
+    "location": "crm.record.sidebar",
+    "objectTypes": ["CONTACT"]
+  }
+}

@@ -48,7 +48,7 @@ type RunDetailRequestState =
   | { status: "ready"; data: RunStatusResponse; error: null };
 
 type RunBatchActionState = {
-  action: "csv" | "googleSheets" | null;
+  action: "csv" | "delivery" | null;
   runId: string | null;
   status: "idle" | "submitting" | "error";
   message: string;
@@ -89,7 +89,7 @@ function getRunDetailErrorMessage(error: unknown): string {
   return "Unable to load the selected run. Please try again.";
 }
 
-function getRunBatchActionErrorMessage(action: "csv" | "googleSheets", error: unknown): string {
+function getRunBatchActionErrorMessage(action: "csv" | "delivery", error: unknown): string {
   if (error instanceof RunBatchActionError) {
     return error.message;
   }
@@ -100,7 +100,7 @@ function getRunBatchActionErrorMessage(action: "csv" | "googleSheets", error: un
 
   return action === "csv"
     ? "Unable to create the CSV export for this run."
-    : "Unable to open the Google Sheets export workspace for this run.";
+    : "Unable to open the HubSpot delivery workspace for this run.";
 }
 
 function getResultIdentityFallback(result: RunResultItem): string {
@@ -290,7 +290,7 @@ export function DatabaseRunsTab({
     };
   }, [detailReloadToken, selectedRunId]);
 
-  async function handleCreateBatchAction(runId: string, action: "csv" | "googleSheets") {
+  async function handleCreateBatchAction(runId: string, action: "csv" | "delivery") {
     setActionState({
       action,
       runId,
@@ -298,7 +298,7 @@ export function DatabaseRunsTab({
       message:
         action === "csv"
           ? "Creating CSV export from this run."
-          : "Opening Google Sheets export preparation for this run.",
+          : "Opening HubSpot delivery preparation for this run.",
     });
 
     try {
@@ -327,8 +327,8 @@ export function DatabaseRunsTab({
             <p className="workspace-eyebrow">Run snapshots</p>
             <h2>Runs</h2>
             <p className="workspace-copy">
-              Select a run to review the stored snapshot, then export CSV or open the Google
-              Sheets handoff workspace from that result set without leaving Database.
+              Select a run to review the stored snapshot, then open the canonical HubSpot delivery
+              workspace or create a generic CSV snapshot.
             </p>
           </div>
 
@@ -348,11 +348,11 @@ export function DatabaseRunsTab({
                 className="workspace-button workspace-button--small workspace-button--secondary"
                 disabled={actionState.status === "submitting"}
                 onClick={() => {
-                  void handleCreateBatchAction(selectedRunId, "googleSheets");
+                  void handleCreateBatchAction(selectedRunId, "delivery");
                 }}
                 type="button"
               >
-                Google Sheets
+                Prepare for HubSpot
               </button>
             </div>
           ) : null}
@@ -439,11 +439,11 @@ export function DatabaseRunsTab({
                               className="workspace-button workspace-button--small workspace-button--secondary"
                               disabled={isBusy}
                               onClick={() => {
-                                void handleCreateBatchAction(run.id, "googleSheets");
+                                void handleCreateBatchAction(run.id, "delivery");
                               }}
                               type="button"
                             >
-                              Google Sheets
+                              Prepare for HubSpot
                             </button>
                           </div>
                         </td>

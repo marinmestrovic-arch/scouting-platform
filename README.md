@@ -23,7 +23,7 @@ The authenticated workspace is centered on five top-level surfaces:
 Supporting workflow pages handle:
 - run detail review
 - CSV preparation and export batch history
-- Google Sheets/HubSpot handoff preparation and import-ready CSV history
+- Google Sheets handoff plus direct HubSpot sync and CSV fallback history
 
 Current user-facing capabilities include:
 - campaign-linked scouting runs
@@ -31,8 +31,8 @@ Current user-facing capabilities include:
 - LLM enrichment
 - client/campaign/dropdown reference data management
 - CSV export
-- HubSpot push
-- HubSpot import batch preparation from run snapshots
+- resumable HubSpot contact/deal sync from prepared run snapshots
+- HubSpot reference reconciliation, connection health, conflicts, and CSV fallback
 
 ## Auth Model
 
@@ -83,9 +83,11 @@ docs/
   ADR-002-data-ownership-and-precedence.md
   ADR-003-repository-layout-simplification.md
   ADR-004-account-security-hardening.md
+  ADR-005-hubspot-integration-boundaries.md
   patterns/
   plans/
   setup/
+hubspot-app/
 AGENTS.md
 README.md
 ```
@@ -101,10 +103,12 @@ README.md
 | [`/docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Current technical architecture |
 | [`/docs/TASKS.md`](./docs/TASKS.md) | Milestone plan and historical work split |
 | [`/docs/EVALUATION.md`](./docs/EVALUATION.md) | Evidence-based repo evaluation |
+| [`/docs/ADR-005-hubspot-integration-boundaries.md`](./docs/ADR-005-hubspot-integration-boundaries.md) | HubSpot V2 ownership, identity, queue, and portal boundaries |
 | [`/docs/ADR-003-repository-layout-simplification.md`](./docs/ADR-003-repository-layout-simplification.md) | Accepted current repo layout ADR |
 | [`/docs/ADR-001-architecture.md`](./docs/ADR-001-architecture.md) | Historical original repo-shape/service-boundary ADR |
 | [`/docs/README.md`](./docs/README.md) | Documentation map and ADR guidance |
 | [`/docs/setup/local.md`](./docs/setup/local.md) | Local environment bootstrap |
+| [`/docs/setup/hubspot-v2.md`](./docs/setup/hubspot-v2.md) | HubSpot portal provisioning, rollout, webhooks, and UI extension |
 | [`/docs/setup/staging-railway.md`](./docs/setup/staging-railway.md) | Staging deployment runbook |
 
 ## Local Setup
@@ -169,6 +173,9 @@ Current UI-facing route families:
 - `GET /api/users/campaign-managers`
 - `GET /api/admin/dropdown-values`
 - `PUT /api/admin/dropdown-values`
+- `GET|POST /api/database/hubspot-health`
+- `GET /api/database/hubspot-conflicts`
+- `GET|POST /api/database/hubspot-sync`
 
 ### Runs and previews
 - `GET /api/runs`
@@ -202,13 +209,24 @@ Current UI-facing route families:
 - `POST /api/csv-export-batches`
 - `GET /api/csv-export-batches/:id`
 - `GET /api/csv-export-batches/:id/download`
-- `GET /api/hubspot-push-batches`
-- `POST /api/hubspot-push-batches`
-- `GET /api/hubspot-push-batches/:id`
 - `GET /api/hubspot-import-batches`
 - `POST /api/hubspot-import-batches`
 - `GET /api/hubspot-import-batches/:id`
+- `POST /api/hubspot-import-batches/:id/retry`
 - `GET /api/hubspot-import-batches/:id/download`
+
+The HubSpot import-batch family supports direct CRM Object API delivery and an explicit downloadable
+CSV fallback. Legacy `hubspot-push-batches` history/endpoints remain for compatibility but are not
+an active product action.
+
+### HubSpot provider-authenticated endpoints
+
+- `POST /api/integrations/hubspot/webhooks`
+- `GET /api/integrations/hubspot/extension/context`
+
+These two endpoints authenticate HubSpot v3 signatures rather than Auth.js sessions. See the
+[HubSpot V2 operator guide](./docs/setup/hubspot-v2.md) before enabling either endpoint. All HubSpot
+feature flags default off, and the repository does not claim live portal verification.
 
 ## Hosting Recommendation
 

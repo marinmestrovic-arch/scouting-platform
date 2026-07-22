@@ -13,8 +13,8 @@ type HubspotObjectSyncScheduleJob = {
 export const HUBSPOT_OBJECT_SYNC_DAILY_SCHEDULE = {
   name: "hubspot.object-sync.schedule",
   cron: "0 0 * * *",
-  timezone: "Etc/GMT-2",
-  key: "daily-midnight-gmt-plus-2",
+  timezone: "Europe/Zagreb",
+  key: "daily-midnight-europe-zagreb",
 } as const;
 
 export const hubspotObjectSyncScheduleWorkerOptions: WorkerJobOptions = {

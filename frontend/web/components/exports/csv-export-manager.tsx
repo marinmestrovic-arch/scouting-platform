@@ -137,7 +137,7 @@ function renderHistoryState(props: CsvExportManagerViewProps): ReactElement {
       <div className="csv-export__empty-state">
         <h3>No exports yet</h3>
         <p>
-          Start an export from a scouting run — choose <strong>Export to Google Sheets</strong> on the
+          Start a prepared delivery from a scouting run — choose <strong>Prepare for HubSpot</strong> on the
           run detail page. Past CSV downloads will show up here.
         </p>
       </div>

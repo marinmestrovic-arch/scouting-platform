@@ -38,7 +38,7 @@ import {
   PLAYWRIGHT_SEED_PATH,
   type PlaywrightSeedData,
 } from "./test-data";
-import { assertSafeTestDatabaseConfiguration } from "./test-db-guard";
+import { assertSelectedTestDatabaseConfiguration } from "./test-db-guard";
 import { ensurePlaywrightEnvironment } from "./test-env";
 
 function buildSeededExportCsv(channelId: string): string {
@@ -123,7 +123,7 @@ async function writeSeedDataFile(seedData: PlaywrightSeedData): Promise<void> {
 }
 
 export default async function globalSetup(): Promise<void> {
-  assertSafeTestDatabaseConfiguration();
+  assertSelectedTestDatabaseConfiguration();
   ensurePlaywrightEnvironment();
 
   const [admin, manager] = await Promise.all([
@@ -150,6 +150,20 @@ export default async function globalSetup(): Promise<void> {
   });
 
   const seedData = await withDbTransaction(async (tx) => {
+    await tx.hubspotConflict.deleteMany({
+      where: {
+        runRequest: {
+          requestedByUserId: manager.id,
+        },
+      },
+    });
+    await tx.hubspotDealLink.deleteMany({
+      where: {
+        runRequest: {
+          requestedByUserId: manager.id,
+        },
+      },
+    });
     await tx.hubspotImportBatch.deleteMany({
       where: {
         requestedByUserId: manager.id,
@@ -183,12 +197,23 @@ export default async function globalSetup(): Promise<void> {
     await tx.dropdownValue.deleteMany({
       where: {
         fieldKey: {
-          in: ["INFLUENCER_TYPE", "INFLUENCER_VERTICAL", "COUNTRY_REGION", "LANGUAGE"],
+          in: [
+            "CURRENCY",
+            "DEAL_TYPE",
+            "ACTIVATION_TYPE",
+            "INFLUENCER_TYPE",
+            "INFLUENCER_VERTICAL",
+            "COUNTRY_REGION",
+            "LANGUAGE",
+          ],
         },
       },
     });
     await tx.dropdownValue.createMany({
       data: [
+        { fieldKey: "CURRENCY", value: "EUR" },
+        { fieldKey: "DEAL_TYPE", value: "Flat Fee" },
+        { fieldKey: "ACTIVATION_TYPE", value: "Organic" },
         { fieldKey: "INFLUENCER_TYPE", value: "Male" },
         { fieldKey: "INFLUENCER_VERTICAL", value: "Gaming" },
         { fieldKey: "COUNTRY_REGION", value: "Croatia" },
@@ -285,7 +310,7 @@ export default async function globalSetup(): Promise<void> {
       },
     });
 
-    await tx.channelContact.upsert({
+    const catalogContact = await tx.channelContact.upsert({
       where: {
         channelId_email: {
           channelId: catalogChannel.id,
@@ -302,7 +327,180 @@ export default async function globalSetup(): Promise<void> {
         firstName: "Week",
         lastName: "Eight",
       },
+      select: { id: true },
     });
+
+    const collaborationPortal = await tx.hubspotPortal.upsert({
+      where: { portalId: "147403025" },
+      create: { portalId: "147403025", displayName: "Playwright HubSpot portal" },
+      update: { displayName: "Playwright HubSpot portal" },
+    });
+    await Promise.all([
+      tx.client.update({
+        where: { id: client.id },
+        data: {
+          hubspotPortalId: collaborationPortal.id,
+          hubspotObjectType: "2-198744797",
+          hubspotObjectId: "e2e-client-1",
+        },
+      }),
+      tx.campaign.update({
+        where: { id: campaign.id },
+        data: {
+          hubspotPortalId: collaborationPortal.id,
+          hubspotObjectType: "2-196889646",
+          hubspotObjectId: "e2e-campaign-1",
+        },
+      }),
+    ]);
+    const contactLink = await tx.hubspotContactLink.upsert({
+      where: {
+        hubspotPortalId_channelContactId: {
+          hubspotPortalId: collaborationPortal.id,
+          channelContactId: catalogContact.id,
+        },
+      },
+      create: {
+        hubspotPortalId: collaborationPortal.id,
+        channelContactId: catalogContact.id,
+        hubspotObjectId: "e2e-contact-1",
+        externalKey: `contact:${catalogContact.id}`,
+        mirrorProperties: { worked_with: "true" },
+      },
+      update: {
+        archived: false,
+        mirrorProperties: { worked_with: "true" },
+      },
+    });
+    const dealMirror = await tx.hubspotDealMirror.upsert({
+      where: {
+        hubspotPortalId_hubspotObjectId: {
+          hubspotPortalId: collaborationPortal.id,
+          hubspotObjectId: "e2e-deal-1",
+        },
+      },
+      create: {
+        hubspotPortalId: collaborationPortal.id,
+        hubspotObjectId: "e2e-deal-1",
+        dealName: "Week 8 E2E Creator Collaboration",
+        amount: "1500",
+        currencyCode: "EUR",
+        pipelineId: "e2e-campaign-management",
+        stageId: "e2e-contract-signed",
+        ownerId: "e2e-owner-1",
+        closeDate: new Date("2026-03-31T00:00:00.000Z"),
+        hubspotCreatedAt: new Date("2026-03-01T00:00:00.000Z"),
+      },
+      update: { archived: false },
+    });
+    const activationMirror = await tx.hubspotActivationMirror.upsert({
+      where: {
+        hubspotPortalId_hubspotObjectId: {
+          hubspotPortalId: collaborationPortal.id,
+          hubspotObjectId: "e2e-activation-1",
+        },
+      },
+      create: {
+        hubspotPortalId: collaborationPortal.id,
+        hubspotObjectId: "e2e-activation-1",
+        name: "Week 8 YouTube Integration",
+        activationType: "YouTube",
+        activationUrl: "https://youtube.com/watch?v=week8-e2e",
+        publicationDate: new Date("2026-03-20T00:00:00.000Z"),
+      },
+      update: { archived: false },
+    });
+    const pipeline = await tx.hubspotPipeline.upsert({
+      where: {
+        hubspotPortalId_objectType_hubspotPipelineId: {
+          hubspotPortalId: collaborationPortal.id,
+          objectType: "deals",
+          hubspotPipelineId: "e2e-campaign-management",
+        },
+      },
+      create: {
+        hubspotPortalId: collaborationPortal.id,
+        objectType: "deals",
+        hubspotPipelineId: "e2e-campaign-management",
+        label: "Campaign Management Pipeline",
+        syncedAt: new Date(),
+      },
+      update: { archived: false, syncedAt: new Date() },
+    });
+    await Promise.all([
+      tx.hubspotOwner.upsert({
+        where: {
+          hubspotPortalId_hubspotOwnerId: {
+            hubspotPortalId: collaborationPortal.id,
+            hubspotOwnerId: "e2e-owner-1",
+          },
+        },
+        create: {
+          hubspotPortalId: collaborationPortal.id,
+          hubspotOwnerId: "e2e-owner-1",
+          displayName: "Week 8 Deal Owner",
+          syncedAt: new Date(),
+        },
+        update: { displayName: "Week 8 Deal Owner", archived: false, syncedAt: new Date() },
+      }),
+      tx.hubspotPipelineStage.upsert({
+        where: {
+          pipelineId_hubspotStageId: {
+            pipelineId: pipeline.id,
+            hubspotStageId: "e2e-contract-signed",
+          },
+        },
+        create: {
+          pipelineId: pipeline.id,
+          hubspotStageId: "e2e-contract-signed",
+          label: "Contract signed",
+          syncedAt: new Date(),
+        },
+        update: { label: "Contract signed", archived: false, syncedAt: new Date() },
+      }),
+      tx.hubspotContactDealAssociation.upsert({
+        where: {
+          hubspotContactLinkId_hubspotDealMirrorId: {
+            hubspotContactLinkId: contactLink.id,
+            hubspotDealMirrorId: dealMirror.id,
+          },
+        },
+        create: {
+          hubspotContactLinkId: contactLink.id,
+          hubspotDealMirrorId: dealMirror.id,
+          observedAt: new Date(),
+        },
+        update: { observedAt: new Date() },
+      }),
+      tx.hubspotDealClientAssociation.upsert({
+        where: {
+          hubspotDealMirrorId_clientId: { hubspotDealMirrorId: dealMirror.id, clientId: client.id },
+        },
+        create: { hubspotDealMirrorId: dealMirror.id, clientId: client.id, observedAt: new Date() },
+        update: { observedAt: new Date() },
+      }),
+      tx.hubspotDealCampaignAssociation.upsert({
+        where: {
+          hubspotDealMirrorId_campaignId: { hubspotDealMirrorId: dealMirror.id, campaignId: campaign.id },
+        },
+        create: { hubspotDealMirrorId: dealMirror.id, campaignId: campaign.id, observedAt: new Date() },
+        update: { observedAt: new Date() },
+      }),
+      tx.hubspotDealActivationAssociation.upsert({
+        where: {
+          hubspotDealMirrorId_hubspotActivationMirrorId: {
+            hubspotDealMirrorId: dealMirror.id,
+            hubspotActivationMirrorId: activationMirror.id,
+          },
+        },
+        create: {
+          hubspotDealMirrorId: dealMirror.id,
+          hubspotActivationMirrorId: activationMirror.id,
+          observedAt: new Date(),
+        },
+        update: { observedAt: new Date() },
+      }),
+    ]);
 
     await tx.channelMetric.upsert({
       where: {
@@ -348,7 +546,7 @@ export default async function globalSetup(): Promise<void> {
         pipeline: "Sales Pipeline",
         dealStage: "Scouted",
         currency: "EUR",
-        dealType: "",
+        dealType: "Flat Fee",
         activationType: "Organic",
         status: RunRequestStatus.COMPLETED,
         startedAt: new Date("2026-03-28T08:00:00.000Z"),

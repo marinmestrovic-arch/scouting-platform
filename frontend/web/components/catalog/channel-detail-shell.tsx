@@ -176,6 +176,46 @@ function formatConfidence(value: number | null): string {
   return formatEngagementRate(value * 100);
 }
 
+function formatDealAmount(amount: string | null, currencyCode: string | null): string {
+  if (!amount) {
+    return EMPTY_VALUE;
+  }
+
+  const numericAmount = Number(amount);
+  if (Number.isFinite(numericAmount) && currencyCode && /^[A-Z]{3}$/.test(currencyCode)) {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: currencyCode,
+        maximumFractionDigits: 2,
+      }).format(numericAmount);
+    } catch {
+      // Fall through to HubSpot's raw value when a portal uses an unsupported code.
+    }
+  }
+
+  return currencyCode ? `${amount} ${currencyCode}` : amount;
+}
+
+function formatDealDate(value: string | null): string {
+  if (!value) {
+    return EMPTY_VALUE;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatWorkedWith(value: boolean | null): string {
+  return value === null ? EMPTY_VALUE : value ? "Yes" : "No";
+}
+
 function resolveYoutubeUrl(channel: Pick<ChannelDetail, "youtubeUrl" | "youtubeChannelId">): string {
   const explicitUrl = channel.youtubeUrl?.trim();
 
@@ -534,6 +574,8 @@ function renderReadyState(
   const socialMediaUrl = resolveSocialMediaUrl(channel);
   const handleLabel = getChannelHandle(channel);
   const descriptionText = getChannelDescription(channel);
+  const workedWith = channel.workedWith ?? null;
+  const collaborations = channel.collaborations ?? [];
 
   return (
     <>
@@ -732,7 +774,112 @@ function renderReadyState(
                       )}
                     </dd>
                   </div>
+                  <div>
+                    <dt>Worked with</dt>
+                    <dd>{formatWorkedWith(workedWith)}</dd>
+                  </div>
                 </dl>
+              </div>
+            </article>
+
+            <article className="creator-card creator-card--collaborations">
+              <header className="creator-card__header">
+                <h3 className="creator-card__title channel-detail-shell__subheading">
+                  Collaboration History
+                </h3>
+                <p className="creator-card__hint">
+                  Deals associated with this creator&apos;s linked HubSpot contact records.
+                </p>
+              </header>
+              <div className="creator-card__body">
+                {collaborations.length === 0 ? (
+                  <p className="channel-detail-shell__body-copy">
+                    No associated HubSpot deals are available for this creator.
+                  </p>
+                ) : (
+                  <div className="channel-detail-shell__collaboration-list">
+                    {collaborations.map((collaboration) => (
+                      <article
+                        className="channel-detail-shell__collaboration"
+                        key={collaboration.hubspotDealId}
+                      >
+                        <header className="channel-detail-shell__collaboration-header">
+                          <div>
+                            <p className="creator-card__eyebrow">HubSpot deal</p>
+                            <h4 className="creator-card__subheading">
+                              <a
+                                className="catalog-table__link"
+                                href={collaboration.hubspotDealUrl}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                {collaboration.dealName}
+                              </a>
+                            </h4>
+                          </div>
+                          <span className="channel-detail-shell__deal-stage">
+                            {collaboration.stage ?? EMPTY_VALUE}
+                          </span>
+                        </header>
+                        <dl className="creator-detail-list creator-detail-list--inline channel-detail-shell__details">
+                          <div>
+                            <dt>Client/brand</dt>
+                            <dd>{collaboration.clients.join(", ") || EMPTY_VALUE}</dd>
+                          </div>
+                          <div>
+                            <dt>Campaign</dt>
+                            <dd>{collaboration.campaigns.join(", ") || EMPTY_VALUE}</dd>
+                          </div>
+                          <div>
+                            <dt>Amount</dt>
+                            <dd>{formatDealAmount(collaboration.amount, collaboration.currencyCode)}</dd>
+                          </div>
+                          <div>
+                            <dt>Deal owner</dt>
+                            <dd>{collaboration.owner ?? EMPTY_VALUE}</dd>
+                          </div>
+                          <div>
+                            <dt>Close date</dt>
+                            <dd>{formatDealDate(collaboration.closeDate)}</dd>
+                          </div>
+                          <div>
+                            <dt>Create date</dt>
+                            <dd>{formatDealDate(collaboration.createdAt)}</dd>
+                          </div>
+                          <div className="creator-detail-list__full">
+                            <dt>Activations</dt>
+                            <dd>
+                              {collaboration.activations.length === 0 ? (
+                                EMPTY_VALUE
+                              ) : (
+                                <ul className="channel-detail-shell__activation-list">
+                                  {collaboration.activations.map((activation) => (
+                                    <li key={activation.id}>
+                                      {activation.url ? (
+                                        <a
+                                          className="catalog-table__link"
+                                          href={activation.url}
+                                          rel="noreferrer"
+                                          target="_blank"
+                                        >
+                                          {activation.name}
+                                        </a>
+                                      ) : activation.name}
+                                      {activation.type ? ` · ${activation.type}` : ""}
+                                      {activation.publicationDate
+                                        ? ` · ${formatDealDate(activation.publicationDate)}`
+                                        : ""}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             </article>
 

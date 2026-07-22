@@ -50,6 +50,37 @@ describe("queue helpers", () => {
     ).rejects.toMatchObject({ code: "INVALID_JOB_PRIORITY" });
   });
 
+  it("forwards durable deferral and singleton controls", async () => {
+    const startAfter = new Date("2026-07-20T12:00:00.000Z");
+
+    await enqueueJob("channels.enrich.llm", payload, {
+      startAfter,
+      singletonKey: "channel:11111111-1111-4111-8111-111111111111",
+      singletonSeconds: 60,
+    });
+
+    expect(send).toHaveBeenCalledWith("channels.enrich.llm", payload, {
+      retryLimit: 5,
+      retryDelay: 30,
+      retryBackoff: true,
+      startAfter,
+      singletonKey: "channel:11111111-1111-4111-8111-111111111111",
+      singletonSeconds: 60,
+    });
+  });
+
+  it("rejects invalid durable enqueue controls", async () => {
+    await expect(
+      enqueueJob("channels.enrich.llm", payload, { startAfter: "not-a-date" }),
+    ).rejects.toMatchObject({ code: "INVALID_JOB_START_AFTER" });
+    await expect(
+      enqueueJob("channels.enrich.llm", payload, { singletonKey: "  " }),
+    ).rejects.toMatchObject({ code: "INVALID_JOB_SINGLETON_KEY" });
+    await expect(
+      enqueueJob("channels.enrich.llm", payload, { singletonSeconds: 60 }),
+    ).rejects.toMatchObject({ code: "MISSING_JOB_SINGLETON_KEY" });
+  });
+
   it("bulk inserts one validated channel enrichment family", async () => {
     const secondPayload = {
       channelId: "33333333-3333-4333-8333-333333333333",
