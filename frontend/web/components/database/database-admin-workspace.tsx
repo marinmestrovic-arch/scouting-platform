@@ -24,6 +24,9 @@ const ClientsWorkspace = dynamic(
 const DropdownValuesWorkspace = dynamic(
   () => import("./dropdown-values-workspace").then((mod) => mod.DropdownValuesWorkspace),
 );
+const HubspotIntegrationWorkspace = dynamic(
+  () => import("./hubspot-integration-workspace").then((mod) => mod.HubspotIntegrationWorkspace),
+);
 
 function formatHubspotSyncStatus(
   run: ListHubspotObjectSyncRunsResponse["latest"],
@@ -69,9 +72,11 @@ export function DatabaseAdminWorkspace({
       ? "campaigns"
       : requestedTab === "dropdown-values" && isAdmin
         ? "dropdown-values"
-        : "clients";
+        : requestedTab === "hubspot" && isAdmin
+          ? "hubspot"
+          : "clients";
 
-  function selectTab(tab: "clients" | "campaigns" | "dropdown-values") {
+  function selectTab(tab: "clients" | "campaigns" | "dropdown-values" | "hubspot") {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
     router.replace(`/database?${params.toString()}`);
@@ -150,13 +155,22 @@ export function DatabaseAdminWorkspace({
             Campaigns
           </button>
           {isAdmin ? (
-            <button
-              className={activeTab === "dropdown-values" ? "database-admin__tab database-admin__tab--active" : "database-admin__tab"}
-              onClick={() => selectTab("dropdown-values")}
-              type="button"
-            >
-              Dropdown Values
-            </button>
+            <>
+              <button
+                className={activeTab === "dropdown-values" ? "database-admin__tab database-admin__tab--active" : "database-admin__tab"}
+                onClick={() => selectTab("dropdown-values")}
+                type="button"
+              >
+                Dropdown Values
+              </button>
+              <button
+                className={activeTab === "hubspot" ? "database-admin__tab database-admin__tab--active" : "database-admin__tab"}
+                onClick={() => selectTab("hubspot")}
+                type="button"
+              >
+                HubSpot
+              </button>
+            </>
           ) : null}
         </section>
         {isAdmin ? (
@@ -178,6 +192,8 @@ export function DatabaseAdminWorkspace({
           <ClientsWorkspace initialData={clients} />
         ) : activeTab === "dropdown-values" ? (
           <DropdownValuesWorkspace initialData={dropdownValues} />
+        ) : activeTab === "hubspot" ? (
+          <HubspotIntegrationWorkspace />
         ) : (
           <CampaignsWorkspace initialData={campaigns} />
         )}

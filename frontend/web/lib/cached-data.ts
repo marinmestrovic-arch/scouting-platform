@@ -119,7 +119,7 @@ export function getCachedChannels(input: ListChannelsInput) {
 export function getCachedChannelById(id: string) {
   return unstable_cache(
     () => getChannelById(id),
-    ["channel", id],
+    ["channel-detail-with-collaboration-history-v2", id],
     { revalidate: 30 },
   )();
 }

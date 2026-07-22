@@ -4,10 +4,13 @@ import {
   hubspotImportBatchSummarySchema,
   hubspotImportBatchValidationErrorSchema,
   listHubspotImportBatchesResponseSchema,
+  retryHubspotImportBatchRequestSchema,
+  retryHubspotImportBatchResponseSchema,
   type CreateHubspotImportBatchRequest,
   type HubspotImportBatchDetail,
   type HubspotImportBatchSummary,
   type HubspotImportBatchValidationError,
+  type RetryHubspotImportBatchResponse,
 } from "@scouting-platform/contracts";
 
 const GENERIC_REQUEST_ERROR_MESSAGE = "Unable to complete the request. Please try again.";
@@ -17,6 +20,8 @@ const INVALID_DETAIL_RESPONSE_ERROR_MESSAGE =
   "Received an invalid HubSpot import detail response.";
 const INVALID_LIST_RESPONSE_ERROR_MESSAGE =
   "Received an invalid HubSpot import history response.";
+const INVALID_RETRY_RESPONSE_ERROR_MESSAGE =
+  "Received an invalid HubSpot retry response.";
 
 type ApiErrorBody = {
   error?: string;
@@ -180,6 +185,47 @@ export async function fetchHubspotImportBatchDetail(
 
     if (!parsed.success) {
       throw new Error(INVALID_DETAIL_RESPONSE_ERROR_MESSAGE);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    throw normalizeRequestError(error);
+  }
+}
+
+export async function retryHubspotImportBatch(
+  batchId: string,
+): Promise<RetryHubspotImportBatchResponse> {
+  const requestPayload = retryHubspotImportBatchRequestSchema.parse({
+    scope: "failed_rows",
+  });
+
+  try {
+    const response = await fetch(
+      `/api/hubspot-import-batches/${encodeURIComponent(batchId)}/retry`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(requestPayload),
+      },
+    );
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      throw new HubspotImportBatchesApiError(
+        getApiErrorMessage(response, payload, {
+          notFoundErrorMessage: "HubSpot import batch not found.",
+        }),
+        response.status,
+      );
+    }
+
+    const parsed = retryHubspotImportBatchResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new Error(INVALID_RETRY_RESPONSE_ERROR_MESSAGE);
     }
 
     return parsed.data;

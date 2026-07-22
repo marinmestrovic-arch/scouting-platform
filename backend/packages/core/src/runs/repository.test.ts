@@ -1,4 +1,5 @@
 import {
+  HubspotImportBatchStatus,
   RunChannelAssessmentStatus,
   RunRequestStatus,
 } from "@prisma/client";
@@ -37,7 +38,28 @@ vi.mock("@scouting-platform/db", () => ({
   prisma: prismaMock,
 }));
 
-import { finalizeRunAssessmentRankingIfReady, updateRunResultRating } from "./repository";
+import {
+  finalizeRunAssessmentRankingIfReady,
+  selectRunHubspotSyncStatus,
+  updateRunResultRating,
+} from "./repository";
+
+describe("run-level HubSpot sync status", () => {
+  it("prioritizes an active batch over the newest terminal batch", () => {
+    expect(selectRunHubspotSyncStatus([
+      { status: HubspotImportBatchStatus.COMPLETED },
+      { status: HubspotImportBatchStatus.PROCESSING },
+    ])).toBe("processing");
+  });
+
+  it("uses the newest terminal batch and represents no batch as null", () => {
+    expect(selectRunHubspotSyncStatus([
+      { status: HubspotImportBatchStatus.COMPLETED_WITH_ERRORS },
+      { status: HubspotImportBatchStatus.FAILED },
+    ])).toBe("completed_with_errors");
+    expect(selectRunHubspotSyncStatus([])).toBeNull();
+  });
+});
 
 describe("run repository assessment ranking", () => {
   beforeEach(() => {

@@ -1,8 +1,6 @@
 "use client";
 
 import type {
-  ExportPreviewColumn,
-  ExportPreviewRow,
   ExportRunToGoogleSheetsRequest,
   HubspotPrepClearField,
   HubspotPrepUpdateDefaults,
@@ -10,10 +8,11 @@ import type {
   HubspotPrepUpdateRequest,
   HubspotExportPreview,
 } from "@scouting-platform/contracts";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 
 import { updateHubspotExportPreview } from "../../lib/export-previews-api";
 import { exportRunToGoogleSheets } from "../../lib/google-sheets-export-api";
+import { HubspotSyncPanel } from "./hubspot-sync-panel";
 import { SearchableSelect, type SearchableSelectOption } from "../ui/searchable-select";
 
 type ExportPreparationWorkspaceProps = Readonly<{
@@ -32,33 +31,6 @@ type HubspotDrafts = {
   rowValues: Record<string, Record<string, string>>;
   touchedRowFields: Record<string, Set<HubspotPrepClearField["field"]>>;
 };
-
-function escapeCsvCell(value: string): string {
-  if (!/[",\n\r]/.test(value)) {
-    return value;
-  }
-
-  return `"${value.replaceAll(`"`, `""`)}"`;
-}
-
-function buildCsv(columns: ExportPreviewColumn[], rows: ExportPreviewRow[]): string {
-  const header = columns.map((column) => column.label).join(",");
-  const body = rows.map((row) =>
-    columns.map((column) => escapeCsvCell(row.values[column.key] ?? "")).join(","),
-  );
-
-  return [header, ...body].join("\n");
-}
-
-function downloadCsv(fileName: string, content: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
 
 function createEmptyDrafts(): HubspotDrafts {
   return {
@@ -153,9 +125,6 @@ export function ExportPreparationWorkspace({
     "idle" | "saving" | "success" | "error"
   >("idle");
   const [googleSheetsMessage, setGoogleSheetsMessage] = useState("");
-  const fileName = useMemo(() => {
-    return `${currentPreview.run.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-export.csv`;
-  }, [currentPreview.run.name]);
   const validationIssues = currentPreview.validationIssues;
   const hasPendingChanges =
     Object.values(drafts.touchedRowFields).some((fields) => fields.size > 0) ||
@@ -172,7 +141,6 @@ export function ExportPreparationWorkspace({
     hasGoogleSheetsTarget && hasPendingChanges
       ? "Save your edits before exporting to Google Sheets."
       : null;
-  const canDownloadCsv = googleSheetsState !== "saving" && requestState !== "saving";
 
   function updateDefault(field: keyof HubspotPrepUpdateDefaults, value: string) {
     setDrafts((current) => ({
@@ -309,10 +277,6 @@ export function ExportPreparationWorkspace({
     }
   }
 
-  function handleCsvDownload() {
-    downloadCsv(fileName, buildCsv(currentPreview.columns, currentPreview.rows));
-  }
-
   return (
     <div className="export-prep">
       <section className="export-prep__defaults">
@@ -390,6 +354,13 @@ export function ExportPreparationWorkspace({
           <p>{validationIssues.length} fields still need manual input before export.</p>
         </section>
       ) : null}
+
+      <HubspotSyncPanel
+        hasPendingChanges={hasPendingChanges}
+        isSaving={requestState === "saving"}
+        runId={currentPreview.run.id}
+        validationIssueCount={validationIssues.length}
+      />
 
       <section className="export-prep__defaults">
         <div className="database-records__header export-prep__defaults-header">
@@ -469,14 +440,6 @@ export function ExportPreparationWorkspace({
       </section>
 
       <div className="export-prep__actions">
-        <button
-          className="workspace-button workspace-button--secondary"
-          disabled={!canDownloadCsv}
-          onClick={handleCsvDownload}
-          type="button"
-        >
-          CSV Download
-        </button>
         <button
           className="database-records__cta"
           disabled={!hasPendingChanges || requestState === "saving"}

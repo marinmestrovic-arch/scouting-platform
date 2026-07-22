@@ -68,7 +68,7 @@ Set these on `scouting-web`:
 - `LOG_LEVEL=info`
 - `OPENAI_API_KEY` if LLM enrichment is enabled
 - `HYPEAUDITOR_API_KEY` if advanced reports are enabled
-- `HUBSPOT_API_KEY` if HubSpot flows are enabled
+- `HUBSPOT_ACCESS_TOKEN` plus the HubSpot V2 portal mapping when HubSpot is configured
 
 Set these on `scouting-worker`:
 
@@ -78,65 +78,61 @@ Set these on `scouting-worker`:
 - `LOG_LEVEL=info`
 - `OPENAI_API_KEY` if LLM enrichment is enabled
 - `HYPEAUDITOR_API_KEY` if advanced reports are enabled
-- `HUBSPOT_API_KEY` if HubSpot flows are enabled
+- `HUBSPOT_ACCESS_TOKEN` plus the same HubSpot V2 portal mapping when HubSpot is configured
 
-### HubSpot client/campaign custom object sync
+### HubSpot V2
 
-The "Sync from HubSpot" flow on the Database page reads/writes HubSpot custom
-objects and needs the following identifiers in addition to `HUBSPOT_API_KEY`.
-The sync job runs in `scouting-worker`, so these MUST be set on the worker.
-Set the same values on `scouting-web` too so admin UI validation paths stay
-consistent.
+Use [`hubspot-v2.md`](./hubspot-v2.md) as the canonical list of private-app scopes, unique
+properties, portal-specific object/property names, association discovery, webhooks, health checks,
+rotation, and UI-extension steps.
 
-The worker also registers an automatic daily HubSpot object sync at midnight
-GMT+2 (`0 0 * * *`, timezone `Etc/GMT-2`). This creates the same durable sync
-run as the Database "Sync from HubSpot" button.
+Set the same non-public HubSpot configuration on `scouting-web` and `scouting-worker`, including:
 
-Required:
+- preferred `HUBSPOT_ACCESS_TOKEN` (`HUBSPOT_API_KEY` is a deprecated fallback only);
+- numeric `HUBSPOT_PORTAL_ID`;
+- `HUBSPOT_CONTACT_UNIQUE_ID_PROPERTY=atlas_contact_id` and
+  `HUBSPOT_DEAL_UNIQUE_ID_PROPERTY=atlas_run_id`;
+- client/campaign custom-object and property internal names; and
+- `HUBSPOT_CLIENT_SECRET` when signed webhooks or the UI extension are being prepared, plus the
+  numeric `HUBSPOT_APP_ID` when the UI extension is enabled. `HUBSPOT_CLIENT_ID` is reserved for a
+  future OAuth flow and is not accepted as the signed extension `appId`.
 
-- `HUBSPOT_CLIENT_OBJECT_TYPE`
-- `HUBSPOT_CLIENT_NAME_PROPERTY`
-- `HUBSPOT_CAMPAIGN_OBJECT_TYPE`
-- `HUBSPOT_CAMPAIGN_NAME_PROPERTY`
-- `HUBSPOT_CAMPAIGN_STATUS_PROPERTY`
-- exactly one of `HUBSPOT_CAMPAIGN_CLIENT_OBJECT_ID_PROPERTY` or
-  `HUBSPOT_CAMPAIGN_CLIENT_ASSOCIATION_TYPE_ID` (setting both raises
-  `HUBSPOT_OBJECT_SYNC_CONFIG_AMBIGUOUS`)
-
-Optional (set only the properties your HubSpot portal actually exposes):
-
-- `HUBSPOT_CLIENT_DOMAIN_PROPERTY`
-- `HUBSPOT_CLIENT_COUNTRY_REGION_PROPERTY`
-- `HUBSPOT_CLIENT_CITY_PROPERTY`
-- `HUBSPOT_CLIENT_ACTIVE_PROPERTY`
-- `HUBSPOT_CAMPAIGN_MARKET_PROPERTY`
-- `HUBSPOT_CAMPAIGN_BRIEF_LINK_PROPERTY`
-- `HUBSPOT_CAMPAIGN_MONTH_PROPERTY`
-- `HUBSPOT_CAMPAIGN_YEAR_PROPERTY`
-- `HUBSPOT_CAMPAIGN_ACTIVE_PROPERTY`
-
-Missing a required value surfaces in the UI as
-`HubSpot sync failed: <NAME> is required for HubSpot Client/Campaign custom
-object sync`. The fastest way to recover an existing deploy is to copy the
-values from a known-good environment:
+Deploy with all flags explicitly off:
 
 ```bash
-# inspect what staging has set
-ssh dokku@<staging-host> -- config:export scouting-worker | grep ^HUBSPOT_
+dokku config:set scouting-web \
+  HUBSPOT_DIRECT_SYNC_ENABLED='false' \
+  HUBSPOT_WEBHOOKS_ENABLED='false' \
+  HUBSPOT_WEBHOOK_JOURNAL_ENABLED='false' \
+  HUBSPOT_UI_EXTENSIONS_ENABLED='false'
 
-# then apply the same values on the broken host
-ssh dokku@<prod-host> -- config:set --no-restart scouting-worker \
-  HUBSPOT_CLIENT_OBJECT_TYPE='...' \
-  HUBSPOT_CLIENT_NAME_PROPERTY='...' \
-  HUBSPOT_CAMPAIGN_OBJECT_TYPE='...' \
-  HUBSPOT_CAMPAIGN_NAME_PROPERTY='...' \
-  HUBSPOT_CAMPAIGN_CLIENT_OBJECT_ID_PROPERTY='...'
-# repeat for scouting-web, drop --no-restart on the last call
+dokku config:set scouting-worker \
+  HUBSPOT_DIRECT_SYNC_ENABLED='false' \
+  HUBSPOT_WEBHOOKS_ENABLED='false' \
+  HUBSPOT_WEBHOOK_JOURNAL_ENABLED='false' \
+  HUBSPOT_UI_EXTENSIONS_ENABLED='false'
 ```
+
+After migrations and both services are deployed, run the admin Database connection health check.
+Provision any missing portal schema manually and run reference/object sync before enabling direct
+delivery. The daily object reconciliation schedule is midnight `Europe/Zagreb`; absence from one
+poll does not delete local records.
+
+When webhooks are enabled, register this exact externally visible HTTPS target:
+
+```text
+https://scouting.example.com/api/integrations/hubspot/webhooks
+```
+
+The route uses HubSpot signature v3 rather than Auth.js. Confirm Dokku's proxy preserves the
+external host/scheme used in signature verification. `/hubspot-app` upload/install remains a
+separate manual developer-test and portal action; it is not part of `git push dokku-*`.
 
 Notes:
 
 - quote secrets if they contain `$`, `:`, spaces, or other shell-sensitive characters
+- do not print/export HubSpot tokens during routine comparison; compare variable names and rotate a
+  token if its value may have entered shell history
 - `DATABASE_URL_TEST` is not needed in production
 - `AUTH_SECRET` is required on `scouting-web`; it is not required on `scouting-worker`
 - `AUTH_URL` should match the public HTTPS origin for the web app when running behind Dokku's proxy
@@ -255,6 +251,8 @@ After the first deploy:
 - sign in with the seeded admin account
 - create a scouting run and confirm the worker logs show queue activity
 - exercise at least one queued workflow such as enrichment, export, or HubSpot prep
+- with HubSpot flags still off, run the admin read-only HubSpot health check and record every portal
+  provisioning blocker; do not use a live write as the first connectivity test
 
 Minimum worker success signal:
 
@@ -320,13 +318,20 @@ If deployment fails, the workflow tails recent Dokku logs for both apps to make 
 
 If you need to roll back:
 
-1. identify the last known good app revision for `scouting-web` and `scouting-worker`
-2. confirm the current DB schema is still compatible with that app revision
-3. roll back the worker and web app services
-4. re-run basic verification:
+1. set `HUBSPOT_DIRECT_SYNC_ENABLED=false`, `HUBSPOT_WEBHOOKS_ENABLED=false`,
+   `HUBSPOT_WEBHOOK_JOURNAL_ENABLED=false`, and `HUBSPOT_UI_EXTENSIONS_ENABLED=false` before
+   changing app revisions
+2. identify the last known good app revision for `scouting-web` and `scouting-worker`
+3. confirm the current DB schema is still compatible with that app revision
+4. roll back the worker and web app services
+5. re-run basic verification:
    - login page loads
    - worker boots cleanly
    - one queued job can be claimed and completed
+
+Keep HubSpot portal/link, webhook, conflict, and batch rows intact. Use the CSV fallback while direct
+delivery is disabled, and remove/pause HubSpot-side webhook subscriptions if the endpoint will be
+unavailable for an extended period.
 
 Do not improvise a Prisma down-migration during an incident. If rollback crosses a schema boundary,
 prefer a forward-fix or a database recovery plan.

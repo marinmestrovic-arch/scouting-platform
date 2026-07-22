@@ -1,4 +1,8 @@
 import { HubspotPushBatchRowStatus, HubspotPushBatchStatus, PrismaClient, Role } from "@prisma/client";
+import type {
+  BatchUpsertHubspotContactsInput,
+  HubspotBatchUpsertOutcome,
+} from "@scouting-platform/integrations";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL_TEST?.trim() ?? "";
@@ -9,7 +13,26 @@ type HubspotQueueModule = typeof import("./hubspot/queue");
 
 integration("week 6 hubspot push core integration", () => {
   let prisma: PrismaClient;
-  let upsertHubspotContactMock: ReturnType<typeof vi.fn>;
+  let batchUpsertHubspotContactsMock: ReturnType<typeof vi.fn>;
+
+  async function deliverBatchOutcomes(
+    input: BatchUpsertHubspotContactsInput,
+    outcomes: HubspotBatchUpsertOutcome[],
+  ): Promise<{ outcomes: HubspotBatchUpsertOutcome[]; succeeded: number; failed: number }> {
+    const succeeded = outcomes.filter((outcome) => outcome.success).length;
+    const failed = outcomes.length - succeeded;
+
+    await input.onChunkComplete?.({
+      chunkIndex: 0,
+      inputStartIndex: 0,
+      inputEndIndexExclusive: input.records.length,
+      outcomes,
+      succeeded,
+      failed,
+    });
+
+    return { outcomes, succeeded, failed };
+  }
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
@@ -22,11 +45,26 @@ integration("week 6 hubspot push core integration", () => {
 
   beforeEach(async () => {
     process.env.DATABASE_URL = databaseUrl;
+    vi.doUnmock("./hubspot/queue");
     vi.resetModules();
 
-    upsertHubspotContactMock = vi.fn();
-    vi.doMock("@scouting-platform/integrations", () => ({
-      upsertHubspotContact: upsertHubspotContactMock,
+    batchUpsertHubspotContactsMock = vi.fn(
+      async (input: BatchUpsertHubspotContactsInput) =>
+        deliverBatchOutcomes(
+          input,
+          input.records.map((record, inputIndex) => ({
+            inputIndex,
+            objectWriteTraceId: record.objectWriteTraceId ?? `trace-${inputIndex}`,
+            success: true as const,
+            id: `hubspot-contact-${inputIndex + 1}`,
+            created: true,
+            properties: {},
+          })),
+        ),
+    );
+    vi.doMock("@scouting-platform/integrations", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@scouting-platform/integrations")>()),
+      batchUpsertHubspotContacts: batchUpsertHubspotContactsMock,
     }));
 
     await prisma.$executeRawUnsafe(`
@@ -221,13 +259,31 @@ integration("week 6 hubspot push core integration", () => {
       contactEmails: ["fail@example.com"],
     });
 
-    upsertHubspotContactMock.mockImplementation(async ({ email }: { email: string }) => {
-      if (email === "fail@example.com") {
-        throw new Error("HubSpot request failed");
-      }
-
-      return { id: "hubspot-contact-1" };
-    });
+    batchUpsertHubspotContactsMock.mockImplementation(
+      async (input: BatchUpsertHubspotContactsInput) =>
+        deliverBatchOutcomes(
+          input,
+          input.records.map((record, inputIndex) =>
+            record.id === "fail@example.com"
+              ? {
+                  inputIndex,
+                  objectWriteTraceId: record.objectWriteTraceId ?? `trace-${inputIndex}`,
+                  success: false as const,
+                  category: "VALIDATION_ERROR",
+                  code: "INVALID_EMAIL",
+                  message: "HubSpot request failed",
+                }
+              : {
+                  inputIndex,
+                  objectWriteTraceId: record.objectWriteTraceId ?? `trace-${inputIndex}`,
+                  success: true as const,
+                  id: "hubspot-contact-1",
+                  created: true,
+                  properties: {},
+                },
+          ),
+        ),
+    );
 
     const batch = await hubspotModule.createHubspotPushBatch({
       requestedByUserId: manager.id,
@@ -251,29 +307,46 @@ integration("week 6 hubspot push core integration", () => {
       where: {
         batchId: batch.id,
       },
-      orderBy: {
-        createdAt: "asc",
-      },
     });
-    expect(rows.map((row) => row.status)).toEqual([
-      HubspotPushBatchRowStatus.PUSHED,
-      HubspotPushBatchRowStatus.FAILED,
-      HubspotPushBatchRowStatus.FAILED,
-    ]);
-    expect(rows[0]?.hubspotObjectId).toBe("hubspot-contact-1");
-    expect(rows[1]?.errorMessage).toBe("Channel has no contact email");
-    expect(rows[2]?.errorMessage).toBe("HubSpot request failed");
-    expect(upsertHubspotContactMock).toHaveBeenCalledWith(expect.objectContaining({
-      email: "success@example.com",
-      properties: expect.objectContaining({
-        contact_type: "Influencer",
-        platforms: "YouTube",
-        youtube_followers: "5000",
-        influencer_size: "Micro (5K - 20K)",
-        influencer_vertical: "Lifestyle",
-      }),
+    const rowsByChannel = new Map(rows.map((row) => [row.channelId, row]));
+    expect(rowsByChannel.get(successChannel.id)).toMatchObject({
+      status: HubspotPushBatchRowStatus.PUSHED,
+      hubspotObjectId: "hubspot-contact-1",
+      errorMessage: null,
+    });
+    expect(rowsByChannel.get(missingEmailChannel.id)).toMatchObject({
+      status: HubspotPushBatchRowStatus.FAILED,
+      errorMessage: "Channel has no contact email",
+    });
+    expect(rowsByChannel.get(providerFailChannel.id)).toMatchObject({
+      status: HubspotPushBatchRowStatus.FAILED,
+      errorMessage: "HubSpot request failed",
+    });
+    expect(batchUpsertHubspotContactsMock).toHaveBeenCalledTimes(1);
+    const request = batchUpsertHubspotContactsMock.mock.calls[0]?.[0] as
+      | BatchUpsertHubspotContactsInput
+      | undefined;
+    expect(request).toEqual(expect.objectContaining({
+      allowEmailIdentifierForFullUpsert: true,
+      records: [
+        expect.objectContaining({
+          id: "success@example.com",
+          idProperty: "email",
+          properties: expect.objectContaining({
+            contact_type: "Influencer",
+            platforms: "YouTube",
+            youtube_followers: "5000",
+            influencer_size: "Micro (5K - 20K)",
+            influencer_vertical: "Lifestyle",
+          }),
+        }),
+        expect.objectContaining({
+          id: "fail@example.com",
+          idProperty: "email",
+        }),
+      ],
     }));
-    expect(upsertHubspotContactMock.mock.calls[0]?.[0]?.properties).not.toHaveProperty("creator_title");
+    expect(request?.records[0]?.properties).not.toHaveProperty("creator_title");
 
     const completedAudit = await prisma.auditEvent.findFirst({
       where: {
@@ -285,70 +358,227 @@ integration("week 6 hubspot push core integration", () => {
     expect(completedAudit).not.toBeNull();
   });
 
-  it("marks the batch failed when the integration crashes before rows finish", async () => {
+  it("omits unknown optional creator values instead of clearing existing HubSpot fields", async () => {
     const hubspotModule = await loadHubspot();
-    const manager = await createUser("manager@example.com");
+    const manager = await createUser("unknown-values@example.com");
     const channel = await createChannel({
-      youtubeChannelId: "UC-HUB-CRASH",
-      title: "Hub Crash",
+      youtubeChannelId: "UC-HUB-UNKNOWN-VALUES",
+      title: "Unknown Values",
       requestedByUserId: manager.id,
-      contactEmails: ["crash@example.com"],
+      contactEmails: ["unknown-values@example.com"],
     });
-
-    upsertHubspotContactMock.mockRejectedValueOnce(new Error("Unexpected HubSpot outage"));
+    await prisma.channelMetric.update({
+      where: { channelId: channel.id },
+      data: {
+        subscriberCount: null,
+        viewCount: null,
+        videoCount: null,
+        youtubeFollowers: null,
+        youtubeEngagementRate: null,
+      },
+    });
+    await prisma.channelEnrichment.update({
+      where: { channelId: channel.id },
+      data: { topics: [] },
+    });
 
     const batch = await hubspotModule.createHubspotPushBatch({
       requestedByUserId: manager.id,
       channelIds: [channel.id],
+    });
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'hubspot.push.batch'
+    `);
+
+    await hubspotModule.executeHubspotPushBatch({
+      pushBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    const request = batchUpsertHubspotContactsMock.mock.calls[0]?.[0] as
+      | BatchUpsertHubspotContactsInput
+      | undefined;
+    const properties = request?.records[0]?.properties;
+    expect(properties).toEqual(expect.objectContaining({
+      email: "unknown-values@example.com",
+      contact_type: "Influencer",
+      platforms: "YouTube",
+    }));
+    expect(properties).not.toHaveProperty("youtube_handle");
+    expect(properties).not.toHaveProperty("youtube_followers");
+    expect(properties).not.toHaveProperty("youtube_video_average_views");
+    expect(properties).not.toHaveProperty("youtube_engagement_rate");
+    expect(properties).not.toHaveProperty("language");
+    expect(properties).not.toHaveProperty("influencer_size");
+    expect(properties).not.toHaveProperty("influencer_vertical");
+  });
+
+  it("reclaims only stale RUNNING legacy pushes", async () => {
+    const hubspotModule = await loadHubspot();
+    const manager = await createUser("legacy-reclaim@example.com");
+    const channel = await createChannel({
+      youtubeChannelId: "UC-HUB-LEGACY-RECLAIM",
+      title: "Legacy Reclaim",
+      requestedByUserId: manager.id,
+      contactEmails: ["legacy-reclaim@example.com"],
+    });
+    const batch = await hubspotModule.createHubspotPushBatch({
+      requestedByUserId: manager.id,
+      channelIds: [channel.id],
+    });
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM pgboss.job WHERE name = 'hubspot.push.batch'
+    `);
+    await prisma.hubspotPushBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: HubspotPushBatchStatus.RUNNING,
+        startedAt: new Date(Date.now() - 30 * 60 * 1_000),
+        updatedAt: new Date(),
+      },
+    });
+
+    const active = await hubspotModule.executeHubspotPushBatch({
+      pushBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+    expect(active.status).toBe("running");
+    expect(batchUpsertHubspotContactsMock).not.toHaveBeenCalled();
+
+    await prisma.hubspotPushBatch.update({
+      where: { id: batch.id },
+      data: { updatedAt: new Date(Date.now() - 16 * 60 * 1_000) },
+    });
+    const reclaimed = await hubspotModule.executeHubspotPushBatch({
+      pushBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    expect(reclaimed.status).toBe("completed");
+    expect(reclaimed.pushedRowCount).toBe(1);
+    expect(batchUpsertHubspotContactsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("durably fails and audits legacy push creation when enqueueing fails", async () => {
+    vi.doMock("./hubspot/queue", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("./hubspot/queue")>()),
+      enqueueHubspotPushJob: vi.fn().mockRejectedValue(new Error("legacy queue offline")),
+    }));
+    const hubspotModule = await loadHubspot();
+    const manager = await createUser("legacy-enqueue-failure@example.com");
+    const channel = await createChannel({
+      youtubeChannelId: "UC-HUB-LEGACY-ENQUEUE",
+      title: "Legacy Enqueue Failure",
+      requestedByUserId: manager.id,
+      contactEmails: ["legacy-enqueue-failure@example.com"],
+    });
+
+    await expect(
+      hubspotModule.createHubspotPushBatch({
+        requestedByUserId: manager.id,
+        channelIds: [channel.id],
+      }),
+    ).rejects.toThrow("legacy queue offline");
+
+    const failed = await prisma.hubspotPushBatch.findFirstOrThrow({
+      where: { requestedByUserId: manager.id },
+    });
+    expect(failed.status).toBe(HubspotPushBatchStatus.FAILED);
+    expect(failed.completedAt).not.toBeNull();
+    expect(failed.lastError).toContain(
+      "HubSpot push queue unavailable: legacy queue offline",
+    );
+    const audit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        entityId: failed.id,
+        action: "hubspot_push.enqueue_failed",
+      },
+    });
+    expect(audit.actorUserId).toBe(manager.id);
+  });
+
+  it("checkpoints successful rows and retries only unresolved rows after a provider crash", async () => {
+    const hubspotModule = await loadHubspot();
+    const manager = await createUser("manager@example.com");
+    const firstChannel = await createChannel({
+      youtubeChannelId: "UC-HUB-CHECKPOINT-1",
+      title: "Hub Checkpoint One",
+      requestedByUserId: manager.id,
+      contactEmails: ["checkpoint-one@example.com"],
+    });
+    const secondChannel = await createChannel({
+      youtubeChannelId: "UC-HUB-CHECKPOINT-2",
+      title: "Hub Checkpoint Two",
+      requestedByUserId: manager.id,
+      contactEmails: ["checkpoint-two@example.com"],
+    });
+
+    batchUpsertHubspotContactsMock.mockImplementationOnce(
+      async (input: BatchUpsertHubspotContactsInput) => {
+        const firstRecord = input.records[0];
+        if (!firstRecord) {
+          throw new Error("Expected a first HubSpot record");
+        }
+
+        const outcome: HubspotBatchUpsertOutcome = {
+          inputIndex: 0,
+          objectWriteTraceId: firstRecord.objectWriteTraceId ?? "missing-trace",
+          success: true,
+          id: "hubspot-contact-checkpoint-1",
+          created: true,
+          properties: {},
+        };
+        await input.onChunkComplete?.({
+          chunkIndex: 0,
+          inputStartIndex: 0,
+          inputEndIndexExclusive: 1,
+          outcomes: [outcome],
+          succeeded: 1,
+          failed: 0,
+        });
+
+        throw new Error("Unexpected HubSpot outage");
+      },
+    );
+
+    const batch = await hubspotModule.createHubspotPushBatch({
+      requestedByUserId: manager.id,
+      channelIds: [firstChannel.id, secondChannel.id],
     });
 
     await prisma.$executeRawUnsafe(`
       DELETE FROM pgboss.job WHERE name = 'hubspot.push.batch'
     `);
 
-    const detail = await hubspotModule.executeHubspotPushBatch({
-      pushBatchId: batch.id,
-      requestedByUserId: manager.id,
-    });
-
-    expect(detail.status).toBe("completed");
-    expect(detail.failedRowCount).toBe(1);
-
-    await prisma.hubspotPushBatch.update({
-      where: { id: batch.id },
-      data: { status: HubspotPushBatchStatus.QUEUED },
-    });
-
-    await prisma.hubspotPushBatchRow.deleteMany({
-      where: { batchId: batch.id },
-    });
-
-    await prisma.hubspotPushBatchRow.create({
-      data: {
-        batchId: batch.id,
-        channelId: channel.id,
-      },
-    });
-
-    const db = await import("@scouting-platform/db");
-    const spy = vi
-      .spyOn(db.prisma.channel, "findMany")
-      .mockRejectedValueOnce(new Error("DB load failed"));
-
     await expect(
       hubspotModule.executeHubspotPushBatch({
         pushBatchId: batch.id,
         requestedByUserId: manager.id,
       }),
-    ).rejects.toThrow("DB load failed");
-
-    spy.mockRestore();
+    ).rejects.toThrow("Unexpected HubSpot outage");
 
     const failedBatch = await prisma.hubspotPushBatch.findUniqueOrThrow({
       where: { id: batch.id },
     });
     expect(failedBatch.status).toBe(HubspotPushBatchStatus.FAILED);
-    expect(failedBatch.lastError).toBe("DB load failed");
+    expect(failedBatch.pushedRowCount).toBe(1);
+    expect(failedBatch.failedRowCount).toBe(0);
+    expect(failedBatch.lastError).toBe("Unexpected HubSpot outage");
+
+    const checkpointedRows = await prisma.hubspotPushBatchRow.findMany({
+      where: { batchId: batch.id },
+    });
+    const checkpointedByChannel = new Map(
+      checkpointedRows.map((row) => [row.channelId, row]),
+    );
+    expect(checkpointedByChannel.get(firstChannel.id)).toMatchObject({
+      status: HubspotPushBatchRowStatus.PUSHED,
+      hubspotObjectId: "hubspot-contact-checkpoint-1",
+    });
+    expect(checkpointedByChannel.get(secondChannel.id)).toMatchObject({
+      status: HubspotPushBatchRowStatus.PENDING,
+      hubspotObjectId: null,
+    });
 
     const failedAudit = await prisma.auditEvent.findFirst({
       where: {
@@ -358,6 +588,44 @@ integration("week 6 hubspot push core integration", () => {
       },
     });
     expect(failedAudit).not.toBeNull();
+
+    batchUpsertHubspotContactsMock.mockImplementationOnce(
+      async (input: BatchUpsertHubspotContactsInput) =>
+        deliverBatchOutcomes(
+          input,
+          input.records.map((record, inputIndex) => ({
+            inputIndex,
+            objectWriteTraceId: record.objectWriteTraceId ?? `trace-${inputIndex}`,
+            success: true as const,
+            id: "hubspot-contact-checkpoint-2",
+            created: true,
+            properties: {},
+          })),
+        ),
+    );
+
+    const retried = await hubspotModule.executeHubspotPushBatch({
+      pushBatchId: batch.id,
+      requestedByUserId: manager.id,
+    });
+
+    expect(retried.status).toBe("completed");
+    expect(retried.pushedRowCount).toBe(2);
+    expect(retried.failedRowCount).toBe(0);
+    const retryRequest = batchUpsertHubspotContactsMock.mock.calls[1]?.[0] as
+      | BatchUpsertHubspotContactsInput
+      | undefined;
+    expect(retryRequest?.records).toHaveLength(1);
+    expect(retryRequest?.records[0]?.id).toBe("checkpoint-two@example.com");
+
+    const completedRows = await prisma.hubspotPushBatchRow.findMany({
+      where: { batchId: batch.id },
+    });
+    const completedByChannel = new Map(completedRows.map((row) => [row.channelId, row]));
+    expect(completedByChannel.get(firstChannel.id)?.hubspotObjectId)
+      .toBe("hubspot-contact-checkpoint-1");
+    expect(completedByChannel.get(secondChannel.id)?.hubspotObjectId)
+      .toBe("hubspot-contact-checkpoint-2");
   });
 
   it("returns existing detail when another worker wins the running claim", async () => {
@@ -391,7 +659,7 @@ integration("week 6 hubspot push core integration", () => {
     });
 
     expect(detail.status).toBe("queued");
-    expect(upsertHubspotContactMock).not.toHaveBeenCalled();
+    expect(batchUpsertHubspotContactsMock).not.toHaveBeenCalled();
     expect(rowResetSpy).not.toHaveBeenCalled();
 
     claimSpy.mockRestore();

@@ -110,7 +110,7 @@ integration("dropdown values core integration", () => {
     const fetchFn = vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
-      if (url.includes("/account-info/v3/details")) {
+      if (url.includes("/account-info/2026-03/details")) {
         return new Response(
           JSON.stringify({
             companyCurrency: "EUR",
@@ -130,7 +130,7 @@ integration("dropdown values core integration", () => {
         );
       }
 
-      if (url.includes("/2-200856187/activation_type")) {
+      if (url.includes("/2-ACTIVATION/activation_type")) {
         return new Response(
           JSON.stringify({
             name: "activation_type",
@@ -188,6 +188,7 @@ integration("dropdown values core integration", () => {
       actorUserId: admin.id,
       apiKey: "hubspot-key",
       fetchFn,
+      activationObjectType: "2-ACTIVATION",
     });
 
     expect(updated.items.filter((item) => item.fieldKey === "currency").map((item) => item.value)).toEqual([
@@ -197,6 +198,12 @@ integration("dropdown values core integration", () => {
     expect(updated.items.filter((item) => item.fieldKey === "dealType").map((item) => item.value)).toEqual([
       "Flat Fee",
     ]);
+    expect(updated.items.find((item) => item.fieldKey === "dealType")).toMatchObject({
+      label: "Flat Fee",
+      internalValue: "Influencer Collaboration",
+      sourceObjectType: "deals",
+      sourcePropertyName: "dealtype",
+    });
     expect(updated.items.filter((item) => item.fieldKey === "activationType").map((item) => item.value)).toEqual([
       "Dedicated Video",
     ]);
@@ -221,13 +228,13 @@ integration("dropdown values core integration", () => {
     expect(audit).not.toBeNull();
     expect(audit?.metadata).toMatchObject({
       syncedFields: expect.arrayContaining([
-        { fieldKey: "currency", valueCount: 2 },
-        { fieldKey: "dealType", valueCount: 1 },
-        { fieldKey: "activationType", valueCount: 1 },
-        { fieldKey: "influencerType", valueCount: 1 },
-        { fieldKey: "influencerVertical", valueCount: 1 },
-        { fieldKey: "countryRegion", valueCount: 1 },
-        { fieldKey: "language", valueCount: 1 },
+        expect.objectContaining({ fieldKey: "currency", valueCount: 2 }),
+        expect.objectContaining({ fieldKey: "dealType", valueCount: 1 }),
+        expect.objectContaining({ fieldKey: "activationType", valueCount: 1 }),
+        expect.objectContaining({ fieldKey: "influencerType", valueCount: 1 }),
+        expect.objectContaining({ fieldKey: "influencerVertical", valueCount: 1 }),
+        expect.objectContaining({ fieldKey: "countryRegion", valueCount: 1 }),
+        expect.objectContaining({ fieldKey: "language", valueCount: 1 }),
       ]),
     });
   });

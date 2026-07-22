@@ -51,6 +51,8 @@ function buildManualOverrideResponse() {
         estimatedPrice: null,
         brandMentions: [],
       },
+      workedWith: null,
+      collaborations: [],
     },
     applied: [
       {

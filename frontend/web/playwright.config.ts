@@ -4,6 +4,7 @@ import process from "node:process";
 
 import { defineConfig } from "@playwright/test";
 
+import { selectSafeTestDatabaseConfiguration } from "./e2e/test-db-guard";
 import { ensurePlaywrightEnvironment } from "./e2e/test-env";
 
 function loadRootEnv(): void {
@@ -42,6 +43,7 @@ function loadRootEnv(): void {
 }
 
 loadRootEnv();
+selectSafeTestDatabaseConfiguration();
 ensurePlaywrightEnvironment();
 
 export default defineConfig({

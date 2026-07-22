@@ -5,6 +5,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 type GlobalWithPrisma = typeof globalThis & {
   __scoutingPrisma?: PrismaClient;
+  __scoutingPrismaSchemaFingerprint?: string;
 };
 
 export type DbTransactionClient = Prisma.TransactionClient;
@@ -40,16 +41,51 @@ export function createPrismaClient(options: CreatePrismaClientOptions = {}): Pri
 
 const globalForPrisma = globalThis as GlobalWithPrisma;
 
+function getPrismaSchemaFingerprint(): string {
+  return Prisma.dmmf.datamodel.models
+    .map((model) => model.name)
+    .sort()
+    .join("|");
+}
+
+function getPrismaModelDelegateName(modelName: string): string {
+  return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}`;
+}
+
+function clientSupportsCurrentModels(prismaClient: PrismaClient): boolean {
+  return Prisma.dmmf.datamodel.models.every((model) =>
+    Reflect.get(prismaClient as object, getPrismaModelDelegateName(model.name)) !== undefined,
+  );
+}
+
 function getOrCreatePrismaClient(): PrismaClient {
   const cachedPrisma = globalForPrisma.__scoutingPrisma;
+  const schemaFingerprint = getPrismaSchemaFingerprint();
 
-  if (cachedPrisma) {
+  if (
+    cachedPrisma
+    && (
+      globalForPrisma.__scoutingPrismaSchemaFingerprint === schemaFingerprint
+      || (
+        globalForPrisma.__scoutingPrismaSchemaFingerprint === undefined
+        && clientSupportsCurrentModels(cachedPrisma)
+      )
+    )
+  ) {
+    globalForPrisma.__scoutingPrismaSchemaFingerprint = schemaFingerprint;
     return cachedPrisma;
   }
 
   const prismaClient = createPrismaClient();
 
   globalForPrisma.__scoutingPrisma = prismaClient;
+  globalForPrisma.__scoutingPrismaSchemaFingerprint = schemaFingerprint;
+
+  // Prisma generation can add delegates while a development server remains alive.
+  // Replace that stale global client instead of returning undefined model delegates.
+  if (cachedPrisma) {
+    void cachedPrisma.$disconnect().catch(() => undefined);
+  }
 
   return prismaClient;
 }
@@ -86,5 +122,6 @@ export async function resetPrismaClientForTests(): Promise<void> {
   if (cachedPrisma) {
     await cachedPrisma.$disconnect();
     delete globalForPrisma.__scoutingPrisma;
+    delete globalForPrisma.__scoutingPrismaSchemaFingerprint;
   }
 }

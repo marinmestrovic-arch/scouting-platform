@@ -10,10 +10,11 @@ import {
   HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
   updateDropdownValuesRequestSchema,
 } from "@scouting-platform/contracts";
-import { prisma, withDbTransaction } from "@scouting-platform/db";
+import { prisma, withDbTransaction, type DbTransactionClient } from "@scouting-platform/db";
 import {
   fetchHubspotAccountDetails,
   fetchHubspotPropertyDefinition,
+  loadHubspotConfig,
 } from "@scouting-platform/integrations";
 
 import { ServiceError } from "./errors";
@@ -40,45 +41,68 @@ const PRISMA_DROPDOWN_FIELD_KEYS = {
   language: "LANGUAGE",
 } as const satisfies Record<DropdownValueFieldKey, PrismaDropdownValueFieldKey>;
 
-const HUBSPOT_DROPDOWN_SOURCE_BY_FIELD = {
-  currency: {
-    kind: "accountCurrencies",
-  },
-  dealType: {
-    kind: "property",
-    objectType: "deals",
-    propertyName: "dealtype",
-  },
-  activationType: {
-    kind: "property",
-    objectType: "2-200856187",
-    propertyName: "activation_type",
-  },
-  influencerType: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "influencer_type",
-  },
-  influencerVertical: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "influencer_vertical",
-  },
-  countryRegion: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "country",
-  },
-  language: {
-    kind: "property",
-    objectType: "contacts",
-    propertyName: "language",
-  },
-} as const satisfies Record<
-  HubspotSyncedDropdownFieldKey,
+type HubspotDropdownSource =
   | { kind: "accountCurrencies" }
-  | { kind: "property"; objectType: string; propertyName: string }
->;
+  | { kind: "property"; objectType: string; propertyName: string };
+
+export type HubspotDropdownMutationTransaction = (
+  mutation: (tx: DbTransactionClient) => Promise<void>,
+) => Promise<void>;
+
+export function getHubspotDropdownSources(input?: {
+  activationObjectType?: string | null;
+}): Record<
+  HubspotSyncedDropdownFieldKey,
+  HubspotDropdownSource
+> {
+  const activationObjectType =
+    input?.activationObjectType?.trim() ??
+    loadHubspotConfig().objectMappings.activationObjectType;
+
+  if (!activationObjectType) {
+    throw new ServiceError(
+      "HUBSPOT_DROPDOWN_CONFIG_MISSING",
+      500,
+      "HUBSPOT_ACTIVATION_OBJECT_TYPE is required to synchronize activation types",
+    );
+  }
+
+  return {
+    currency: {
+      kind: "accountCurrencies",
+    },
+    dealType: {
+      kind: "property",
+      objectType: "deals",
+      propertyName: "dealtype",
+    },
+    activationType: {
+      kind: "property",
+      objectType: activationObjectType,
+      propertyName: "activation_type",
+    },
+    influencerType: {
+      kind: "property",
+      objectType: "contacts",
+      propertyName: "influencer_type",
+    },
+    influencerVertical: {
+      kind: "property",
+      objectType: "contacts",
+      propertyName: "influencer_vertical",
+    },
+    countryRegion: {
+      kind: "property",
+      objectType: "contacts",
+      propertyName: "country",
+    },
+    language: {
+      kind: "property",
+      objectType: "contacts",
+      propertyName: "language",
+    },
+  };
+}
 
 const HUBSPOT_SYNCED_DROPDOWN_FIELD_SET = new Set<DropdownValueFieldKey>(
   HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS,
@@ -107,6 +131,13 @@ function toDropdownValue(record: {
   id: string;
   fieldKey: PrismaDropdownValueFieldKey;
   value: string;
+  label?: string | null;
+  internalValue?: string | null;
+  source?: string | null;
+  sourceObjectType?: string | null;
+  sourcePropertyName?: string | null;
+  hubspotPortalId?: string | null;
+  hubspotSyncedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): DropdownValue {
@@ -114,6 +145,22 @@ function toDropdownValue(record: {
     id: record.id,
     fieldKey: fromPrismaFieldKey(record.fieldKey),
     value: record.value,
+    ...(typeof record.label === "string" ? { label: record.label } : {}),
+    ...(typeof record.internalValue === "string"
+      ? { internalValue: record.internalValue }
+      : {}),
+    ...(record.sourceObjectType === undefined
+      ? {}
+      : { sourceObjectType: record.sourceObjectType }),
+    ...(record.sourcePropertyName === undefined
+      ? {}
+      : { sourcePropertyName: record.sourcePropertyName }),
+    ...(record.hubspotPortalId === undefined
+      ? {}
+      : { hubspotPortalId: record.hubspotPortalId }),
+    ...(record.hubspotSyncedAt === undefined
+      ? {}
+      : { hubspotSyncedAt: record.hubspotSyncedAt?.toISOString() ?? null }),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -123,12 +170,23 @@ function normalizeDropdownValues(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
 
-function extractHubspotOptionLabels(
+export function extractHubspotDropdownOptions(
   definition: Awaited<ReturnType<typeof fetchHubspotPropertyDefinition>>,
-): string[] {
-  return normalizeDropdownValues(
-    definition.options.map((option) => option.label?.trim() || option.value?.trim() || ""),
-  );
+): Array<{ label: string; internalValue: string }> {
+  const options = new Map<string, { label: string; internalValue: string }>();
+
+  for (const option of definition.options) {
+    const label = option.label?.trim() || option.value?.trim();
+    const internalValue = option.value?.trim();
+
+    if (!label || !internalValue || options.has(internalValue)) {
+      continue;
+    }
+
+    options.set(internalValue, { label, internalValue });
+  }
+
+  return [...options.values()].sort((left, right) => left.label.localeCompare(right.label));
 }
 
 export async function ensureDropdownValueDefaults(): Promise<void> {
@@ -218,11 +276,21 @@ export async function syncHubspotDropdownValues(input: {
   actorUserId: string;
   apiKey?: string;
   fetchFn?: typeof fetch;
+  hubspotPortalId?: string | null;
+  activationObjectType?: string | null;
+  now?: Date;
+  withMutationTransaction?: HubspotDropdownMutationTransaction;
 }): Promise<ListDropdownValuesResponse> {
+  const sources = getHubspotDropdownSources(
+    input.activationObjectType === undefined
+      ? undefined
+      : { activationObjectType: input.activationObjectType },
+  );
+  const now = input.now ?? new Date();
   const syncedValues = Object.fromEntries(
     await Promise.all(
       HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map(async (fieldKey) => {
-        const source = HUBSPOT_DROPDOWN_SOURCE_BY_FIELD[fieldKey];
+        const source = sources[fieldKey];
 
         if (source.kind === "accountCurrencies") {
           const details = await fetchHubspotAccountDetails({
@@ -230,10 +298,13 @@ export async function syncHubspotDropdownValues(input: {
             ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
           });
 
-          return [fieldKey, normalizeDropdownValues([
-            details.companyCurrency ?? "",
-            ...details.additionalCurrencies,
-          ])];
+          return [
+            fieldKey,
+            normalizeDropdownValues([
+              details.companyCurrency ?? "",
+              ...details.additionalCurrencies,
+            ]).map((value) => ({ label: value, internalValue: value })),
+          ];
         }
 
         const definition = await fetchHubspotPropertyDefinition({
@@ -243,12 +314,17 @@ export async function syncHubspotDropdownValues(input: {
           ...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
         });
 
-        return [fieldKey, extractHubspotOptionLabels(definition)];
+        return [fieldKey, extractHubspotDropdownOptions(definition)];
       }),
     ),
-  ) as Record<HubspotSyncedDropdownFieldKey, string[]>;
+  ) as Record<
+    HubspotSyncedDropdownFieldKey,
+    Array<{ label: string; internalValue: string }>
+  >;
 
-  await withDbTransaction(async (tx) => {
+  const withMutationTransaction = input.withMutationTransaction ?? withDbTransaction;
+
+  await withMutationTransaction(async (tx) => {
     for (const fieldKey of HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS) {
       await tx.dropdownValue.deleteMany({
         where: {
@@ -257,10 +333,19 @@ export async function syncHubspotDropdownValues(input: {
       });
 
       if (syncedValues[fieldKey].length > 0) {
+        const source = sources[fieldKey];
         await tx.dropdownValue.createMany({
-          data: syncedValues[fieldKey].map((value) => ({
+          data: syncedValues[fieldKey].map((option) => ({
             fieldKey: PRISMA_DROPDOWN_FIELD_KEYS[fieldKey],
-            value,
+            value: option.label,
+            label: option.label,
+            internalValue: option.internalValue,
+            source: "hubspot",
+            sourceObjectType: source.kind === "property" ? source.objectType : "account",
+            sourcePropertyName:
+              source.kind === "property" ? source.propertyName : "currencies",
+            hubspotPortalId: input.hubspotPortalId ?? null,
+            hubspotSyncedAt: now,
           })),
         });
       }
@@ -276,6 +361,10 @@ export async function syncHubspotDropdownValues(input: {
           syncedFields: HUBSPOT_SYNCED_DROPDOWN_FIELD_KEYS.map((fieldKey) => ({
             fieldKey,
             valueCount: syncedValues[fieldKey].length,
+            sourceObjectType:
+              sources[fieldKey].kind === "property"
+                ? sources[fieldKey].objectType
+                : "account",
           })),
         },
       },

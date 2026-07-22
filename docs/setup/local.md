@@ -3,6 +3,7 @@
 This setup targets macOS and Linux with Docker Compose-compatible runtimes.
 
 For staging deployment, use [`/docs/setup/staging-railway.md`](./staging-railway.md).
+For HubSpot portal provisioning and rollout, use [`/docs/setup/hubspot-v2.md`](./hubspot-v2.md).
 
 ## Prerequisites
 
@@ -81,6 +82,28 @@ pnpm typecheck
 pnpm build
 pnpm test
 ```
+
+## Optional local HubSpot V2 setup
+
+The copied `.env.example` is safe by default: direct sync, webhooks, the Webhook Journal, and UI
+extensions are all `false`. Ordinary local development and mocked adapter tests do not require a
+real HubSpot credential.
+
+If you intentionally connect a local stack to a non-production HubSpot developer test account:
+
+1. Follow [`hubspot-v2.md`](./hubspot-v2.md) to provision scopes, the two unique properties, custom
+   object mappings, and associations.
+2. Set `HUBSPOT_ACCESS_TOKEN` (not the deprecated `HUBSPOT_API_KEY`), numeric
+   `HUBSPOT_PORTAL_ID`, the two unique-property internal names, and the portal-specific object/
+   property mappings in `.env`.
+3. Keep every HubSpot flag `false`, start the stack, sign in as an admin, and run the read-only
+   connection health check from Database.
+4. Enable only the single feature being exercised and use disposable developer-test records.
+
+HubSpot cannot deliver a webhook or UI-extension fetch to `localhost`. Use a reviewed HTTPS tunnel
+only for an intentional developer-test session, configure the exact external scheme/host/path, and
+remove the HubSpot-side target afterward. A reverse-proxy URI mismatch will invalidate HubSpot v3
+signatures. Never use a production portal token in shared local `.env` files.
 
 ## Day-to-day commands
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   CredentialProvider,
+  HubspotImportBatchStatus as PrismaHubspotImportBatchStatus,
   Prisma,
   Role,
   type RunChannelAssessment,
@@ -17,6 +18,7 @@ import {
   type CatalogScoutingCriteria,
   type CreateRunResponse,
   type ListRecentRunsResponse,
+  type HubspotImportBatchStatus,
   type RunChannelAssessmentItem,
   type RunFilterOptions,
   type RunMetadataInput,
@@ -45,6 +47,49 @@ const campaignManagerSelect = {
   email: true,
   name: true,
 } as const;
+
+const ACTIVE_HUBSPOT_IMPORT_BATCH_STATUSES = new Set<PrismaHubspotImportBatchStatus>([
+  PrismaHubspotImportBatchStatus.QUEUED,
+  PrismaHubspotImportBatchStatus.PREPARING,
+  PrismaHubspotImportBatchStatus.RUNNING,
+  PrismaHubspotImportBatchStatus.SUBMITTING,
+  PrismaHubspotImportBatchStatus.SUBMITTED,
+  PrismaHubspotImportBatchStatus.PROCESSING,
+]);
+
+function toHubspotImportBatchStatus(
+  status: PrismaHubspotImportBatchStatus,
+): HubspotImportBatchStatus {
+  switch (status) {
+    case PrismaHubspotImportBatchStatus.PREPARING:
+      return "preparing";
+    case PrismaHubspotImportBatchStatus.RUNNING:
+      return "running";
+    case PrismaHubspotImportBatchStatus.SUBMITTING:
+      return "submitting";
+    case PrismaHubspotImportBatchStatus.SUBMITTED:
+      return "submitted";
+    case PrismaHubspotImportBatchStatus.PROCESSING:
+      return "processing";
+    case PrismaHubspotImportBatchStatus.COMPLETED:
+      return "completed";
+    case PrismaHubspotImportBatchStatus.COMPLETED_WITH_ERRORS:
+      return "completed_with_errors";
+    case PrismaHubspotImportBatchStatus.FAILED:
+      return "failed";
+    default:
+      return "queued";
+  }
+}
+
+export function selectRunHubspotSyncStatus(
+  batches: readonly { status: PrismaHubspotImportBatchStatus }[],
+): HubspotImportBatchStatus | null {
+  const selected = batches.find((batch) =>
+    ACTIVE_HUBSPOT_IMPORT_BATCH_STATUSES.has(batch.status),
+  ) ?? batches[0];
+  return selected ? toHubspotImportBatchStatus(selected.status) : null;
+}
 
 export const runMetadataSelect = {
   campaignId: true,
@@ -1033,6 +1078,10 @@ export async function listRecentRuns(input: {
             results: true,
           },
         },
+        hubspotImportBatches: {
+          orderBy: { createdAt: "desc" },
+          select: { status: true },
+        },
       },
     }),
     getRunFilterOptions({
@@ -1054,6 +1103,7 @@ export async function listRecentRuns(input: {
       startedAt: runRequest.startedAt?.toISOString() ?? null,
       completedAt: runRequest.completedAt?.toISOString() ?? null,
       resultCount: runRequest._count.results,
+      hubspotSyncStatus: selectRunHubspotSyncStatus(runRequest.hubspotImportBatches),
       metadata: toRunMetadata(runRequest),
     })),
     filterOptions,

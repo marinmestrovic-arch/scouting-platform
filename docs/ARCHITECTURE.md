@@ -1,10 +1,11 @@
 # Architecture
 
-Current-state architecture for `scouting-platform` as of 2026-04-01.
+Current-state architecture for `scouting-platform` as of 2026-07-20.
 
 Historical note:
 - [ADR-001-architecture.md](./ADR-001-architecture.md) preserves the original monorepo/service-boundary decision.
 - [ADR-003-repository-layout-simplification.md](./ADR-003-repository-layout-simplification.md) is the accepted ADR that governs the current repository layout.
+- [ADR-005-hubspot-integration-boundaries.md](./ADR-005-hubspot-integration-boundaries.md) records the HubSpot V2 single-portal, identity, queue, and ownership boundaries.
 
 ## 1. System Shape
 
@@ -63,9 +64,12 @@ shared/
 docs/
 scripts/
 docker/
+hubspot-app/
 ```
 
 There are no active top-level `apps/` or `packages/` workspaces in the current repo state.
+`hubspot-app/` is intentionally outside the pnpm workspace because HubSpot's developer platform
+builds and uploads it separately.
 
 ## 4. Directory Responsibilities
 
@@ -80,14 +84,14 @@ There are no active top-level `apps/` or `packages/` workspaces in the current r
 ### `backend/worker`
 - `pg-boss` bootstrap
 - worker registration
-- long-running discovery, enrichment, import, export, and HubSpot preparation jobs
+- discovery, enrichment, import/export, direct HubSpot delivery, reconciliation, and webhook jobs
 - retry and durability handling for queued workflows
 
 ### `backend/packages/core`
 - domain services
 - business rules
 - run creation and discovery orchestration
-- campaign, client, dropdown, export, and HubSpot preparation services
+- campaign, client, dropdown, export, and HubSpot delivery/reconciliation services
 - audit logging and approval workflows
 
 ### `backend/packages/db`
@@ -100,7 +104,7 @@ There are no active top-level `apps/` or `packages/` workspaces in the current r
 - YouTube discovery/context adapter
 - OpenAI enrichment adapter
 - HypeAuditor adapter
-- HubSpot adapter
+- HubSpot `2026-03` adapters for CRM objects, properties, references, associations, and signatures
 
 ### `shared/packages/contracts`
 - Zod request/response contracts
@@ -111,6 +115,12 @@ There are no active top-level `apps/` or `packages/` workspaces in the current r
 - env validation
 - feature flags
 - shared runtime constants
+
+### `hubspot-app`
+- private/static HubSpot developer-platform project
+- contact and deal record-card metadata plus an opt-in campaign card example
+- signed fetches to the platform's provider-authenticated extension endpoint
+- no access token, client secret, automatic upload, or production deployment
 
 ## 5. Auth and User Model
 
@@ -154,9 +164,12 @@ The top-level authenticated navigation exposes five primary surfaces:
 
 Supporting workflow pages still exist outside the top-level nav:
 - `Exports` for CSV batch history and results
-- `HubSpot` for import-ready batch history plus legacy push history
+- the run export-preparation workspace for Google Sheets, direct HubSpot sync, and HubSpot CSV fallback
 - run detail pages at `/runs/[runId]`
-- preparation pages at `/exports/prepare/[runId]` and `/hubspot/prepare/[runId]`
+- preparation pages at `/exports/prepare/[runId]`
+
+Legacy HubSpot push records and compatibility endpoints remain readable, but the contact-only push is
+not an active product action.
 
 Legacy compatibility routes remain in place:
 - `/runs` redirects to `/dashboard`
@@ -223,11 +236,22 @@ The current creation flow is:
 - `hubspot_push_batch_rows`
 - `hubspot_import_batches`
 - `hubspot_import_batch_rows`
+- `hubspot_contact_links`
+- `hubspot_deal_links`
 
 ### Admin and operational
 - `advanced_report_requests`
 - `audit_events`
 - `saved_segments`
+- `hubspot_portals`
+- `hubspot_owners`
+- `hubspot_pipelines`
+- `hubspot_pipeline_stages`
+- `hubspot_association_definitions`
+- `hubspot_object_sync_runs`
+- `hubspot_sync_cursors`
+- `hubspot_webhook_events`
+- `hubspot_conflicts`
 - `pgboss.*` queue tables
 
 ## 9. Data Precedence
@@ -243,7 +267,37 @@ Resolved catalog/profile data follows the accepted precedence order:
 
 The system stores both raw/source payloads and resolved creator data used by the UI.
 
-## 10. API Boundary
+## 10. HubSpot V2 Boundary
+
+The integration is static/private and single-portal. Environment variables hold the access token
+and client secret; the database stores only token-free portal identity and portal-scoped object
+links. OAuth remains deferred until multiple portal installations are required.
+
+The current outbound flow is:
+
+1. A user saves run-scoped HubSpot preparation values in `/exports/prepare/[runId]`.
+2. `hubspot.import.batch` prepares durable rows.
+3. In `direct_object_api` mode, the worker batch-upserts contacts by
+   `atlas_contact_id`, upserts one deal by `atlas_run_id`, persists returned
+   CRM IDs, and then creates discovered directional associations.
+4. Successful rows and the deal link survive partial failure; retry targets retryable failures.
+5. In `csv_fallback` mode, the same preparation creates a downloadable CSV and makes no claim that
+   HubSpot imported it.
+
+HubSpot owns CRM IDs, client/campaign custom objects, owners, pipelines/stages, option internal
+values, and association definitions. The platform owns creator catalog identity and resolved
+metrics. Inbound disagreement on a shared field creates `hubspot_conflicts`; it does not bypass
+ADR-002 or overwrite an admin manual correction.
+
+Object reconciliation uses portal/object cursors, overlap protection, explicit archived state, and
+periodic safety scans. A record missing from one provider response is never hard-deleted. Standard
+signed webhooks cover supported contact/deal events; custom client/campaign objects retain
+incremental search and daily reconciliation coverage.
+
+See [`docs/setup/hubspot-v2.md`](./setup/hubspot-v2.md) for scopes, property/association
+provisioning, flags, rotation, rollout, rollback, and the separate UI-extension process.
+
+## 11. API Boundary
 
 The web app exposes the current BFF surface through route families in `frontend/web/app/api`:
 
@@ -263,6 +317,14 @@ The web app exposes the current BFF surface through route families in `frontend/
 - `/api/clients`
 - `/api/users/campaign-managers`
 - `/api/admin/dropdown-values`
+- `/api/database/hubspot-health`
+- `/api/database/hubspot-conflicts`
+- `/api/database/hubspot-sync`
+
+The HubSpot health `POST` persists a queued execution record and returns `202`; all live provider
+diagnostics run in `hubspot.health-check`. The admin UI polls the same health endpoint for durable
+queued/running/completed/failed state, timestamps, and `lastError`. A worker-side recovery monitor
+re-enqueues stale queued records and uses owner-guarded leases/heartbeats for running diagnostics.
 
 ### Runs and preparation previews
 - `/api/runs`
@@ -292,32 +354,54 @@ The web app exposes the current BFF surface through route families in `frontend/
 - `/api/hubspot-push-batches/[id]`
 - `/api/hubspot-import-batches`
 - `/api/hubspot-import-batches/[id]`
+- `/api/hubspot-import-batches/[id]/retry`
 - `/api/hubspot-import-batches/[id]/download`
 
-## 11. Background Jobs
+### HubSpot provider-authenticated routes
+- `/api/integrations/hubspot/webhooks`
+- `/api/integrations/hubspot/extension/context`
+
+These public routes are intentional Auth.js exceptions. They preserve the request data needed for
+HubSpot signature v3 verification, validate portal/app/object context, and delegate to core. They
+are feature-flagged off by default.
+
+## 12. Background Jobs
 
 Current job names are:
 - `runs.discover`
 - `runs.recompute`
+- `runs.assess.channel-fit`
 - `channels.enrich.llm`
 - `channels.enrich.hypeauditor`
 - `imports.csv.process`
 - `exports.csv.generate`
+- `hubspot-preview.enrich`
 - `hubspot.import.batch`
 - `hubspot.push.batch`
+- `hubspot.object-sync.schedule`
+- `hubspot.object-sync`
+- `hubspot.webhook.process`
 - `maintenance.refresh-stale`
 
 Every job family uses stable payload contracts in [`shared/packages/contracts/src/jobs.ts`](../shared/packages/contracts/src/jobs.ts), and every persisted workflow stores status/timestamps/`lastError`.
 
-## 12. Security Rules
+`hubspot.import.batch` is a bounded, resumable state machine for both direct Object API delivery and
+CSV fallback. `hubspot.push.batch` remains a legacy compatibility family. The daily object-sync
+schedule runs at midnight in `Europe/Zagreb`; `hubspot.webhook.process` handles deduplicated events
+outside the public request path.
+
+## 13. Security Rules
 
 - Encrypt user YouTube keys at rest with `APP_ENCRYPTION_KEY`.
 - Never expose company secrets to the browser.
 - Enforce authorization server-side for every protected mutation.
 - Keep audit events immutable.
 - Keep provider calls in backend packages and workers only.
+- Prefer `HUBSPOT_ACCESS_TOKEN`; `HUBSPOT_API_KEY` is only a deprecated fallback.
+- Keep all HubSpot V2 feature flags off until the read-only portal health check passes.
+- Authenticate public HubSpot webhook/extension routes with signature v3 and replay protection.
 
-## 13. Testing Strategy
+## 14. Testing Strategy
 
 ### Unit
 - domain rules
@@ -338,4 +422,4 @@ Every job family uses stable payload contracts in [`shared/packages/contracts/sr
 - new scouting flow
 - dashboard/run review
 - admin approvals/imports
-- export and HubSpot preparation flows
+- export, direct HubSpot sync, partial retry, and CSV fallback flows

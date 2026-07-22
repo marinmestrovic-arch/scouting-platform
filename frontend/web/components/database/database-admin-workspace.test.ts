@@ -44,6 +44,10 @@ vi.mock("./dropdown-values-workspace", () => ({
   DropdownValuesWorkspace: () => "dropdown-values-workspace",
 }));
 
+vi.mock("./hubspot-integration-workspace", () => ({
+  HubspotIntegrationWorkspace: () => "hubspot-integration-workspace",
+}));
+
 import { DatabaseAdminWorkspace } from "./database-admin-workspace";
 
 const campaigns = {
@@ -114,6 +118,7 @@ describe("DatabaseAdminWorkspace", () => {
     expect(html).toContain("Clients");
     expect(html).toContain("Campaigns");
     expect(html).toContain("Dropdown Values");
+    expect(html).toContain("HubSpot");
     expect(html).toContain("Sync from HubSpot");
     expect(html).not.toContain("Last run:");
     expect(html).not.toContain("Deactivated");
@@ -132,5 +137,22 @@ describe("DatabaseAdminWorkspace", () => {
     );
 
     expect(html).not.toContain("Sync from HubSpot");
+    expect(html).not.toContain(">HubSpot<");
+  });
+
+  it("opens the admin-only HubSpot health and conflicts workspace", async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams("tab=hubspot"));
+
+    const html = await renderToStringAsync(
+      createElement(DatabaseAdminWorkspace, {
+        campaigns,
+        clients,
+        dropdownValues: [],
+        hubspotSyncRuns,
+        isAdmin: true,
+      }),
+    );
+
+    expect(html).toContain("hubspot-integration-workspace");
   });
 });

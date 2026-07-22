@@ -208,6 +208,7 @@ describe("week 1 and week 2 contracts", () => {
           startedAt: new Date().toISOString(),
           completedAt: new Date().toISOString(),
           resultCount: 3,
+          hubspotSyncStatus: null,
           metadata: buildRunMetadataResponse(),
         },
       ],

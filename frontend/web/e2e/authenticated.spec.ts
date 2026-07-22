@@ -25,7 +25,7 @@ function createCreatorListCsvRow(overrides: Partial<Record<(typeof CSV_IMPORT_HE
 test.describe("authenticated launch-readiness flows", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("dashboard exposes only the Export handoff action for runs", async ({ page }) => {
+  test("dashboard opens the canonical HubSpot preparation workflow", async ({ page }) => {
     const seedData = readSeedData();
 
     await login(page, seedData.manager);
@@ -33,10 +33,171 @@ test.describe("authenticated launch-readiness flows", () => {
 
     const seededRunRow = page.locator("tr", { hasText: seedData.run.name });
     await expect(seededRunRow).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "HubSpot sync status" })).toBeVisible();
+    await expect(seededRunRow.locator("td").nth(7).getByText("Completed", { exact: true }))
+      .toBeVisible();
 
-    const exportLink = seededRunRow.getByRole("link", { name: "Export" });
+    const exportLink = seededRunRow.getByRole("link", { name: "HUBSPOT / EXPORT" });
     await expect(exportLink).toHaveAttribute("href", /\/exports\/prepare\/[0-9a-f-]+$/);
     await expect(exportLink).toHaveAttribute("target", "_blank");
+  });
+
+  test("catalog creator profile shows locally mirrored collaboration history", async ({ page }) => {
+    const seedData = readSeedData();
+
+    await login(page, seedData.manager);
+    await page.goto(`/catalog/${seedData.channels.catalog.id}`);
+
+    await expect(page.getByText("Worked with", { exact: true })).toBeVisible();
+    await expect(page.getByText("Yes", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Collaboration History" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Week 8 E2E Creator Collaboration" }))
+      .toHaveAttribute("href", /record\/0-3\/e2e-deal-1$/);
+    await expect(page.getByText("Week 8 E2E Client", { exact: true })).toBeVisible();
+    await expect(page.getByText("Week 8 E2E Campaign", { exact: true })).toBeVisible();
+    await expect(page.getByText("Contract signed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Week 8 Deal Owner", { exact: true })).toBeVisible();
+    await expect(page.getByText("Week 8 YouTube Integration", { exact: true })).toBeVisible();
+  });
+
+  test("prepared runs can exercise direct HubSpot sync with mocked local APIs", async ({ page }) => {
+    const seedData = readSeedData();
+    const batchId = "8c7c29b2-1780-4f21-9d84-fbf729b69ddb";
+    const timestamp = "2026-07-20T10:00:00.000Z";
+    const hubspotContactUrl = "https://app.hubspot.com/contacts/12345/record/0-1/101";
+    const hubspotDealUrl = "https://app.hubspot.com/contacts/12345/record/0-3/202";
+    const summary = {
+      id: batchId,
+      run: {
+        id: seedData.run.id,
+        name: seedData.run.name,
+      },
+      fileName: "week8-direct-sync.csv",
+      schemaVersion: "week7-hubspot-import-v2",
+      status: "completed",
+      totalRowCount: 1,
+      preparedRowCount: 1,
+      failedRowCount: 0,
+      syncedRowCount: 1,
+      deliveryMode: "direct_object_api",
+      portalId: "12345",
+      lastError: null,
+      requestedBy: {
+        id: seedData.manager.id,
+        email: seedData.manager.email,
+        name: "Week 8 E2E Manager",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      startedAt: timestamp,
+      completedAt: timestamp,
+    };
+    const detail = {
+      ...summary,
+      rows: [
+        {
+          id: "cfcf2874-a4c2-4a2c-a784-49d3bcafab62",
+          channelId: seedData.channels.catalog.id,
+          channelTitle: seedData.channels.catalog.title,
+          contactEmail: "creator@week8-e2e.example.com",
+          firstName: "Week",
+          lastName: "Eight",
+          influencerType: seedData.channels.catalog.influencerType,
+          influencerVertical: seedData.channels.catalog.influencerVertical,
+          countryRegion: seedData.channels.catalog.countryRegion,
+          language: "Croatian",
+          status: "synced",
+          errorMessage: null,
+          hubspotContactId: "101",
+          hubspotDealId: "202",
+          hubspotContactUrl,
+          hubspotDealUrl,
+          associationStatus: "associated",
+          retryable: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    };
+    let directSyncRequests = 0;
+    let submittedBody: unknown = null;
+
+    await page.route("**/api/hubspot-readiness?*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          enabled: true,
+          ready: true,
+          healthStatus: "healthy",
+          portalId: "12345",
+          blockers: [],
+          activeBatchId: null,
+        }),
+      });
+    });
+    await page.route("**/api/hubspot-import-batches", async (route) => {
+      if (route.request().method() === "POST") {
+        directSyncRequests += 1;
+        submittedBody = route.request().postDataJSON();
+        await route.fulfill({
+          status: 202,
+          contentType: "application/json",
+          body: JSON.stringify(summary),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [] }),
+      });
+    });
+    await page.route(`**/api/hubspot-import-batches/${batchId}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(detail),
+      });
+    });
+
+    await login(page, seedData.manager);
+    await page.goto(`/exports/prepare/${seedData.run.id}`);
+
+    const preparedRow = page.locator(".export-prep__table tbody tr").first();
+
+    for (const [field, value] of [
+      ["Currency", "EUR"],
+      ["Deal Type", "Flat Fee"],
+      ["Activation Type", "Organic"],
+    ] as const) {
+      await preparedRow.getByRole("button", { name: field }).click();
+      await preparedRow.getByRole("option", { name: value, exact: true }).click();
+    }
+
+    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    await expect(page.getByText("Edits saved.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Missing required values" })).toHaveCount(0);
+
+    const syncButton = page.getByRole("button", { name: "Sync to HubSpot" });
+    await expect(syncButton).toBeEnabled();
+    await syncButton.click();
+
+    await expect.poll(() => directSyncRequests).toBe(1);
+    expect(submittedBody).toEqual({
+      runId: seedData.run.id,
+      deliveryMode: "direct_object_api",
+    });
+    await expect(page.getByRole("heading", { name: "Completed" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Contact" })).toHaveAttribute(
+      "href",
+      hubspotContactUrl,
+    );
+    await expect(page.getByRole("link", { name: "Deal" })).toHaveAttribute(
+      "href",
+      hubspotDealUrl,
+    );
   });
 
   test("catalog supports real creator and metric filters", async ({ page }) => {

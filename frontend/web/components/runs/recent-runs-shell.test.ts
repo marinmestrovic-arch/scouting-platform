@@ -82,6 +82,7 @@ function buildRun(
       overrides?.completedAt ??
       (status === "completed" || status === "failed" ? "2026-03-10T10:03:00.000Z" : null),
     resultCount: overrides?.resultCount ?? (status === "completed" ? 2 : 0),
+    hubspotSyncStatus: null,
     metadata: buildRunMetadata(),
   } as const;
 }

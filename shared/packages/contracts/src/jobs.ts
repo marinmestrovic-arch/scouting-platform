@@ -11,8 +11,10 @@ export const JOB_NAMES = [
   "hubspot-preview.enrich",
   "hubspot.import.batch",
   "hubspot.push.batch",
+  "hubspot.health-check",
   "hubspot.object-sync.schedule",
   "hubspot.object-sync",
+  "hubspot.webhook.process",
   "maintenance.refresh-stale",
 ] as const;
 
@@ -67,6 +69,11 @@ export const hubspotPushBatchPayloadSchema = z.object({
   requestedByUserId: uuid,
 });
 
+export const hubspotHealthCheckPayloadSchema = z.object({
+  healthCheckRunId: uuid,
+  requestedByUserId: uuid,
+});
+
 export const hubspotImportBatchPayloadSchema = z.object({
   importBatchId: uuid,
   requestedByUserId: uuid,
@@ -79,6 +86,10 @@ export const hubspotObjectSyncPayloadSchema = z.object({
 
 export const hubspotObjectSyncSchedulePayloadSchema = z.object({
   initiatedBy: z.literal("system"),
+});
+
+export const hubspotWebhookProcessPayloadSchema = z.object({
+  webhookEventId: uuid,
 });
 
 export const maintenanceRefreshStalePayloadSchema = z.object({
@@ -97,8 +108,10 @@ export const jobPayloadSchemas = {
   "hubspot-preview.enrich": hubspotPreviewEnrichPayloadSchema,
   "hubspot.import.batch": hubspotImportBatchPayloadSchema,
   "hubspot.push.batch": hubspotPushBatchPayloadSchema,
+  "hubspot.health-check": hubspotHealthCheckPayloadSchema,
   "hubspot.object-sync.schedule": hubspotObjectSyncSchedulePayloadSchema,
   "hubspot.object-sync": hubspotObjectSyncPayloadSchema,
+  "hubspot.webhook.process": hubspotWebhookProcessPayloadSchema,
   "maintenance.refresh-stale": maintenanceRefreshStalePayloadSchema,
 } as const satisfies Record<JobName, z.ZodType>;
 

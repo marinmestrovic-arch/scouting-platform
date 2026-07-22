@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HubspotError } from "./contacts";
 import {
@@ -8,8 +8,14 @@ import {
 } from "./custom-objects";
 
 describe("fetchHubspotObjectSchemas", () => {
+  beforeEach(() => {
+    delete process.env.HUBSPOT_API_KEY;
+    delete process.env.HUBSPOT_ACCESS_TOKEN;
+  });
+
   afterEach(() => {
     delete process.env.HUBSPOT_API_KEY;
+    delete process.env.HUBSPOT_ACCESS_TOKEN;
   });
 
   it("requires HUBSPOT_API_KEY", async () => {
@@ -52,7 +58,25 @@ describe("fetchHubspotObjectSchemas", () => {
       objectTypeId: "2-123",
       fullyQualifiedName: "p123_clients",
     });
-    expect(String(fetchFn.mock.calls[0]?.[0])).toContain("/crm/v3/schemas");
+    expect(String(fetchFn.mock.calls[0]?.[0])).toContain(
+      "/crm-object-schemas/2026-03/schemas",
+    );
+  });
+
+  it("rejects a successful schema response without results", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ status: "COMPLETE" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      fetchHubspotObjectSchemas({ apiKey: "hubspot-key", fetchFn }),
+    ).rejects.toMatchObject({
+      code: "HUBSPOT_INVALID_RESPONSE",
+      status: 502,
+    } satisfies Partial<HubspotError>);
   });
 });
 
@@ -95,7 +119,7 @@ describe("fetchHubspotCustomObjects", () => {
     expect(result.results[0]?.id).toBe("101");
     expect(result.nextAfter).toBe("102");
     const url = String(fetchFn.mock.calls[0]?.[0]);
-    expect(url).toContain("/crm/v3/objects/2-123");
+    expect(url).toContain("/crm/objects/2026-03/2-123");
     expect(url).toContain("properties=client_name%2Cdomain");
     expect(url).toContain("archived=false");
   });
@@ -108,6 +132,7 @@ describe("fetchHubspotCustomObjects", () => {
         apiKey: "hubspot-key",
         objectType: "2-123",
         fetchFn,
+        maxRetries: 0,
       }),
     ).rejects.toMatchObject({
       code: "HUBSPOT_RATE_LIMITED",
@@ -151,7 +176,29 @@ describe("fetchHubspotAssociations", () => {
 
     expect(result.get("campaign-1")).toEqual(["201"]);
     expect(String(fetchFn.mock.calls[0]?.[0])).toContain(
-      "/crm/v4/associations/2-200/2-100/batch/read",
+      "/crm/associations/2026-03/2-200/2-100/batch/read",
     );
+  });
+
+  it("rejects a successful association response without results", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ status: "COMPLETE" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      fetchHubspotAssociations({
+        apiKey: "hubspot-key",
+        fromObjectType: "2-200",
+        toObjectType: "2-100",
+        objectIds: ["campaign-1"],
+        fetchFn,
+      }),
+    ).rejects.toMatchObject({
+      code: "HUBSPOT_INVALID_RESPONSE",
+      status: 502,
+    } satisfies Partial<HubspotError>);
   });
 });

@@ -8,6 +8,15 @@ import {
   type ContinuousEnrichmentMonitor,
 } from "./continuous-enrichment-monitor";
 import { registerExportsCsvGenerateWorker } from "./exports-csv-generate-worker";
+import {
+  startHubspotDeliveryRecoveryMonitor,
+  type HubspotDeliveryRecoveryMonitor,
+} from "./hubspot-delivery-recovery-monitor";
+import {
+  startHubspotHealthCheckRecoveryMonitor,
+  type HubspotHealthCheckRecoveryMonitor,
+} from "./hubspot-health-check-recovery-monitor";
+import { registerHubspotHealthCheckWorker } from "./hubspot-health-check-worker";
 import { registerHubspotImportBatchWorker } from "./hubspot-import-batch-worker";
 import {
   ensureHubspotObjectSyncDailySchedule,
@@ -16,6 +25,7 @@ import {
 import { registerHubspotObjectSyncWorker } from "./hubspot-object-sync-worker";
 import { registerHubspotPreviewEnrichWorker } from "./hubspot-preview-enrich-worker";
 import { registerHubspotPushBatchWorker } from "./hubspot-push-batch-worker";
+import { registerHubspotWebhookWorker } from "./hubspot-webhook-worker";
 import { registerImportsCsvProcessWorker } from "./imports-csv-process-worker";
 import { JOB_NAMES } from "./jobs";
 import { registerRunsAssessChannelFitWorker } from "./runs-assess-channel-fit-worker";
@@ -52,8 +62,10 @@ async function registerWorkers(
   await registerHubspotPreviewEnrichWorker(boss, config.jobs.hubspotPreviewEnrich);
   await registerHubspotImportBatchWorker(boss, config.jobs.hubspotImportBatch);
   await registerHubspotPushBatchWorker(boss, config.jobs.hubspotPushBatch);
+  await registerHubspotHealthCheckWorker(boss, config.jobs.hubspotHealthCheck);
   await registerHubspotObjectSyncScheduleWorker(boss, config.jobs.hubspotObjectSyncSchedule);
   await registerHubspotObjectSyncWorker(boss, config.jobs.hubspotObjectSync);
+  await registerHubspotWebhookWorker(boss, config.jobs.hubspotWebhook);
 }
 
 async function startWorker(): Promise<void> {
@@ -73,6 +85,10 @@ async function startWorker(): Promise<void> {
   await ensureQueues(boss);
   await ensureHubspotObjectSyncDailySchedule(boss);
   await registerWorkers(boss, config);
+  const hubspotDeliveryRecoveryMonitor: HubspotDeliveryRecoveryMonitor =
+    startHubspotDeliveryRecoveryMonitor(boss);
+  const hubspotHealthCheckRecoveryMonitor: HubspotHealthCheckRecoveryMonitor =
+    startHubspotHealthCheckRecoveryMonitor(boss);
   const continuousEnrichmentMonitor: ContinuousEnrichmentMonitor =
     startContinuousEnrichmentMonitor(boss, config.continuousEnrichment);
   process.stdout.write(`[worker] started with schema "${config.pgBossSchema}"\n`);
@@ -86,6 +102,8 @@ async function startWorker(): Promise<void> {
 
     shuttingDown = true;
     process.stdout.write(`[worker] received ${signal}, shutting down\n`);
+    hubspotDeliveryRecoveryMonitor.stop();
+    hubspotHealthCheckRecoveryMonitor.stop();
     continuousEnrichmentMonitor.stop();
 
     try {

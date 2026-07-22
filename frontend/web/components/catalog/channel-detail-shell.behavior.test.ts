@@ -108,6 +108,8 @@ function createChannelDetail(overrides?: Partial<ChannelDetail>): ChannelDetail 
         withinFreshWindow: true,
       },
     },
+    workedWith: false,
+    collaborations: [],
     insights: {
       audienceCountries: [],
       audienceGenderAge: [],

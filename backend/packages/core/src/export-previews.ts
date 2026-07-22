@@ -38,8 +38,10 @@ import { ServiceError } from "./errors";
 import { mapYoutubeLanguageToHubspot } from "./hubspot/language-mapping";
 import {
   applyHubspotPreparationRows,
+  buildHubspotCreatorCampaignName,
   buildHubspotRowKey,
   normalizeHubspotPrepDefaults,
+  resolveHubspotCreatorLabel,
   resolveHubspotInfluencerTypeFallback,
 } from "./hubspot/preparation";
 import { inferVerticalsForHubspot } from "./hubspot/vertical-inference";
@@ -430,7 +432,12 @@ function getPreferredYoutubeUrl(channel: RunPreviewRecord["results"][number]["ch
 }
 
 function getPreferredCreatorLabel(channel: RunPreviewRecord["results"][number]["channel"]): string {
-  return getPreferredYoutubeHandle(channel) || channel.title;
+  return resolveHubspotCreatorLabel({
+    channelHandle: channel.handle,
+    youtubeContextHandle:
+      getParsedYoutubeContext(channel.youtubeContext?.context ?? null)?.handle,
+    channelTitle: channel.title,
+  });
 }
 
 function getHubspotInfluencerVertical(channel: RunPreviewRecord["results"][number]["channel"]): string {
@@ -1160,6 +1167,10 @@ function buildHubspotFallbackRows(run: RunPreviewRecord): HubspotFallbackRow[] {
 
   for (const result of run.results) {
     const channel = result.channel;
+    const creatorCampaignName = buildHubspotCreatorCampaignName({
+      creatorLabel: getPreferredCreatorLabel(channel),
+      campaignName: run.campaignName,
+    });
     const contacts =
       channel.contacts.length > 0
         ? channel.contacts
@@ -1185,8 +1196,8 @@ function buildHubspotFallbackRows(run: RunPreviewRecord): HubspotFallbackRow[] {
           year: toText(run.year),
           clientName: run.client ?? "",
           dealOwner: run.dealOwner ?? "",
-          dealName: `${getPreferredCreatorLabel(channel)} - ${run.campaignName ?? ""}`.trim(),
-          activationName: `${getPreferredCreatorLabel(channel)} - ${run.campaignName ?? ""}`.trim(),
+          dealName: creatorCampaignName,
+          activationName: creatorCampaignName,
           pipeline: run.pipeline ?? "",
           dealStage: run.dealStage ?? "",
           currency: run.currency ?? "",

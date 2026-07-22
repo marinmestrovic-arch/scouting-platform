@@ -1,0 +1,11 @@
+{
+  "uid": "scouting_platform_campaign_context",
+  "type": "card",
+  "config": {
+    "name": "Scouting Platform campaign",
+    "description": "Campaign, creator, assessment, and synchronization context.",
+    "entrypoint": "/app/cards/ScoutingContextCard.jsx",
+    "location": "crm.record.sidebar",
+    "objectTypes": ["p_REPLACE_WITH_CAMPAIGN_OBJECT_NAME"]
+  }
+}

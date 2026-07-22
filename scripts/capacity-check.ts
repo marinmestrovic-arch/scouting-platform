@@ -247,6 +247,38 @@ async function cleanupSyntheticData(config: ScriptConfig): Promise<void> {
   const runRequestIds = runRequests.map((runRequest) => runRequest.id);
 
   if (runRequestIds.length > 0) {
+    await prisma.hubspotConflict.deleteMany({
+      where: {
+        OR: [
+          {
+            runRequestId: {
+              in: runRequestIds,
+            },
+          },
+          {
+            hubspotDealLink: {
+              runRequestId: {
+                in: runRequestIds,
+              },
+            },
+          },
+        ],
+      },
+    });
+    await prisma.hubspotDealLink.deleteMany({
+      where: {
+        runRequestId: {
+          in: runRequestIds,
+        },
+      },
+    });
+    await prisma.hubspotImportBatch.deleteMany({
+      where: {
+        runRequestId: {
+          in: runRequestIds,
+        },
+      },
+    });
     await prisma.runResult.deleteMany({
       where: {
         runRequestId: {
@@ -264,6 +296,51 @@ async function cleanupSyntheticData(config: ScriptConfig): Promise<void> {
   }
 
   if (channelIds.length > 0) {
+    await prisma.hubspotConflict.deleteMany({
+      where: {
+        OR: [
+          {
+            channelContact: {
+              channelId: {
+                in: channelIds,
+              },
+            },
+          },
+          {
+            hubspotContactLink: {
+              channelContact: {
+                channelId: {
+                  in: channelIds,
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+    await prisma.hubspotContactLink.deleteMany({
+      where: {
+        channelContact: {
+          channelId: {
+            in: channelIds,
+          },
+        },
+      },
+    });
+    await prisma.hubspotImportBatchRow.deleteMany({
+      where: {
+        channelId: {
+          in: channelIds,
+        },
+      },
+    });
+    await prisma.hubspotPushBatchRow.deleteMany({
+      where: {
+        channelId: {
+          in: channelIds,
+        },
+      },
+    });
     await prisma.advancedReportRequest.deleteMany({
       where: {
         channelId: {
@@ -330,6 +407,13 @@ async function cleanupSyntheticData(config: ScriptConfig): Promise<void> {
   }
 
   if (managerIds.length > 0) {
+    await prisma.hubspotObjectSyncRun.deleteMany({
+      where: {
+        requestedByUserId: {
+          in: managerIds,
+        },
+      },
+    });
     await prisma.savedSegment.deleteMany({
       where: {
         userId: {

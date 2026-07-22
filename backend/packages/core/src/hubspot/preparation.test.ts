@@ -1,9 +1,54 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildHubspotCreatorCampaignName,
   buildHubspotRunDefaultsUpdate,
+  resolveHubspotCreatorLabel,
   resolveHubspotInfluencerTypeFallback,
 } from "./preparation";
+
+describe("HubSpot creator campaign naming", () => {
+  it("prefers the channel handle and combines it with the campaign", () => {
+    const creatorLabel = resolveHubspotCreatorLabel({
+      channelHandle: " @creator ",
+      youtubeContextHandle: "@context-creator",
+      channelTitle: "Creator title",
+    });
+
+    expect(
+      buildHubspotCreatorCampaignName({
+        creatorLabel,
+        campaignName: " Campaign ",
+      }),
+    ).toBe("@creator - Campaign");
+  });
+
+  it("falls back through YouTube context to the channel title", () => {
+    expect(
+      resolveHubspotCreatorLabel({
+        channelHandle: "",
+        youtubeContextHandle: " @context-creator ",
+        channelTitle: "Creator title",
+      }),
+    ).toBe("@context-creator");
+    expect(
+      resolveHubspotCreatorLabel({
+        channelHandle: null,
+        youtubeContextHandle: " ",
+        channelTitle: " Creator title ",
+      }),
+    ).toBe("Creator title");
+  });
+
+  it("does not leave a dangling separator when either part is missing", () => {
+    expect(
+      buildHubspotCreatorCampaignName({ creatorLabel: "@creator", campaignName: " " }),
+    ).toBe("@creator");
+    expect(
+      buildHubspotCreatorCampaignName({ creatorLabel: null, campaignName: "Campaign" }),
+    ).toBe("Campaign");
+  });
+});
 
 describe("resolveHubspotInfluencerTypeFallback", () => {
   it("prefers the channel value when present", () => {

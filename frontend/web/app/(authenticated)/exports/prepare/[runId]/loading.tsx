@@ -8,9 +8,9 @@ export default function ExportPrepareLoading() {
       <PageHeader
         crumbs={[
           { label: "Dashboard", href: "/dashboard" },
-          { label: "Export to Google Sheets" },
+          { label: "Prepare for HubSpot" },
         ]}
-        title="Export to Google Sheets"
+        title="Prepare for HubSpot"
       />
       <div className="page-container page-section__body">
         <SkeletonPageBody>

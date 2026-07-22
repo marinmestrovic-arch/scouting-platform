@@ -1,6 +1,6 @@
 # Project Specs
 
-Current product spec for the implemented repository state as of 2026-04-01.
+Current product spec for the implemented repository state as of 2026-07-20.
 
 ## 1. Product Definition
 
@@ -12,7 +12,7 @@ The current product combines:
 - campaign-linked scouting runs
 - automated enrichment plus approval-gated HypeAuditor reports
 - admin-operated imports and manual overrides
-- CSV export, HubSpot push, and HubSpot import-ready batch preparation
+- CSV export plus durable direct HubSpot sync with a downloadable CSV fallback
 
 ## 2. Workspace Model
 
@@ -26,7 +26,7 @@ The primary authenticated workspace surfaces are:
 Supporting workflow pages exist for:
 - run details
 - CSV export preparation and batch history
-- HubSpot preparation, import-ready CSV history, and legacy push history
+- a shared handoff workspace with direct HubSpot delivery, per-row results, and CSV fallback history
 
 The current naming matters:
 - `Catalog` is the creator-browsing surface
@@ -73,7 +73,7 @@ Non-admin users are not all the same persona anymore. Current product docs shoul
 ### Company-owned credentials
 - OpenAI API key
 - HypeAuditor API key
-- HubSpot API key
+- HubSpot private-app access token and app client secret
 
 ### Operational rule
 - admins assign and update user YouTube keys
@@ -98,7 +98,8 @@ Non-admin users are not all the same persona anymore. Current product docs shoul
 
 ### Database
 - manages clients and campaigns
-- exposes admin-only dropdown reference values used by HubSpot preparation
+- exposes admin-only HubSpot connection health, conflicts, reference sync, and dropdown values
+- retains option display labels and their distinct HubSpot internal values
 - keeps campaign/client reference data separate from creator catalog browsing
 
 ### Admin
@@ -148,12 +149,16 @@ The current reference-data surface includes:
 - clients
 - markets
 - campaigns
-- dropdown values used for HubSpot preparation defaults and row edits
+- dropdown values used for HubSpot preparation defaults and row edits, including portal/property
+  provenance and HubSpot internal values
+- portal-scoped owners, pipelines/stages, and directional association definitions
 
 Current Database workspace behavior:
 - clients: list/create
 - campaigns: list/create and active filtering
 - dropdown values: admin-only list/replace
+- HubSpot: admin-only read-only health, durable object/reference sync history, and read-only conflict
+  inspection
 
 Campaign creation is available to:
 - admins
@@ -167,17 +172,31 @@ Campaign creation is available to:
 - exports are background-safe and downloadable by batch id
 - CSV preparation pages show the full run-derived export table before download
 
-### HubSpot push
-- legacy manual push remains implemented for selected creators
-- push batches persist per-row status and errors
-
-### HubSpot import-ready preparation
-- users can open a run-scoped HubSpot preparation page
+### HubSpot direct sync
+- users open the run-scoped handoff page at `/exports/prepare/[runId]`
+- direct delivery is unavailable until the safe-off feature flag is enabled and portal health is
+  ready
 - the app exposes required-field validation issues before batch creation
-- shared dropdown defaults and per-row overrides can be edited before generating the import CSV
-- completed import-ready batches can be reviewed and downloaded later
+- shared dropdown defaults and per-row overrides can be edited before delivery
+- the direct path batch-upserts contacts and one run deal using stable custom unique identifiers,
+  persists returned HubSpot IDs, then creates explicit discovered associations
+- repeated submission reuses the idempotent batch; partial failure preserves successful rows and
+  retry targets only retryable failures
+- per-row HubSpot contact/deal links, errors, and partial-success state remain reviewable
 
-This means the current outbound surface is broader than "CSV export + HubSpot push." It also includes HubSpot import batch preparation from run snapshots.
+### HubSpot CSV fallback and compatibility
+- users can generate and download the same prepared data as a durable CSV fallback
+- CSV completion means the file is ready; it is not represented as a completed HubSpot-side import
+- legacy contact-only push history/endpoints remain available for compatibility, but there is no
+  active legacy-push product action
+
+### HubSpot inbound safety
+- an admin-only read-only health check reports portal configuration and provisioning blockers
+- signed contact/deal webhooks are deduplicated and processed asynchronously
+- client/campaign custom objects use incremental search plus daily `Europe/Zagreb` reconciliation
+- missing records are not deleted merely because they are absent from one poll
+- shared-field disagreement creates a durable read-only conflict rather than overwriting canonical
+  creator data or manual overrides
 
 ## 10. API-Supported Product Surface
 
@@ -188,8 +207,9 @@ The UI currently depends on route families for:
 - dropdown values
 - runs and run previews
 - CSV export batches and downloads
-- HubSpot push batches
-- HubSpot import batches and downloads
+- direct/CSV HubSpot import batches, detail, failed-row retry, and downloads
+- HubSpot connection health, reference/object sync, and conflicts
+- provider-authenticated HubSpot webhook and UI-extension context routes
 - catalog browsing and saved segments
 - admin approvals, users, imports, and manual overrides
 
@@ -216,9 +236,11 @@ Resolved field precedence remains:
 
 Still out of scope in the current implementation:
 - public sign-up
-- automatic HubSpot sync
 - browser-direct provider integrations
 - multi-tenant organizations
+- multi-portal HubSpot OAuth and the Webhook Journal client-credentials flow
+- automatic mutation of HubSpot properties or association schema
+- automatic upload, installation, or record-layout placement of `/hubspot-app`
 - mobile app
 - product analytics tooling
 
@@ -230,3 +252,5 @@ The current build is coherent when:
 - admins can maintain reference data and data quality without schema or runtime hacks
 - role-based permissions stay separate from `userType`-based business semantics
 - outbound workflows remain auditable and batch-based
+- direct HubSpot retries preserve stable portal-aware contact/deal identity and prior successes
+- webhooks and reconciliation cannot bypass data precedence or delete on absence

@@ -10,7 +10,14 @@ import { ServiceError } from "./errors";
 
 let bossPromise: Promise<PgBoss> | null = null;
 const ensuredQueues = new Set<JobName>();
-export type EnqueueJobOptions = Readonly<{ priority?: number }>;
+export type EnqueueJobOptions = Readonly<{
+  priority?: number;
+  startAfter?: number | string | Date;
+  singletonKey?: string;
+  singletonSeconds?: number;
+}>;
+
+type EnqueueBulkJobOptions = Readonly<{ priority?: number }>;
 
 function parseEnqueueOptions(options: EnqueueJobOptions): EnqueueJobOptions {
   if (
@@ -24,7 +31,82 @@ function parseEnqueueOptions(options: EnqueueJobOptions): EnqueueJobOptions {
     throw new ServiceError("INVALID_JOB_PRIORITY", 400, "Job priority must be a 32-bit integer");
   }
 
-  return options.priority === undefined ? {} : { priority: options.priority };
+  if (
+    options.startAfter !== undefined
+    && typeof options.startAfter === "number"
+    && (!Number.isFinite(options.startAfter) || options.startAfter < 0)
+  ) {
+    throw new ServiceError(
+      "INVALID_JOB_START_AFTER",
+      400,
+      "Job startAfter must be a non-negative number, date, or date string",
+    );
+  }
+
+  if (
+    typeof options.startAfter === "string"
+    && (
+      options.startAfter.trim().length === 0
+      || Number.isNaN(Date.parse(options.startAfter))
+    )
+  ) {
+    throw new ServiceError(
+      "INVALID_JOB_START_AFTER",
+      400,
+      "Job startAfter must be a non-negative number, date, or date string",
+    );
+  }
+
+  if (
+    options.startAfter instanceof Date
+    && Number.isNaN(options.startAfter.getTime())
+  ) {
+    throw new ServiceError(
+      "INVALID_JOB_START_AFTER",
+      400,
+      "Job startAfter must be a non-negative number, date, or date string",
+    );
+  }
+
+  const singletonKey = options.singletonKey?.trim();
+  if (options.singletonKey !== undefined && !singletonKey) {
+    throw new ServiceError(
+      "INVALID_JOB_SINGLETON_KEY",
+      400,
+      "Job singletonKey must not be empty",
+    );
+  }
+
+  if (
+    options.singletonSeconds !== undefined
+    && (
+      !Number.isInteger(options.singletonSeconds)
+      || options.singletonSeconds < 1
+    )
+  ) {
+    throw new ServiceError(
+      "INVALID_JOB_SINGLETON_SECONDS",
+      400,
+      "Job singletonSeconds must be a positive integer",
+    );
+  }
+
+  if (options.singletonSeconds !== undefined && !singletonKey) {
+    throw new ServiceError(
+      "MISSING_JOB_SINGLETON_KEY",
+      400,
+      "singletonSeconds requires singletonKey",
+    );
+  }
+
+  return {
+    ...(options.priority === undefined ? {} : { priority: options.priority }),
+    ...(options.startAfter === undefined ? {} : { startAfter: options.startAfter }),
+    ...(singletonKey === undefined ? {} : { singletonKey }),
+    ...(options.singletonSeconds === undefined
+      ? {}
+      : { singletonSeconds: options.singletonSeconds }),
+  };
 }
 
 function getQueueRuntimeConfig(): { databaseUrl: string; schema: string } {
@@ -87,7 +169,7 @@ export async function enqueueJob<Name extends JobName>(
 
 export async function enqueueChannelLlmJobs(
   payloads: readonly JobPayloadByName["channels.enrich.llm"][],
-  options: EnqueueJobOptions = {},
+  options: EnqueueBulkJobOptions = {},
 ): Promise<void> {
   if (payloads.length === 0) {
     return;

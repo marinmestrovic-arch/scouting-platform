@@ -110,7 +110,7 @@ describe("csv export manager view", () => {
     );
 
     expect(html).toContain("No exports yet");
-    expect(html).toContain("Export to Google Sheets");
+    expect(html).toContain("Prepare for HubSpot");
   });
 });
 

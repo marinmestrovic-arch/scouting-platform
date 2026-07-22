@@ -1,45 +1,38 @@
 import { z } from "zod";
 
-import { HubspotError } from "./contacts";
-
-type FetchLike = typeof fetch;
+import { HubspotError, hubspotRequest } from "./client";
+import type { HubspotClientOptions } from "./client";
+import { HUBSPOT_API_VERSION } from "./config";
+import {
+  fetchHubspotObjectPage,
+  hubspotObjectRecordSchema,
+} from "./objects";
 
 const hubspotObjectSchema = z.object({
   objectTypeId: z.string().trim().min(1),
   fullyQualifiedName: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1).optional(),
+  primaryDisplayProperty: z.string().optional(),
+  secondaryDisplayProperties: z.array(z.string()).default([]),
   labels: z
     .object({
       singular: z.string().optional(),
       plural: z.string().optional(),
     })
     .optional(),
+  properties: z.array(z.record(z.string(), z.unknown())).default([]),
+  associations: z.array(z.record(z.string(), z.unknown())).default([]),
+  archived: z.boolean().default(false),
 });
 
 const hubspotObjectSchemasResponseSchema = z.object({
-  results: z.array(hubspotObjectSchema).default([]),
+  results: z.array(hubspotObjectSchema),
 });
 
-const hubspotCustomObjectRecordSchema = z.object({
-  id: z.string().trim().min(1),
-  properties: z.record(z.string(), z.unknown()).default({}),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-  archived: z.boolean().default(false),
-  archivedAt: z.string().nullable().optional(),
-});
-
-const hubspotCustomObjectsResponseSchema = z.object({
-  results: z.array(hubspotCustomObjectRecordSchema).default([]),
-  paging: z
-    .object({
-      next: z
-        .object({
-          after: z.string().trim().min(1).optional(),
-        })
-        .optional(),
-    })
-    .optional(),
+const hubspotAssociationTypeSchema = z.object({
+  typeId: z.number().int().positive(),
+  category: z.string().optional(),
+  label: z.string().nullable().optional(),
 });
 
 const hubspotAssociationsResponseSchema = z.object({
@@ -52,235 +45,125 @@ const hubspotAssociationsResponseSchema = z.object({
         to: z
           .array(
             z.object({
-              toObjectId: z.union([z.string(), z.number()]).transform((value) => String(value)),
-              associationTypes: z
-                .array(
-                  z.object({
-                    typeId: z.number().int().optional(),
-                  }),
-                )
-                .default([]),
+              toObjectId: z
+                .union([z.string(), z.number()])
+                .transform((value) => String(value)),
+              associationTypes: z.array(hubspotAssociationTypeSchema).default([]),
             }),
           )
           .default([]),
       }),
-    )
-    .default([]),
-});
-
-const baseInputSchema = z.object({
-  apiKey: z.string().trim().min(1).optional(),
-  baseUrl: z.string().trim().url().default("https://api.hubapi.com"),
-  fetchFn: z.custom<FetchLike>().optional(),
-});
-
-const fetchSchemasInputSchema = baseInputSchema;
-
-const fetchCustomObjectsInputSchema = baseInputSchema.extend({
-  objectType: z.string().trim().min(1),
-  properties: z.array(z.string().trim().min(1)).default([]),
-  archived: z.boolean().default(false),
-  after: z.string().trim().min(1).optional(),
-  limit: z.number().int().min(1).max(100).default(100),
-});
-
-const fetchAssociationsInputSchema = baseInputSchema.extend({
-  fromObjectType: z.string().trim().min(1),
-  toObjectType: z.string().trim().min(1),
-  objectIds: z.array(z.string().trim().min(1)).min(1).max(1000),
-  associationTypeId: z.number().int().positive().optional(),
+    ),
 });
 
 export type HubspotObjectSchema = z.infer<typeof hubspotObjectSchema>;
-export type HubspotCustomObjectRecord = z.infer<typeof hubspotCustomObjectRecordSchema>;
+export type HubspotCustomObjectRecord = z.infer<typeof hubspotObjectRecordSchema>;
 export type HubspotCustomObject = HubspotCustomObjectRecord;
-export type FetchHubspotObjectSchemasInput = z.input<typeof fetchSchemasInputSchema>;
-export type FetchHubspotCustomObjectsInput = z.input<typeof fetchCustomObjectsInputSchema>;
-export type FetchHubspotAssociationsInput = z.input<typeof fetchAssociationsInputSchema>;
+export type FetchHubspotObjectSchemasInput = HubspotClientOptions;
+
+export type FetchHubspotCustomObjectsInput = HubspotClientOptions &
+  Readonly<{
+    objectType: string;
+    properties?: readonly string[];
+    archived?: boolean;
+    after?: string;
+    limit?: number;
+  }>;
+
+export type FetchHubspotAssociationsInput = HubspotClientOptions &
+  Readonly<{
+    fromObjectType: string;
+    toObjectType: string;
+    objectIds: readonly string[];
+    associationTypeId?: number;
+  }>;
 
 export type FetchHubspotCustomObjectsResult = Readonly<{
   results: HubspotCustomObjectRecord[];
   nextAfter: string | null;
 }>;
 
+export type HubspotReadAssociation = Readonly<{
+  toObjectId: string;
+  associationTypes: Array<z.infer<typeof hubspotAssociationTypeSchema>>;
+}>;
+
+export type HubspotAssociationDetailsMap = Map<string, HubspotReadAssociation[]>;
 export type HubspotAssociationMap = Map<string, string[]>;
 
-function getApiKey(override?: string): string {
-  const apiKey = override?.trim() || process.env.HUBSPOT_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new HubspotError(
-      "HUBSPOT_API_KEY_MISSING",
-      500,
-      "HUBSPOT_API_KEY is required for HubSpot custom object sync",
-    );
+function nonBlank(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new HubspotError("HUBSPOT_INVALID_INPUT", 400, `HubSpot ${field} must not be empty`, {
+      retryable: false,
+    });
   }
-
-  return apiKey;
-}
-
-function getFetch(fetchFn?: FetchLike): FetchLike {
-  return fetchFn ?? fetch;
-}
-
-function toProviderError(response: Response): HubspotError {
-  if (response.status === 401 || response.status === 403) {
-    return new HubspotError(
-      "HUBSPOT_AUTH_FAILED",
-      401,
-      "HubSpot credentials are invalid or unauthorized",
-    );
-  }
-
-  if (response.status === 429) {
-    return new HubspotError(
-      "HUBSPOT_RATE_LIMITED",
-      429,
-      "HubSpot rate limit exceeded",
-    );
-  }
-
-  return new HubspotError(
-    "HUBSPOT_REQUEST_FAILED",
-    502,
-    "HubSpot custom object sync failed",
-  );
-}
-
-async function parseJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function buildHeaders(apiKey: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${apiKey}`,
-    accept: "application/json",
-  };
+  return trimmed;
 }
 
 export async function fetchHubspotObjectSchemas(
-  rawInput: FetchHubspotObjectSchemasInput = {},
+  input: FetchHubspotObjectSchemasInput = {},
 ): Promise<HubspotObjectSchema[]> {
-  const input = fetchSchemasInputSchema.parse(rawInput);
-  const apiKey = getApiKey(input.apiKey);
-  const fetchFn = getFetch(input.fetchFn);
-  const url = new URL("/crm/v3/schemas", input.baseUrl);
-
-  const response = await fetchFn(url, {
-    method: "GET",
-    headers: buildHeaders(apiKey),
+  const response = await hubspotRequest({
+    ...input,
+    path: `/crm-object-schemas/${HUBSPOT_API_VERSION}/schemas`,
+    responseSchema: hubspotObjectSchemasResponseSchema,
   });
-
-  if (!response.ok) {
-    throw toProviderError(response);
-  }
-
-  const payload = await parseJsonResponse(response);
-  const parsed = hubspotObjectSchemasResponseSchema.safeParse(payload);
-
-  if (!parsed.success) {
-    throw new HubspotError(
-      "HUBSPOT_INVALID_RESPONSE",
-      502,
-      "HubSpot returned an invalid custom object schema response",
-    );
-  }
-
-  return parsed.data.results;
+  return response.results;
 }
 
 export async function fetchHubspotCustomObjects(
-  rawInput: FetchHubspotCustomObjectsInput,
+  input: FetchHubspotCustomObjectsInput,
 ): Promise<FetchHubspotCustomObjectsResult> {
-  const input = fetchCustomObjectsInputSchema.parse(rawInput);
-  const apiKey = getApiKey(input.apiKey);
-  const fetchFn = getFetch(input.fetchFn);
-  const url = new URL(`/crm/v3/objects/${encodeURIComponent(input.objectType)}`, input.baseUrl);
-  url.searchParams.set("limit", String(input.limit));
-  url.searchParams.set("archived", input.archived ? "true" : "false");
+  const result = await fetchHubspotObjectPage(input);
+  return { results: result.results, nextAfter: result.nextAfter };
+}
 
-  if (input.after) {
-    url.searchParams.set("after", input.after);
-  }
-
-  if (input.properties.length > 0) {
-    url.searchParams.set("properties", input.properties.join(","));
-  }
-
-  const response = await fetchFn(url, {
-    method: "GET",
-    headers: buildHeaders(apiKey),
-  });
-
-  if (!response.ok) {
-    throw toProviderError(response);
-  }
-
-  const payload = await parseJsonResponse(response);
-  const parsed = hubspotCustomObjectsResponseSchema.safeParse(payload);
-
-  if (!parsed.success) {
+export async function fetchHubspotAssociationDetails(
+  input: FetchHubspotAssociationsInput,
+): Promise<HubspotAssociationDetailsMap> {
+  const fromObjectType = nonBlank(input.fromObjectType, "source object type");
+  const toObjectType = nonBlank(input.toObjectType, "target object type");
+  if (input.objectIds.length < 1 || input.objectIds.length > 1000) {
     throw new HubspotError(
-      "HUBSPOT_INVALID_RESPONSE",
-      502,
-      "HubSpot returned an invalid custom object response",
+      "HUBSPOT_INVALID_INPUT",
+      400,
+      "HubSpot association reads require between 1 and 1000 record IDs",
+      { retryable: false },
     );
   }
-
-  return {
-    results: parsed.data.results,
-    nextAfter: parsed.data.paging?.next?.after ?? null,
-  };
+  const objectIds = input.objectIds.map((id) => nonBlank(id, "association record ID"));
+  const response = await hubspotRequest({
+    ...input,
+    method: "POST",
+    path: `/crm/associations/${HUBSPOT_API_VERSION}/${encodeURIComponent(fromObjectType)}/${encodeURIComponent(toObjectType)}/batch/read`,
+    body: { inputs: objectIds.map((id) => ({ id })) },
+    responseSchema: hubspotAssociationsResponseSchema,
+  });
+  return new Map(
+    response.results.map((result) => [
+      result.from.id,
+      result.to.map((association) => ({
+        toObjectId: association.toObjectId,
+        associationTypes: association.associationTypes,
+      })),
+    ]),
+  );
 }
 
 export async function fetchHubspotAssociations(
-  rawInput: FetchHubspotAssociationsInput,
+  input: FetchHubspotAssociationsInput,
 ): Promise<HubspotAssociationMap> {
-  const input = fetchAssociationsInputSchema.parse(rawInput);
-  const apiKey = getApiKey(input.apiKey);
-  const fetchFn = getFetch(input.fetchFn);
-  const url = new URL(
-    `/crm/v4/associations/${encodeURIComponent(input.fromObjectType)}/${encodeURIComponent(input.toObjectType)}/batch/read`,
-    input.baseUrl,
-  );
-
-  const response = await fetchFn(url, {
-    method: "POST",
-    headers: {
-      ...buildHeaders(apiKey),
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      inputs: input.objectIds.map((id) => ({ id })),
-    }),
-  });
-
-  if (!response.ok) {
-    throw toProviderError(response);
-  }
-
-  const payload = await parseJsonResponse(response);
-  const parsed = hubspotAssociationsResponseSchema.safeParse(payload);
-
-  if (!parsed.success) {
-    throw new HubspotError(
-      "HUBSPOT_INVALID_RESPONSE",
-      502,
-      "HubSpot returned an invalid association response",
-    );
-  }
-
+  const details = await fetchHubspotAssociationDetails(input);
   return new Map(
-    parsed.data.results.map((result) => [
-      result.from.id,
-      result.to
+    [...details.entries()].map(([fromId, associations]) => [
+      fromId,
+      associations
         .filter((association) =>
           typeof input.associationTypeId === "number"
-            ? association.associationTypes.some((type) => type.typeId === input.associationTypeId)
+            ? association.associationTypes.some(
+                (type) => type.typeId === input.associationTypeId,
+              )
             : true,
         )
         .map((association) => association.toObjectId),

@@ -86,6 +86,27 @@ function normalizeText(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
+export function resolveHubspotCreatorLabel(input: {
+  channelHandle: string | null | undefined;
+  youtubeContextHandle: string | null | undefined;
+  channelTitle: string | null | undefined;
+}): string {
+  return (
+    normalizeText(input.channelHandle)
+    || normalizeText(input.youtubeContextHandle)
+    || normalizeText(input.channelTitle)
+  );
+}
+
+export function buildHubspotCreatorCampaignName(input: {
+  creatorLabel: string | null | undefined;
+  campaignName: string | null | undefined;
+}): string {
+  return [normalizeText(input.creatorLabel), normalizeText(input.campaignName)]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 export function resolveHubspotInfluencerTypeFallback(input: {
   channelInfluencerType: string | null | undefined;
   runHubspotInfluencerType: string | null | undefined;

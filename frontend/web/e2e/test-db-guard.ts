@@ -3,6 +3,7 @@ import process from "node:process";
 const DEFAULT_POSTGRES_PORT = "5432";
 const TEST_DB_NAME_PATTERN = /(?:^|[_-])test(?:$|[_-])/i;
 const ALLOW_UNSAFE_OVERRIDE = "ALLOW_UNSAFE_TEST_DB";
+const SELECTED_TEST_DATABASE_MARKER = "PLAYWRIGHT_TEST_DATABASE_SELECTED";
 
 function normalizeProtocol(protocol: string): string {
   const lower = protocol.toLowerCase();
@@ -104,6 +105,60 @@ export function assertSafeTestDatabaseConfiguration(): void {
     throw new Error(
       buildUnsafeMessage(
         `DATABASE_URL_TEST resolves to the same database as DATABASE_URL (${formatIdentity(testIdentity)}).`,
+      ),
+    );
+  }
+}
+
+export function selectSafeTestDatabaseConfiguration(): void {
+  if (process.env[SELECTED_TEST_DATABASE_MARKER] === "true") {
+    assertSelectedTestDatabaseConfiguration();
+    return;
+  }
+
+  assertSafeTestDatabaseConfiguration();
+
+  const testDatabaseUrl = process.env.DATABASE_URL_TEST?.trim();
+
+  if (!testDatabaseUrl) {
+    throw new Error("[test-db-guard] DATABASE_URL_TEST is required for Playwright.");
+  }
+
+  process.env.DATABASE_URL = testDatabaseUrl;
+  process.env[SELECTED_TEST_DATABASE_MARKER] = "true";
+}
+
+export function assertSelectedTestDatabaseConfiguration(): void {
+  const selectedUrl = parseDatabaseUrl(process.env.DATABASE_URL, "DATABASE_URL");
+  const testUrl = parseDatabaseUrl(process.env.DATABASE_URL_TEST, "DATABASE_URL_TEST");
+
+  if (!selectedUrl || !testUrl) {
+    throw new Error(
+      "[test-db-guard] Playwright requires DATABASE_URL and DATABASE_URL_TEST to select a dedicated test database.",
+    );
+  }
+
+  const selectedIdentity = getDatabaseIdentity(selectedUrl, "DATABASE_URL");
+  const testIdentity = getDatabaseIdentity(testUrl, "DATABASE_URL_TEST");
+
+  if (!TEST_DB_NAME_PATTERN.test(testIdentity.databaseName)) {
+    throw new Error(
+      buildUnsafeMessage(
+        `DATABASE_URL_TEST database name "${testIdentity.databaseName}" does not look like a dedicated test database.`,
+      ),
+    );
+  }
+
+  const selectedTestDatabase =
+    selectedIdentity.protocol === testIdentity.protocol
+    && selectedIdentity.hostname === testIdentity.hostname
+    && selectedIdentity.port === testIdentity.port
+    && selectedIdentity.databaseName === testIdentity.databaseName;
+
+  if (!selectedTestDatabase) {
+    throw new Error(
+      buildUnsafeMessage(
+        `Playwright selected ${formatIdentity(selectedIdentity)} instead of ${formatIdentity(testIdentity)}.`,
       ),
     );
   }

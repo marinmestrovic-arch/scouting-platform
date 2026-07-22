@@ -70,7 +70,6 @@ describe("buildHubspotContactProperties", () => {
       youtube_handle: "@creator",
       influencer_url: "https://youtube.com/@creator",
       youtube_followers: "150000",
-      youtube_video_average_views: "",
       youtube_engagement_rate: "3.5",
       influencer_size: "Macro (100K - 500K)",
     });
@@ -86,14 +85,31 @@ describe("buildHubspotContactProperties", () => {
     expect(properties.influencer_url).toBe("https://www.youtube.com/channel/UCxyz");
   });
 
-  it("returns empty strings for missing metrics", () => {
+  it("omits unknown metrics instead of clearing existing HubSpot values", () => {
     const properties = buildHubspotContactProperties(makeChannel({
       metrics: null,
     }));
 
-    expect(properties.youtube_followers).toBe("");
-    expect(properties.youtube_engagement_rate).toBe("");
-    expect(properties.influencer_size).toBe("");
+    expect(properties).not.toHaveProperty("youtube_followers");
+    expect(properties).not.toHaveProperty("youtube_video_average_views");
+    expect(properties).not.toHaveProperty("youtube_engagement_rate");
+    expect(properties).not.toHaveProperty("influencer_size");
+  });
+
+  it("preserves known zero metrics while omitting an unavailable size tier", () => {
+    const properties = buildHubspotContactProperties(makeChannel({
+      metrics: {
+        subscriberCount: 0n,
+        viewCount: 0n,
+        videoCount: 0n,
+        youtubeEngagementRate: 0,
+        youtubeFollowers: 0n,
+      },
+    }));
+
+    expect(properties.youtube_followers).toBe("0");
+    expect(properties.youtube_engagement_rate).toBe("0");
+    expect(properties).not.toHaveProperty("influencer_size");
   });
 
   it("pushes mapped content language when present", () => {
@@ -110,7 +126,7 @@ describe("buildHubspotContactProperties", () => {
     expect(properties.influencer_vertical).toBe("Gaming;Tech");
   });
 
-  it("returns an empty influencer vertical when nothing confidently matches", () => {
+  it("omits influencer vertical when nothing confidently matches", () => {
     const properties = buildHubspotContactProperties(makeChannel({
       enrichment: {
         summary: "General creator",
@@ -128,7 +144,7 @@ describe("buildHubspotContactProperties", () => {
       },
     }));
 
-    expect(properties.influencer_vertical).toBe("");
+    expect(properties).not.toHaveProperty("influencer_vertical");
   });
 
   it("keeps specific child verticals without redundant parents", () => {
