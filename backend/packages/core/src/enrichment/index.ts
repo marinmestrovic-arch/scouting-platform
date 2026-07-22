@@ -81,6 +81,121 @@ type ChannelEnrichmentTimings = {
   persistenceMs: number;
 };
 
+type ChannelContactIdentity = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  csvImportBatchId: string | null;
+};
+
+function normalizeContactIdentityValue(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function hasContactIdentity(contact: ChannelContactIdentity): boolean {
+  return [contact.firstName, contact.lastName, contact.email].some(
+    (value) => normalizeContactIdentityValue(value).length > 0,
+  );
+}
+
+function isHandleFallbackContact(input: {
+  contact: ChannelContactIdentity;
+  handles: readonly (string | null | undefined)[];
+}): boolean {
+  const firstName = normalizeContactIdentityValue(input.contact.firstName);
+  const fallbackHandles = new Set(
+    input.handles
+      .map(normalizeContactIdentityValue)
+      .filter((handle) => handle.length > 0),
+  );
+
+  return input.contact.csvImportBatchId === null
+    && normalizeContactIdentityValue(input.contact.email).length === 0
+    && normalizeContactIdentityValue(input.contact.lastName).length === 0
+    && fallbackHandles.has(firstName);
+}
+
+async function ensureChannelContactHandleFallback(input: {
+  tx: Prisma.TransactionClient;
+  channelId: string;
+  handle: string | null | undefined;
+  previousHandle?: string | null | undefined;
+}): Promise<void> {
+  const handle = normalizeContactIdentityValue(input.handle);
+
+  if (!handle) {
+    return;
+  }
+
+  const contacts = await input.tx.channelContact.findMany({
+    where: {
+      channelId: input.channelId,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      csvImportBatchId: true,
+    },
+  });
+  const handles = [input.previousHandle, handle];
+  const fallbackContact = contacts.find((contact) =>
+    isHandleFallbackContact({ contact, handles }),
+  );
+  const hasNonFallbackIdentity = contacts.some(
+    (contact) => hasContactIdentity(contact)
+      && !isHandleFallbackContact({ contact, handles }),
+  );
+
+  if (hasNonFallbackIdentity) {
+    return;
+  }
+
+  if (fallbackContact) {
+    if (normalizeContactIdentityValue(fallbackContact.firstName) !== handle) {
+      await input.tx.channelContact.update({
+        where: {
+          id: fallbackContact.id,
+        },
+        data: {
+          firstName: handle,
+        },
+      });
+    }
+
+    return;
+  }
+
+  const blankContact = contacts.find((contact) => !hasContactIdentity(contact));
+
+  if (blankContact) {
+    await input.tx.channelContact.update({
+      where: {
+        id: blankContact.id,
+      },
+      data: {
+        firstName: handle,
+      },
+    });
+    return;
+  }
+
+  if (contacts.length === 0) {
+    await input.tx.channelContact.create({
+      data: {
+        channelId: input.channelId,
+        email: "",
+        firstName: handle,
+      },
+    });
+  }
+}
+
 function logChannelEnrichmentTiming(input: {
   channelId: string;
   outcome: "completed" | "failed" | "cancelled";
@@ -271,7 +386,7 @@ async function persistYoutubeSignals(input: {
   tx: Prisma.TransactionClient;
   channel: YoutubeSignalChannel;
   youtubeMetrics: ReturnType<typeof deriveYoutubeMetrics>;
-}): Promise<void> {
+}): Promise<{ persistedHandle: string | null }> {
   const creatorListYoutubeMetrics = deriveCreatorListYoutubeMetrics(input.youtubeMetrics.context);
   const updateData: Prisma.ChannelUpdateInput = {
     youtubeUrl: input.youtubeMetrics.canonicalUrl,
@@ -369,6 +484,13 @@ async function persistYoutubeSignals(input: {
       youtubeShortsMedianViews: toNullableBigInt(creatorListYoutubeMetrics.medianShortsViews),
     },
   });
+
+  return {
+    persistedHandle:
+      updateData.handle === null || typeof updateData.handle === "string"
+        ? updateData.handle
+        : input.channel.handle,
+  };
 }
 
 function deriveYoutubeUrlTitlePlaceholder(value: string | null): string | null {
@@ -1468,10 +1590,17 @@ export async function executeChannelYoutubeRefresh(input: {
     });
 
     await prisma.$transaction(async (tx) => {
-      await persistYoutubeSignals({
+      const youtubeSignals = await persistYoutubeSignals({
         tx,
         channel,
         youtubeMetrics,
+      });
+
+      await ensureChannelContactHandleFallback({
+        tx,
+        channelId: channel.id,
+        handle: youtubeSignals.persistedHandle,
+        previousHandle: channel.handle,
       });
 
       await tx.channelYoutubeContext.update({
@@ -1578,7 +1707,11 @@ export async function executeChannelLlmEnrichment(input: {
                 email: "asc",
               },
               select: {
+                id: true,
                 email: true,
+                firstName: true,
+                lastName: true,
+                csvImportBatchId: true,
               },
             },
             manualOverrides: {
@@ -1859,7 +1992,24 @@ export async function executeChannelLlmEnrichment(input: {
         mapYoutubeLanguageToHubspot(youtubeMetrics.context.defaultLanguage ?? ""),
       ],
     });
-    const preferredEmail = executionState.channel.contacts.length === 0
+    const contactFallbackHandles = [
+      executionState.channel.handle,
+      youtubeMetrics.normalizedHandle,
+    ];
+    const existingFallbackContact = executionState.channel.contacts.find((contact) =>
+      isHandleFallbackContact({
+        contact,
+        handles: contactFallbackHandles,
+      }),
+    );
+    const hasNonFallbackContactIdentity = executionState.channel.contacts.some(
+      (contact) => hasContactIdentity(contact)
+        && !isHandleFallbackContact({
+          contact,
+          handles: contactFallbackHandles,
+        }),
+    );
+    const preferredEmail = !hasNonFallbackContactIdentity
       ? getPreferredCreatorEmail(youtubeMetrics.context, pageSignal)
         || ""
       : "";
@@ -1883,7 +2033,7 @@ export async function executeChannelLlmEnrichment(input: {
         throw new ChannelEnrichmentCancelledError();
       }
 
-      await persistYoutubeSignals({
+      const youtubeSignals = await persistYoutubeSignals({
         tx,
         channel: executionState.channel,
         youtubeMetrics,
@@ -1913,13 +2063,34 @@ export async function executeChannelLlmEnrichment(input: {
       });
 
       if (preferredEmail) {
-        await tx.channelContact.create({
-          data: {
-            channelId: executionState.channel.id,
-            email: preferredEmail,
-          },
-        });
+        const promotableContact = existingFallbackContact
+          ?? executionState.channel.contacts.find((contact) => !hasContactIdentity(contact));
+
+        if (promotableContact) {
+          await tx.channelContact.update({
+            where: {
+              id: promotableContact.id,
+            },
+            data: {
+              email: preferredEmail,
+            },
+          });
+        } else {
+          await tx.channelContact.create({
+            data: {
+              channelId: executionState.channel.id,
+              email: preferredEmail,
+            },
+          });
+        }
       }
+
+      await ensureChannelContactHandleFallback({
+        tx,
+        channelId: executionState.channel.id,
+        handle: youtubeSignals.persistedHandle,
+        previousHandle: executionState.channel.handle,
+      });
 
       const completedAt = new Date();
 

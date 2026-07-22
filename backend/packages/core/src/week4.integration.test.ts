@@ -1,6 +1,7 @@
 import {
   ChannelCountrySource,
   ChannelEnrichmentStatus as PrismaChannelEnrichmentStatus,
+  ChannelManualOverrideField,
   ChannelYoutubeRefreshStatus as PrismaChannelYoutubeRefreshStatus,
   CsvImportBatchStatus as PrismaCsvImportBatchStatus,
   CsvImportRowStatus as PrismaCsvImportRowStatus,
@@ -1132,6 +1133,256 @@ integration("week 4 core integration", () => {
     ]);
   });
 
+  it("falls back to the refreshed YouTube handle after full enrichment finds no contact identity", async () => {
+    const user = await createUser("standard-enrichment-fallback@example.com");
+    const channel = await createChannel("UC-STANDARD-FALLBACK", "Standard Fallback Channel");
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-STANDARD-FALLBACK",
+      handle: "@standard-fallback",
+      description: "No contact information is available.",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channelContact.findMany({
+      where: {
+        channelId: channel.id,
+      },
+      select: {
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    })).resolves.toEqual([{
+      email: "",
+      firstName: "@standard-fallback",
+      lastName: null,
+    }]);
+  });
+
+  it("uses the protected manual handle for the fallback instead of the raw YouTube handle", async () => {
+    const user = await createUser("standard-enrichment-manual-handle@example.com");
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-STANDARD-MANUAL-HANDLE",
+        title: "Manual Handle Channel",
+        handle: "@manual-handle",
+      },
+    });
+    await prisma.channelManualOverride.create({
+      data: {
+        channelId: channel.id,
+        field: ChannelManualOverrideField.HANDLE,
+        value: "@manual-handle",
+        fallbackValue: null,
+        createdByUserId: user.id,
+        updatedByUserId: user.id,
+      },
+    });
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-STANDARD-MANUAL-HANDLE",
+      handle: "@raw-youtube-handle",
+      description: "No contact information is available.",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channel.findUniqueOrThrow({
+      where: {
+        id: channel.id,
+      },
+      select: {
+        handle: true,
+        contacts: {
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    })).resolves.toEqual({
+      handle: "@manual-handle",
+      contacts: [{
+        email: "",
+        firstName: "@manual-handle",
+        lastName: null,
+      }],
+    });
+  });
+
+  it("promotes a handle fallback contact when later full enrichment finds an email", async () => {
+    const user = await createUser("standard-enrichment-email@example.com");
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-STANDARD-EMAIL",
+        title: "Standard Email Channel",
+        handle: "@standard-email",
+      },
+    });
+    const fallbackContact = await prisma.channelContact.create({
+      data: {
+        channelId: channel.id,
+        email: "",
+        firstName: "@standard-email",
+      },
+    });
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-STANDARD-EMAIL",
+      handle: "@standard-email",
+      description: "Business inquiries: creator@example.com",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channelContact.findMany({
+      where: {
+        channelId: channel.id,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    })).resolves.toEqual([{
+      id: fallbackContact.id,
+      email: "creator@example.com",
+      firstName: "@standard-email",
+      lastName: null,
+    }]);
+  });
+
+  it("preserves an existing name-only contact instead of adding a handle fallback", async () => {
+    const user = await createUser("standard-enrichment-name@example.com");
+    const channel = await createChannel("UC-STANDARD-NAME", "Standard Name Channel");
+    const existingContact = await prisma.channelContact.create({
+      data: {
+        channelId: channel.id,
+        email: "",
+        firstName: "Existing",
+        lastName: "Creator",
+      },
+    });
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-STANDARD-NAME",
+      handle: "@standard-name",
+      description: "No contact information is available.",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channelContact.findMany({
+      where: {
+        channelId: channel.id,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    })).resolves.toEqual([{
+      id: existingContact.id,
+      email: "",
+      firstName: "Existing",
+      lastName: "Creator",
+    }]);
+  });
+
+  it("does not create a contact fallback when enrichment has no YouTube handle", async () => {
+    const user = await createUser("standard-enrichment-no-handle@example.com");
+    const channel = await createChannel("UC-STANDARD-NO-HANDLE", "No Handle Channel");
+    await assignYoutubeKey(user.id);
+    await prisma.channelEnrichment.create({
+      data: {
+        channelId: channel.id,
+        status: PrismaChannelEnrichmentStatus.QUEUED,
+        requestedByUserId: user.id,
+        requestedAt: new Date(),
+      },
+    });
+
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...CACHED_CONTEXT,
+      youtubeChannelId: "UC-STANDARD-NO-HANDLE",
+      handle: null,
+      description: "No contact information is available.",
+    });
+    enrichChannelWithOpenAiMock.mockResolvedValueOnce(ENRICHMENT_RESULT);
+
+    await getCore().executeChannelLlmEnrichment({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channelContact.count({
+      where: {
+        channelId: channel.id,
+      },
+    })).resolves.toBe(0);
+  });
+
   it("preserves existing valid CRM classifications during enrichment", async () => {
     const user = await createUser("preserve-profile-fields@example.com");
     const channel = await createChannel("UC-PRESERVE-PROFILE", "Preserve Profile Channel");
@@ -1799,6 +2050,48 @@ integration("week 4 core integration", () => {
     expect(metrics.youtubeFollowers).toBe(2400n);
     expect(metrics.youtubeVideoMedianViews).toBe(2000n);
     expect(metrics.youtubeShortsMedianViews).toBe(1000n);
+
+    await expect(prisma.channelContact.findMany({
+      where: {
+        channelId: channel.id,
+      },
+      select: {
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    })).resolves.toEqual([{
+      email: "",
+      firstName: "@youtube-only-refreshed",
+      lastName: null,
+    }]);
+
+    await prisma.channelYoutubeContext.update({
+      where: {
+        channelId: channel.id,
+      },
+      data: {
+        refreshStatus: PrismaChannelYoutubeRefreshStatus.QUEUED,
+        refreshRequestedAt: new Date(),
+      },
+    });
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...buildFreshMetricContext(),
+      title: "YouTube Only Refreshed",
+      handle: "@youtube-only-refreshed",
+      subscriberCount: 2400,
+    });
+
+    await getCore().executeChannelYoutubeRefresh({
+      channelId: channel.id,
+      requestedByUserId: user.id,
+    });
+
+    await expect(prisma.channelContact.count({
+      where: {
+        channelId: channel.id,
+      },
+    })).resolves.toBe(1);
 
     // The catalog detail must surface the YouTube refresh timestamp separately
     // from the AI enrichment timestamp so the two cadences are visible.
