@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   HubspotPrepClearField,
   ExportPreviewDropdownOptions,
@@ -5,7 +7,10 @@ import type {
   HubspotPrepUpdateDefaults,
   HubspotPrepUpdateRequest,
 } from "@scouting-platform/contracts";
-import { hubspotPrepUpdateRequestSchema } from "@scouting-platform/contracts";
+import {
+  HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
+  hubspotPrepUpdateRequestSchema,
+} from "@scouting-platform/contracts";
 import { prisma, withDbTransaction } from "@scouting-platform/db";
 
 import { listDropdownOptions } from "../dropdown-values";
@@ -84,6 +89,53 @@ type RunAccessInput = {
 
 function normalizeText(value: string | null | undefined): string {
   return value?.trim() ?? "";
+}
+
+export { HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY };
+
+export function hasHubspotContactIdentity(input: {
+  firstName: string | null | undefined;
+  lastName: string | null | undefined;
+  email: string | null | undefined;
+}): boolean {
+  return [input.firstName, input.lastName, input.email].some(
+    (value) => normalizeText(value).length > 0,
+  );
+}
+
+export function resolveHubspotContactFirstNameFallback(input: {
+  firstName: string | null | undefined;
+  lastName: string | null | undefined;
+  email: string | null | undefined;
+  youtubeHandle: string | null | undefined;
+}): string {
+  if (hasHubspotContactIdentity(input)) {
+    return "";
+  }
+
+  return normalizeText(input.youtubeHandle);
+}
+
+export function buildHubspotFallbackChannelContactId(channelId: string): string {
+  const normalizedChannelId = normalizeText(channelId).toLowerCase();
+
+  if (!normalizedChannelId) {
+    throw new ServiceError("HUBSPOT_CHANNEL_ID_EMPTY", 400, "Channel ID is required");
+  }
+
+  const digest = createHash("sha256")
+    .update(`hubspot-preparation-contact:${normalizedChannelId}`)
+    .digest("hex");
+  const variant = ((Number.parseInt(digest[16]!, 16) & 0x3) | 0x8).toString(16);
+
+  // RFC 9562 UUIDv8 keeps the generated ChannelContact identity stable across retries.
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `8${digest.slice(13, 16)}`,
+    `${variant}${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-");
 }
 
 export function resolveHubspotCreatorLabel(input: {

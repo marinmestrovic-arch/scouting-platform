@@ -36,8 +36,11 @@ import {
   retryDirectHubspotImportBatch,
 } from "./direct-sync-service";
 import {
+  buildHubspotFallbackChannelContactId,
   buildHubspotCreatorCampaignName,
   buildHubspotRowKey,
+  hasHubspotContactIdentity,
+  HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
   normalizeHubspotPrepDefaults,
   resolveHubspotCreatorLabel,
   resolveHubspotInfluencerTypeFallback,
@@ -286,9 +289,6 @@ const REQUIRED_RUN_FIELDS = [
   ["dealOwner", "Deal owner"],
   ["pipeline", "Pipeline"],
   ["dealStage", "Deal stage"],
-  ["currency", "Currency"],
-  ["dealType", "Deal Type"],
-  ["activationType", "Activation Type"],
 ] as const satisfies ReadonlyArray<readonly [keyof ImportRunRecord, string]>;
 
 function toNullableTrimmed(value: string | null | undefined): string | null {
@@ -699,6 +699,7 @@ async function buildImportDraft(input: {
     contactEmail: string;
     firstName: string;
     lastName: string;
+    materializeContact: boolean;
     payload: HubspotImportPayload;
   }>;
 }> {
@@ -710,6 +711,7 @@ async function buildImportDraft(input: {
     contactEmail: string;
     firstName: string;
     lastName: string;
+    materializeContact: boolean;
     payload: HubspotImportPayload;
   }> = [];
   const defaults = normalizeHubspotPrepDefaults(run);
@@ -724,19 +726,18 @@ async function buildImportDraft(input: {
       campaignName: run.campaignName,
     });
 
-    if (channel.contacts.length === 0) {
-      blockers.push({
-        scope: "channel",
-        runId: run.id,
-        channelId: channel.id,
-        contactEmail: null,
-        field: "contactEmail",
-        message: `${channel.title} does not have a contact email`,
-      });
-      continue;
-    }
+    const contacts = channel.contacts.length > 0
+      ? channel.contacts.map((contact) => ({ ...contact, materializeContact: false }))
+      : [{
+          id: buildHubspotFallbackChannelContactId(channel.id),
+          email: "",
+          firstName: null,
+          lastName: null,
+          phoneNumber: null,
+          materializeContact: true,
+        }];
 
-    for (const [contactIndex, contact] of channel.contacts.entries()) {
+    for (const [contactIndex, contact] of contacts.entries()) {
       const rowKey = buildHubspotRowKey({
         resultId: result.id,
         contactEmail: contact.email,
@@ -774,33 +775,19 @@ async function buildImportDraft(input: {
         rowOverride: rowOverrides.get(rowKey) ?? null,
       });
 
-      if (!toNullableTrimmed(effectiveValues.firstName)) {
+      if (!hasHubspotContactIdentity({
+        firstName: effectiveValues.firstName,
+        lastName: effectiveValues.lastName,
+        email: effectiveValues.email,
+      })) {
         blockers.push({
           scope: "contact",
           runId: run.id,
           channelId: channel.id,
-          contactEmail: contact.email,
-          field: "firstName",
-          message: `${channel.title} contact ${contact.email} is missing First Name`,
+          contactEmail: toNullableTrimmed(contact.email),
+          field: HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
+          message: `${channel.title} needs at least one of First Name, Last Name, or Email`,
         });
-      }
-
-      if (!toNullableTrimmed(effectiveValues.lastName)) {
-        blockers.push({
-          scope: "contact",
-          runId: run.id,
-          channelId: channel.id,
-          contactEmail: contact.email,
-          field: "lastName",
-          message: `${channel.title} contact ${contact.email} is missing Last Name`,
-        });
-      }
-
-      if (
-        !toNullableTrimmed(effectiveValues.firstName) ||
-        !toNullableTrimmed(effectiveValues.lastName) ||
-        !toNullableTrimmed(effectiveValues.email)
-      ) {
         continue;
       }
 
@@ -810,6 +797,7 @@ async function buildImportDraft(input: {
         contactEmail: effectiveValues.email ?? "",
         firstName: effectiveValues.firstName ?? "",
         lastName: effectiveValues.lastName ?? "",
+        materializeContact: contact.materializeContact,
         payload: buildRowPayload({
           run,
           channel,
@@ -1062,6 +1050,39 @@ export async function createHubspotImportBatch(input: {
 
   try {
     importBatchId = await withDbTransaction(async (tx) => {
+      const preparedRows = await Promise.all(draft.rows.map(async (row) => {
+        if (!row.materializeContact) {
+          return row;
+        }
+
+        const contact = await tx.channelContact.upsert({
+          where: {
+            channelId_email: {
+              channelId: row.channelId,
+              email: "",
+            },
+          },
+          create: {
+            id: row.channelContactId,
+            channelId: row.channelId,
+            email: "",
+          },
+          update: {},
+          select: {
+            id: true,
+          },
+        });
+
+        if (contact.id !== row.channelContactId) {
+          throw new ServiceError(
+            "HUBSPOT_CONTACT_IDENTITY_CHANGED",
+            409,
+            "The prepared fallback contact identity changed; refresh preparation and retry",
+          );
+        }
+
+        return row;
+      }));
       const batch = await tx.hubspotImportBatch.create({
         data: {
           requestedByUserId: input.requestedByUserId,
@@ -1075,9 +1096,9 @@ export async function createHubspotImportBatch(input: {
           ...(directContext
             ? { directSyncSnapshot: toJsonValue(directContext.snapshot) }
             : {}),
-          totalRowCount: draft.rows.length,
+          totalRowCount: preparedRows.length,
           rows: {
-            create: draft.rows.map((row) => ({
+            create: preparedRows.map((row) => ({
               channelId: row.channelId,
               channelContactId: row.channelContactId,
               contactEmail: row.contactEmail,

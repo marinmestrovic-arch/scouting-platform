@@ -692,6 +692,51 @@ integration("HubSpot direct sync lifecycle", () => {
     );
   });
 
+  it("uses the durable custom unique key for an unlinked contact without email", async () => {
+    const { batchId, userId, rowIds } = await seedBatch();
+    const emailLessRow = await prisma.hubspotImportBatchRow.findUniqueOrThrow({
+      where: { id: rowIds[0]! },
+      select: { externalKey: true, payload: true },
+    });
+    const payload = JSON.parse(JSON.stringify(emailLessRow.payload)) as {
+      csv: Record<string, string>;
+    };
+    payload.csv.Email = "";
+    await prisma.hubspotImportBatchRow.update({
+      where: { id: rowIds[0]! },
+      data: {
+        contactEmail: "",
+        payload: payload as Prisma.InputJsonValue,
+      },
+    });
+    const service = await loadDirectSync();
+    const executionPayload = { importBatchId: batchId, requestedByUserId: userId };
+
+    await service.executeDirectHubspotImportBatch(executionPayload);
+    await service.executeDirectHubspotImportBatch(executionPayload);
+
+    const submittedRecords = contactsMock.mock.calls.flatMap(
+      ([input]) => (input as {
+        records: Array<{
+          id: string;
+          idProperty: string;
+          properties: Record<string, string>;
+        }>;
+      }).records,
+    );
+    const submitted = submittedRecords.find((record) => record.id === emailLessRow.externalKey);
+
+    expect(submitted).toMatchObject({
+      id: emailLessRow.externalKey,
+      idProperty: "atlas_contact_id",
+      properties: {
+        atlas_contact_id: emailLessRow.externalKey,
+        firstname: "Creator1",
+      },
+    });
+    expect(submitted?.properties).not.toHaveProperty("email");
+  });
+
   it("uses the durable custom unique key for an already linked contact", async () => {
     const { batchId, userId, rowIds } = await seedBatch();
     const linkedRow = await prisma.hubspotImportBatchRow.findUniqueOrThrow({

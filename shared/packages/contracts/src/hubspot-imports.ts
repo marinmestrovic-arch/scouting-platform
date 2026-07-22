@@ -93,7 +93,7 @@ export const hubspotImportBatchRowSchema = z.object({
   id: z.uuid(),
   channelId: z.uuid(),
   channelTitle: z.string(),
-  contactEmail: z.string().email(),
+  contactEmail: z.union([z.string().email(), z.literal("")]),
   firstName: z.string(),
   lastName: z.string(),
   influencerType: z.string(),

@@ -1293,16 +1293,21 @@ async function submitDirectBatch(
         ),
       },
     });
+    const contactEmail = row.contactEmail.trim();
     const linkedObjectId = existingLinkByContactId.get(row.channelContactId);
-    const legacyObjectId = legacyIdentityByChannelEmail.get(
-      `${row.channelId}\0${row.contactEmail.trim().toLowerCase()}`,
-    );
+    const legacyObjectId = contactEmail
+      ? legacyIdentityByChannelEmail.get(
+          `${row.channelId}\0${contactEmail.toLowerCase()}`,
+        )
+      : undefined;
+    const useDurableIdentity = Boolean(linkedObjectId) || !contactEmail;
+
     return {
       row,
       properties,
       writeMode: legacyObjectId && !linkedObjectId ? "record_id_update" as const : "upsert" as const,
-      identityId: linkedObjectId ? row.externalKey : legacyObjectId ?? row.contactEmail,
-      identityProperty: linkedObjectId
+      identityId: useDurableIdentity ? row.externalKey : legacyObjectId ?? contactEmail,
+      identityProperty: useDurableIdentity
         ? context.contactUniqueIdProperty
         : legacyObjectId
           ? null

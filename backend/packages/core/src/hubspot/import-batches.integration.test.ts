@@ -78,6 +78,8 @@ integration("HubSpot import batch creation durability", () => {
     ownerId: string;
     adminId: string;
     runId: string;
+    channelId: string;
+    resultId: string;
   }> {
     const [owner, admin] = await Promise.all([
       prisma.user.create({
@@ -237,7 +239,7 @@ integration("HubSpot import batch creation durability", () => {
         },
       },
     });
-    await prisma.runResult.create({
+    const result = await prisma.runResult.create({
       data: {
         runRequestId: run.id,
         channelId: channel.id,
@@ -246,8 +248,93 @@ integration("HubSpot import batch creation durability", () => {
       },
     });
 
-    return { ownerId: owner.id, adminId: admin.id, runId: run.id };
+    return {
+      ownerId: owner.id,
+      adminId: admin.id,
+      runId: run.id,
+      channelId: channel.id,
+      resultId: result.id,
+    };
   }
+
+  it("creates a durable handle-only row while optional HubSpot fields are blank", async () => {
+    const fixture = await seedImportableRun();
+    await prisma.$transaction([
+      prisma.channelContact.deleteMany({
+        where: { channelId: fixture.channelId },
+      }),
+      prisma.runRequest.update({
+        where: { id: fixture.runId },
+        data: {
+          currency: null,
+          dealType: null,
+          activationType: null,
+          hubspotInfluencerType: null,
+          hubspotInfluencerVertical: null,
+          hubspotCountryRegion: null,
+          hubspotLanguage: null,
+        },
+      }),
+      prisma.channel.update({
+        where: { id: fixture.channelId },
+        data: {
+          influencerType: null,
+          influencerVertical: null,
+          countryRegion: null,
+          contentLanguage: null,
+        },
+      }),
+      prisma.runHubspotRowOverride.create({
+        data: {
+          runRequestId: fixture.runId,
+          rowKey: `${fixture.resultId}:0`,
+          firstName: "@creator",
+        },
+      }),
+    ]);
+    const imports = await loadImportBatches();
+
+    await expect(imports.getHubspotImportBlockers({
+      runId: fixture.runId,
+      requestedByUserId: fixture.ownerId,
+      role: "user",
+    })).resolves.toEqual([]);
+
+    const created = await imports.createHubspotImportBatch({
+      runId: fixture.runId,
+      requestedByUserId: fixture.ownerId,
+      role: "user",
+      deliveryMode: "direct_object_api",
+    });
+    const batch = await prisma.hubspotImportBatch.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { rows: true },
+    });
+    const row = batch.rows[0]!;
+    const payload = row.payload as { csv?: Record<string, string> };
+    const materializedContact = await prisma.channelContact.findUniqueOrThrow({
+      where: { id: row.channelContactId! },
+    });
+
+    expect(row.contactEmail).toBe("");
+    expect(row.firstName).toBe("@creator");
+    expect(row.lastName).toBe("");
+    expect(row.externalKey).toBe(`contact:${row.channelContactId}`);
+    expect(materializedContact).toMatchObject({
+      channelId: fixture.channelId,
+      email: "",
+    });
+    expect(payload.csv).toMatchObject({
+      Currency: "",
+      "Deal Type": "",
+      "Activation Type": "",
+      "Influencer Type": "",
+      Language: "",
+      "First Name": "@creator",
+      "Last Name": "",
+      Email: "",
+    });
+  });
 
   it("re-enqueues an admin-reused active batch with the persisted run owner", async () => {
     const fixture = await seedImportableRun();

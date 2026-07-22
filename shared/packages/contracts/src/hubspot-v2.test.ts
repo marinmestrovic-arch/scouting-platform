@@ -64,6 +64,28 @@ describe("HubSpot V2 contracts", () => {
     expect(row.retryable).toBe(true);
   });
 
+  it("accepts a prepared HubSpot row without an email when it has a name", () => {
+    const row = hubspotImportBatchRowSchema.parse({
+      id: "a2197d69-c9be-4a40-aed6-8c45f15e7e01",
+      channelId: "bbb15b9c-fb78-4732-b41b-d53056314f55",
+      channelTitle: "Creator",
+      contactEmail: "",
+      firstName: "@creator",
+      lastName: "",
+      influencerType: "",
+      influencerVertical: "",
+      countryRegion: "",
+      language: "",
+      status: "pending",
+      errorMessage: null,
+      createdAt: "2026-07-20T10:00:00.000Z",
+      updatedAt: "2026-07-20T10:01:00.000Z",
+    });
+
+    expect(row.contactEmail).toBe("");
+    expect(row.firstName).toBe("@creator");
+  });
+
   it("preserves distinct HubSpot labels and internal values", () => {
     const option = dropdownValueSchema.parse({
       id: "99a8b38c-215d-4aa7-8ed6-96df75b80dd1",

@@ -8,6 +8,7 @@ import type {
   HubspotPrepUpdateRequest,
   HubspotExportPreview,
 } from "@scouting-platform/contracts";
+import { HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY } from "@scouting-platform/contracts";
 import React, { useState } from "react";
 
 import { updateHubspotExportPreview } from "../../lib/export-previews-api";
@@ -24,6 +25,8 @@ const RUN_DEFAULT_COLUMN_KEYS = new Set<keyof HubspotPrepUpdateDefaults>([
   "dealType",
   "activationType",
 ]);
+
+const CONTACT_IDENTITY_FIELD_KEYS = new Set(["firstName", "lastName", "email"]);
 
 type HubspotDrafts = {
   defaults: HubspotPrepUpdateDefaults;
@@ -351,7 +354,7 @@ export function ExportPreparationWorkspace({
       {validationIssues.length > 0 ? (
         <section className="workspace-callout workspace-callout--error">
           <h3>Missing required values</h3>
-          <p>{validationIssues.length} fields still need manual input before export.</p>
+          <p>{validationIssues.length} requirements still need manual input before export.</p>
         </section>
       ) : null}
 
@@ -450,6 +453,11 @@ export function ExportPreparationWorkspace({
         </button>
       </div>
 
+      <p className="workspace-copy">
+        Fields marked * are required. Each row must also have at least one of First Name, Last
+        Name, or Email (marked †).
+      </p>
+
       <div className="export-prep__table-shell">
         <table className="export-prep__table">
           <thead>
@@ -457,7 +465,11 @@ export function ExportPreparationWorkspace({
               {currentPreview.columns.map((column) => (
                 <th key={column.key}>
                   {column.label}
-                  {column.required ? " *" : ""}
+                  {column.required
+                    ? " *"
+                    : CONTACT_IDENTITY_FIELD_KEYS.has(column.key)
+                      ? " †"
+                      : ""}
                 </th>
               ))}
             </tr>
@@ -467,6 +479,16 @@ export function ExportPreparationWorkspace({
               <tr key={row.id}>
                 {currentPreview.columns.map((column) => {
                   const placeholderValue = row.values[column.key] ?? "";
+                  const isMissingContactIdentity =
+                    CONTACT_IDENTITY_FIELD_KEYS.has(column.key)
+                    && validationIssues.some(
+                      (issue) =>
+                        issue.rowId === row.id
+                        && issue.columnKey === HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
+                    );
+                  const isMissingRequiredValue =
+                    !placeholderValue.trim()
+                    && (column.required || isMissingContactIdentity);
 
                   return (
                     <td key={column.key}>
@@ -496,7 +518,7 @@ export function ExportPreparationWorkspace({
                       ) : (
                         <div className="export-prep__cell-editor">
                           <input
-                            className={!placeholderValue.trim() && column.required ? "export-prep__input export-prep__input--missing" : "export-prep__input"}
+                            className={isMissingRequiredValue ? "export-prep__input export-prep__input--missing" : "export-prep__input"}
                             disabled={requestState === "saving"}
                             onChange={(event) =>
                               updateRowValue(

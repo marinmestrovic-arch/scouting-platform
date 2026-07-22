@@ -40,7 +40,10 @@ import {
   applyHubspotPreparationRows,
   buildHubspotCreatorCampaignName,
   buildHubspotRowKey,
+  hasHubspotContactIdentity,
+  HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
   normalizeHubspotPrepDefaults,
+  resolveHubspotContactFirstNameFallback,
   resolveHubspotCreatorLabel,
   resolveHubspotInfluencerTypeFallback,
 } from "./hubspot/preparation";
@@ -171,7 +174,7 @@ function column(
   };
 }
 
-const HUBSPOT_COLUMNS: ExportPreviewColumn[] = [
+export const HUBSPOT_COLUMNS: ExportPreviewColumn[] = [
   column("contactType", "Contact Type", false, true, "readonly"),
   column("campaignName", "Campaign Name", false, true),
   column("month", "Month", false, true),
@@ -182,17 +185,17 @@ const HUBSPOT_COLUMNS: ExportPreviewColumn[] = [
   column("activationName", "Activation name", false),
   column("pipeline", "Pipeline", false, true),
   column("dealStage", "Deal stage", false, true),
-  column("currency", "Currency", true, true, "dropdown", "currency"),
-  column("dealType", "Deal Type", true, true, "dropdown", "dealType"),
-  column("activationType", "Activation Type", true, true, "dropdown", "activationType"),
-  column("firstName", "First Name", true, true),
-  column("lastName", "Last Name", true, true),
-  column("email", "Email", true, true),
+  column("currency", "Currency", true, false, "dropdown", "currency"),
+  column("dealType", "Deal Type", true, false, "dropdown", "dealType"),
+  column("activationType", "Activation Type", true, false, "dropdown", "activationType"),
+  column("firstName", "First Name", true),
+  column("lastName", "Last Name", true),
+  column("email", "Email", true),
   column("phoneNumber", "Phone Number", true),
-  column("influencerType", "Influencer Type", true, true, "dropdown", "influencerType"),
-  column("influencerVertical", "Influencer Vertical", true, true, "dropdown", "influencerVertical"),
-  column("countryRegion", "Country/Region", true, true, "dropdown", "countryRegion"),
-  column("language", "Language", true, true, "dropdown", "language"),
+  column("influencerType", "Influencer Type", true, false, "dropdown", "influencerType"),
+  column("influencerVertical", "Influencer Vertical", true, false, "dropdown", "influencerVertical"),
+  column("countryRegion", "Country/Region", true, false, "dropdown", "countryRegion"),
+  column("language", "Language", true, false, "dropdown", "language"),
   column("youtubeHandle", "YouTube Handle", false),
   column("youtubeUrl", "YouTube URL", false),
   column("youtubeVideoMedianViews", "YouTube Video Median Views", false),
@@ -1322,7 +1325,9 @@ function buildHubspotRows(
   return dropdownOptions ? sanitizeHubspotRows(rows, dropdownOptions) : rows;
 }
 
-function buildValidationIssues(rows: ExportPreviewRow[]): ExportPreviewValidationIssue[] {
+export function buildHubspotValidationIssues(
+  rows: ExportPreviewRow[],
+): ExportPreviewValidationIssue[] {
   const requiredKeys = HUBSPOT_COLUMNS.filter((column) => column.required).map((column) => column.key);
   const issues: ExportPreviewValidationIssue[] = [];
 
@@ -1336,6 +1341,18 @@ function buildValidationIssues(rows: ExportPreviewRow[]): ExportPreviewValidatio
           message: `${label} is required`,
         });
       }
+    }
+
+    if (!hasHubspotContactIdentity({
+      firstName: row.values.firstName,
+      lastName: row.values.lastName,
+      email: row.values.email,
+    })) {
+      issues.push({
+        rowId: row.id,
+        columnKey: HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY,
+        message: "At least one of First Name, Last Name, or Email is required",
+      });
     }
   }
 
@@ -1437,7 +1454,6 @@ function buildHubspotRowOverridePatches(input: {
 
     if (
       profileFirstName
-      && profileLastName
       && !values.firstName?.trim()
       && !currentOverride?.firstName?.trim()
       && !currentFirstName.trim()
@@ -1446,13 +1462,23 @@ function buildHubspotRowOverridePatches(input: {
     }
 
     if (
-      profileFirstName
-      && profileLastName
+      profileLastName
       && !values.lastName?.trim()
       && !currentOverride?.lastName?.trim()
       && !currentLastName.trim()
     ) {
       values.lastName = profileLastName;
+    }
+
+    const fallbackFirstName = resolveHubspotContactFirstNameFallback({
+      firstName: values.firstName ?? currentOverride?.firstName ?? currentFirstName,
+      lastName: values.lastName ?? currentOverride?.lastName ?? currentLastName,
+      email: values.email ?? currentOverride?.email ?? currentEmail,
+      youtubeHandle: fallbackRow.fallbackValues.youtubeHandle,
+    });
+
+    if (fallbackFirstName) {
+      values.firstName = fallbackFirstName;
     }
 
     if (
@@ -2130,7 +2156,7 @@ export async function getHubspotExportPreview(input: {
     }),
     dropdownOptions,
     rows,
-    validationIssues: buildValidationIssues(rows),
+    validationIssues: buildHubspotValidationIssues(rows),
   };
 }
 

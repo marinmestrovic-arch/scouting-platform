@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { dropdownValueFieldKeySchema } from "./dropdown-values";
 
+export const HUBSPOT_CONTACT_IDENTITY_COLUMN_KEY = "contactIdentity" as const;
+
 export const exportPreviewColumnSchema = z.object({
   key: z.string().trim().min(1),
   label: z.string().trim().min(1),

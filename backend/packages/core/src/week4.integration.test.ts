@@ -1259,6 +1259,77 @@ integration("week 4 core integration", () => {
     expect(completedJob.status).toBe(PrismaHubspotPreviewEnrichmentJobStatus.COMPLETED);
   });
 
+  it("falls back to the YouTube handle when Creator List enrichment finds no contact identity", async () => {
+    const user = await createUser("preview-handle-fallback@example.com");
+    const channel = await prisma.channel.create({
+      data: {
+        youtubeChannelId: "UC-PREVIEW-HANDLE",
+        title: "Preview Handle Channel",
+        handle: "@preview-handle",
+      },
+    });
+    await assignYoutubeKey(user.id);
+    const run = await prisma.runRequest.create({
+      data: {
+        requestedByUserId: user.id,
+        name: "Preview handle fallback run",
+        query: "gaming creators",
+        target: 1,
+        status: RunRequestStatus.COMPLETED,
+        completedAt: new Date(),
+      },
+    });
+    const runResult = await prisma.runResult.create({
+      data: {
+        runRequestId: run.id,
+        channelId: channel.id,
+        rank: 1,
+        source: RunResultSource.DISCOVERY,
+      },
+    });
+    const job = await prisma.hubspotPreviewEnrichmentJob.create({
+      data: {
+        runRequestId: run.id,
+        requestedByUserId: user.id,
+        progressMessage: "Creator List enrichment queued.",
+      },
+    });
+    fetchYoutubeChannelContextMock.mockResolvedValueOnce({
+      ...buildFreshMetricContext(),
+      youtubeChannelId: channel.youtubeChannelId,
+      handle: channel.handle,
+      description: "No contact details available.",
+    });
+    enrichCreatorProfilesWithOpenAiMock.mockResolvedValueOnce([{
+      rowKey: `${runResult.id}:0`,
+      values: {},
+    }]);
+
+    await getCore().executeHubspotPreviewEnrichmentJob({
+      enrichmentJobId: job.id,
+      requestedByUserId: user.id,
+    });
+
+    const preview = await getCore().getHubspotExportPreview({
+      runId: run.id,
+      userId: user.id,
+      role: "admin",
+    });
+    const [row] = preview.rows;
+
+    expect(row?.values).toMatchObject({
+      firstName: "@preview-handle",
+      lastName: "",
+      email: "",
+    });
+    expect(preview.validationIssues).not.toContainEqual(
+      expect.objectContaining({
+        rowId: row?.id,
+        columnKey: "contactIdentity",
+      }),
+    );
+  });
+
   it("normalizes Creator List batch enrichment to saved HubSpot dropdown values", async () => {
     const user = await createUser("preview-profile-fields@example.com");
     const channel = await prisma.channel.create({
