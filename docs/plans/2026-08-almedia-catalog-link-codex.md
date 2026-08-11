@@ -1,6 +1,6 @@
 # Codex Implementation Guide: Link Almedia Enrichments to the Channel Catalog
 
-- Status: Not started
+- Status: Deferred
 - Date: 2026-08-11
 - Owner: Ivan
 

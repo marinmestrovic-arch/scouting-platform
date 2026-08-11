@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALMEDIA_TABS_IN_ORDER,
   buildAlmediaWorkspaceHref,
+  formatAlmediaSyncFailure,
   resolveAlmediaTab,
 } from "./almedia-workspace";
 
@@ -67,5 +68,28 @@ describe("tab order", () => {
         tab: "invoices",
       }),
     ).toBe("/almedia?tab=invoices");
+  });
+});
+
+describe("formatAlmediaSyncFailure", () => {
+  it("turns a missing worker key stack into an actionable setup message", () => {
+    expect(
+      formatAlmediaSyncFailure(
+        "ServiceError: ALMEDIA_API_KEY is not configured on this process\n    at resolveApiKey (/workspace/backend/packages/core/src/almedia/campaigns.ts:41:11)",
+      ),
+    ).toBe(
+      "Almedia sync is not configured on the worker. Set ALMEDIA_API_KEY, then retry.",
+    );
+  });
+
+  it("does not expose an unexpected worker stack", () => {
+    const message = formatAlmediaSyncFailure(
+      "Error: provider failed\n    at fetchAllCampaigns (/workspace/backend/packages/integrations/src/almedia/agency-data.ts:100:5)",
+    );
+
+    expect(message).toBe(
+      "Almedia sync could not refresh. Existing data is still available; retry or check the worker logs.",
+    );
+    expect(message).not.toContain("/workspace/");
   });
 });

@@ -52,10 +52,6 @@ function resolveBaseUrl(): string | undefined {
   return process.env.ALMEDIA_BASE_URL?.trim() || undefined;
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? (error.stack ?? error.message) : String(error);
-}
-
 /**
  * The feed is expected to key on `campaignName`. Deduplicate defensively so a
  * duplicate cannot abort the whole sync, keeping the last row seen.
@@ -99,13 +95,53 @@ export async function requestAlmediaCampaignsSync(input: {
     entityId: run.id,
   });
 
-  await enqueueAlmediaCampaignsSyncJob({
+  await enqueueOrFailRun(run.id, {
     initiatedBy: "admin",
     syncRunId: run.id,
     requestedByUserId: input.requestedByUserId,
   });
 
   return { runId: run.id };
+}
+
+/**
+ * Enqueue the job, and fail the run if that does not happen.
+ *
+ * The run row is created before the job so the request has an id to return, but
+ * that leaves a window: if pg-boss is unreachable, the row would otherwise sit
+ * at `queued` forever with no `completedAt` and no `lastError`, and the hourly
+ * schedule would mint another orphan on every retry. A run that no worker will
+ * ever pick up is a failed run, and job durability requires it to say so.
+ */
+async function enqueueOrFailRun(
+  runId: string,
+  payload: Parameters<typeof enqueueAlmediaCampaignsSyncJob>[0],
+): Promise<void> {
+  try {
+    await enqueueAlmediaCampaignsSyncJob(payload);
+  } catch (error) {
+    await prisma.almediaSyncRun.update({
+      where: { id: runId },
+      data: {
+        status: PrismaAlmediaSyncRunStatus.FAILED,
+        completedAt: new Date(),
+        lastError: toSyncRunError(error),
+      },
+    });
+
+    throw error;
+  }
+}
+
+const MAX_SYNC_RUN_ERROR_CHARS = 1000;
+
+function toSyncRunError(error: unknown): string {
+  const message =
+    error instanceof Error && error.message
+      ? error.message
+      : "Failed to enqueue the Almedia campaigns sync job";
+
+  return message.slice(0, MAX_SYNC_RUN_ERROR_CHARS);
 }
 
 /** Queue the hourly sync run (no requesting user). */
@@ -115,7 +151,7 @@ export async function createScheduledAlmediaSyncRun(): Promise<{ runId: string }
     select: { id: true },
   });
 
-  await enqueueAlmediaCampaignsSyncJob({
+  await enqueueOrFailRun(run.id, {
     initiatedBy: "system",
     syncRunId: run.id,
   });
@@ -236,7 +272,7 @@ export async function syncAlmediaCampaigns(input: {
       data: {
         status: PrismaAlmediaSyncRunStatus.FAILED,
         completedAt: new Date(),
-        lastError: describeError(error),
+        lastError: toSyncRunError(error),
       },
     });
 
