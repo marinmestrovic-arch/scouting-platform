@@ -23,6 +23,7 @@ import {
   ALMEDIA_TAB_LABELS,
   ALMEDIA_TABS_IN_ORDER,
   buildAlmediaWorkspaceHref,
+  formatAlmediaSyncFailure,
   resolveAlmediaTab,
 } from "../../lib/almedia-workspace";
 import { timeAgo } from "../../lib/almedia/format";
@@ -231,7 +232,7 @@ export function AlmediaWorkspace({
 
         {sync?.lastError ? (
           <p className="almedia-sync-warning" role="status">
-            Last Almedia sync failed: {sync.lastError}
+            {formatAlmediaSyncFailure(sync.lastError)}
           </p>
         ) : null}
 

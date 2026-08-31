@@ -114,7 +114,15 @@ export async function requestAlmediaCampaignsSync(input: {
   return { runId: run.id };
 }
 
-/** Mark a run failed when no worker job was created to claim it. */
+/**
+ * Enqueue the job, and fail the run if that does not happen.
+ *
+ * The run row is created before the job so the request has an id to return, but
+ * that leaves a window: if pg-boss is unreachable, the row would otherwise sit
+ * at `queued` forever with no `completedAt` and no `lastError`, and the hourly
+ * schedule would mint another orphan on every retry. A run that no worker will
+ * ever pick up is a failed run, and job durability requires it to say so.
+ */
 async function enqueueOrFailRun(
   runId: string,
   payload: Parameters<typeof enqueueAlmediaCampaignsSyncJob>[0],

@@ -47,4 +47,17 @@ export function buildAlmediaWorkspaceHref(
   return query ? `${pathname}?${query}` : pathname;
 }
 
+/**
+ * Sync failures are persisted by the worker for diagnostics. Older rows can
+ * contain an Error stack, so never render that database value verbatim in the
+ * browser. Give admins an actionable message without leaking internal paths.
+ */
+export function formatAlmediaSyncFailure(lastError: string): string {
+  if (lastError.includes("ALMEDIA_API_KEY")) {
+    return "Almedia sync is not configured on the worker. Set ALMEDIA_API_KEY, then retry.";
+  }
+
+  return "Almedia sync could not refresh. Existing data is still available; retry or check the worker logs.";
+}
+
 export const ALMEDIA_TABS_IN_ORDER: readonly AlmediaTab[] = ALMEDIA_TABS;
