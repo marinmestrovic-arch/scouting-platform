@@ -2,6 +2,10 @@
 
 ## Work split
 
+Current maintenance owner: Marin owns the full repository and deployment. The split
+and milestones below record the original delivery responsibilities. See
+[ADR-006](./ADR-006-origin-deployment-ownership.md) for the repository handover.
+
 This split is by ownership surface, not skill hierarchy.
 
 ### You own:
@@ -292,6 +296,7 @@ Require on every PR:
 ## Protected `main` rules:
 
 - passing CI required
-- one approval required
+- pull request required; zero required approvals while Marin is the sole maintainer
 - no direct pushes
-- migrations require review from the other person
+- force pushes and branch deletion blocked, including for admins
+- migrations still require another qualified person's review

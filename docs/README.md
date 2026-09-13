@@ -61,6 +61,7 @@ Create an ADR when changing:
 | ADR-003 | Repository layout simplification | Accepted |
 | ADR-004 | Account security hardening | Accepted |
 | ADR-005 | YouTube-declared creator country precedence | Accepted |
+| ADR-006 | Origin repository ownership and Dokku deployment | Accepted |
 
 Use ADR-003 for current repository paths. Treat ADR-001 as historical context rather than the living source of truth for the current layout.
 
@@ -103,7 +104,8 @@ Files in [`/docs/plans/`](./plans/) describe future work and should not be treat
 | Guide | Purpose |
 |-------|---------|
 | `setup/local.md` | Local development with Docker |
-| `setup/staging-railway.md` | Staging deployment runbook |
+| `setup/dokku.md` | Current staging and production deployment runbook |
+| `setup/staging-railway.md` | Historical Railway provisioning guide |
 | `setup/launch-readiness.md` | Pre-launch checklist |
 | `setup/postgres-backup-restore-drill.md` | Backup/restore verification |
 | `setup/channel-country-repair.md` | Dry-run and repair legacy creator-country labels |
