@@ -109,7 +109,7 @@ README.md
 | [`/docs/README.md`](./docs/README.md) | Documentation map and ADR guidance |
 | [`/docs/setup/local.md`](./docs/setup/local.md) | Local environment bootstrap |
 | [`/docs/setup/hubspot-v2.md`](./docs/setup/hubspot-v2.md) | HubSpot portal provisioning, rollout, webhooks, and UI extension |
-| [`/docs/setup/staging-railway.md`](./docs/setup/staging-railway.md) | Staging deployment runbook |
+| [`/docs/setup/dokku.md`](./docs/setup/dokku.md) | Staging and production deployment runbook |
 
 ## Local Setup
 
@@ -228,10 +228,11 @@ These two endpoints authenticate HubSpot v3 signatures rather than Auth.js sessi
 [HubSpot V2 operator guide](./docs/setup/hubspot-v2.md) before enabling either endpoint. All HubSpot
 feature flags default off, and the repository does not claim live portal verification.
 
-## Hosting Recommendation
+## Hosting and Deployment
 
-Use Railway with:
-- one `web` service
-- one `worker` service
-- one Postgres database
-- separate staging and production environments
+Staging and production run on separate Dokku hosts, each with `scouting-web`,
+`scouting-worker`, and a `scouting-db` Postgres service.
+
+The primary repository is [`marinmestrovic-arch/scouting-platform`](https://github.com/marinmestrovic-arch/scouting-platform).
+Its GitHub Actions workflow deploys `dev` to staging and `main` to production after CI passes.
+See the [Dokku runbook](./docs/setup/dokku.md) and [contributor workflow](./docs/dev-marin-workflow.md).

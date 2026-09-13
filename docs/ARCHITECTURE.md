@@ -1,6 +1,6 @@
 # Architecture
 
-Current-state architecture for `scouting-platform` as of 2026-07-20.
+Current-state architecture for `scouting-platform` as of 2026-09-13.
 
 Historical note:
 - [ADR-001-architecture.md](./ADR-001-architecture.md) preserves the original monorepo/service-boundary decision.
@@ -14,7 +14,10 @@ The production system has three runtime components:
 - `worker`: separate Node.js process for `pg-boss` jobs and provider orchestration
 - `db`: Postgres as the only persistent database
 
-Recommended hosting remains Railway with separate staging and production environments.
+Staging and production run on separate Dokku hosts, each with a web app, worker app,
+and Postgres service. GitHub Actions in `marinmestrovic-arch/scouting-platform` deploys
+`dev` to staging and `main` to production after CI passes. See
+[ADR-006](./ADR-006-origin-deployment-ownership.md) and the [Dokku runbook](./setup/dokku.md).
 
 ## 2. ADR-Governed Constraints
 
