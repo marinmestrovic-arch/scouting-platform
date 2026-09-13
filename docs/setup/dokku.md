@@ -2,8 +2,8 @@
 
 This runbook documents a Dokku deployment path for `scouting-platform`.
 
-Current repo docs still describe Railway as the recommended staging target. Use this guide when you
-want to run the current architecture on your own VPS with Dokku.
+This is the current staging and production deployment runbook. Both environments use
+existing Dokku hosts controlled by the company; see [ADR-006](../ADR-006-origin-deployment-ownership.md).
 
 For launch gating, pair this with:
 
@@ -37,8 +37,8 @@ The same worker image is also used for one-off operational commands:
 - Prisma migrations
 - initial admin seeding
 
-If Dokku becomes the team-standard deployment topology, add an ADR before merge. Hosting and
-deployment topology changes are ADR-governed in this repo.
+Dokku is the accepted deployment topology in [ADR-006](../ADR-006-origin-deployment-ownership.md).
+Further hosting or deployment topology changes require an ADR before merge.
 
 ## Prerequisites
 
@@ -319,45 +319,51 @@ migration commands.
 
 ## GitHub Actions auto-deploy
 
-The repository CI workflow can auto-deploy to Dokku after a successful push to `main`.
+The primary repository is `marinmestrovic-arch/scouting-platform` (`origin`). Its CI
+workflow deploys only on pushes to `main` (production) and `dev` (staging), after the
+`checks` job succeeds. PR checks and scheduled scans do not deploy.
 
-Important:
+| Setting | Production (`main`) | Staging (`dev`) |
+|---------|---------------------|-----------------|
+| Variable prefix | `DOKKU_PROD_` | `DOKKU_STAGING_` |
+| `HOST` | `178.105.218.172` | `46.225.18.236` |
+| `WEB_APP` | `scouting-web` | `scouting-web` |
+| `WORKER_APP` | `scouting-worker` | `scouting-worker` |
+| `WEB_URL` | `https://atlas.arch.business` | `https://scouting.marsilux.com` |
 
-- the deploy job is guarded to run only in the upstream repository: `bobasaki/scouting-platform`
-- pushes to fork branches or `origin/main` will still run CI, but they will not deploy
-- deploy order stays the same as the manual runbook: worker -> migrations -> web -> smoke check
+Configure all eight variables in origin under Settings -> Secrets and variables ->
+Actions. Each environment also needs two repository secrets:
 
-Configure these in the upstream GitHub repository under Settings -> Secrets and variables -> Actions.
+- `DOKKU_PROD_DEPLOY_SSH_KEY` and `DOKKU_PROD_KNOWN_HOSTS`
+- `DOKKU_STAGING_DEPLOY_SSH_KEY` and `DOKKU_STAGING_KNOWN_HOSTS`
 
-Repository variables:
+Use a separate SSH key per environment, authorized for both apps on that host. Keep
+private keys outside the repository. Populate known-host secrets from verified host
+keys; the workflow uses strict host checking. Runtime application secrets stay on
+the servers and do not need to move into GitHub.
 
-- `DOKKU_HOST` (for example `46.225.18.236`)
-- `DOKKU_WEB_APP=scouting-web`
-- `DOKKU_WORKER_APP=scouting-worker`
-- `DOKKU_WEB_URL` (for example `https://scouting.example.com`)
+Deploy order remains worker -> Prisma migrations -> web -> upload proxy settings ->
+login-page smoke check. Each environment has a separate concurrency group; a running
+deployment is not cancelled by a newer push. Both apps receive the source commit on
+their Dokku `main` deployment branch, including staging deployments from GitHub `dev`.
 
-Repository secrets:
+Before promoting a staging-tested PR into main, confirm CI passes. After deployment,
+verify the login page, a signed-in page, the web and worker processes, and a controlled
+staging job. Git deployment refs can be checked with `git ls-remote`; `git:report`
+may display `HEAD` instead of the commit on these hosts.
 
-- `DOKKU_DEPLOY_SSH_KEY`
-- `DOKKU_KNOWN_HOSTS`
+### Repository ownership cutover
 
-Recommended values:
+Upstream (`bobasaki/scouting-platform`) is historical reference only. Disable its CI
+workflow and wait for any active deployment to finish before origin's first deploy.
+Once both environments work through origin, revoke the previous CI keys on Dokku and
+remove upstream's four deployment secrets. Do not remove unrelated SSH keys or apps.
 
-- `DOKKU_DEPLOY_SSH_KEY` should be the private key for a Dokku deploy user/keypair that has access to both apps
-- `DOKKU_KNOWN_HOSTS` should be the exact host key line for the Dokku server, for example:
-
-```bash
-ssh-keyscan -H 46.225.18.236
-```
-
-After those are configured in the upstream repo, every successful push to `upstream/main` will:
-
-1. push the current commit to `scouting-worker`
-2. run `db:migrate:deploy` through the worker app
-3. push the same commit to `scouting-web`
-4. smoke-check the login page URL
-
-If deployment fails, the workflow tails recent Dokku logs for both apps to make diagnosis faster.
+During the September 2026 cutover, upstream main was `09dc04a` and staging was
+`c5a8fe0`. Save backup refs and database exports before the one-time, explicit
+lease-guarded adjustment of staging's two deployment refs to the approved baseline.
+Normal deployment pushes remain fast-forward. See the [contributor workflow](../dev-marin-workflow.md)
+for origin branch tracking and production promotion.
 
 ## Rollback notes
 

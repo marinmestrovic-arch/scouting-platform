@@ -189,10 +189,14 @@ Everything above PLUS:
 
 | Owner | Scope |
 |-------|-------|
-| Ivan | Backend, DB, worker, integrations, CI/CD, infra |
-| Marin | Frontend, UX, admin screens, Playwright |
+| Marin | Repository maintenance, frontend, backend, DB, worker, integrations, CI/CD, infrastructure |
 
-**Pair on:** Schema changes, ADR decisions, DB + UX crossover.
+`origin` (`marinmestrovic-arch/scouting-platform`) is the primary repository. Local
+`main` and `dev` track origin; `upstream` is historical reference only.
+
+`main` requires a pull request and passing CI, with zero required approvals while
+Marin is the sole maintainer. Force pushes and branch deletion are blocked.
+Schema migrations still require review from another qualified person.
 
 ---
 

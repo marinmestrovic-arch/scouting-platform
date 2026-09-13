@@ -13,7 +13,6 @@ coverage
 *.tsbuildinfo
 playwright-report
 test-results
-docs/dev-marin-workflow.md
 tmp/
 node-compile-cache/
 .claude/launch.json

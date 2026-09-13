@@ -109,7 +109,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      github.repository == 'bobasaki/scouting-platform'
+      github.repository == 'marinmestrovic-arch/scouting-platform'
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -200,7 +200,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/dev' &&
-      github.repository == 'bobasaki/scouting-platform'
+      github.repository == 'marinmestrovic-arch/scouting-platform'
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
